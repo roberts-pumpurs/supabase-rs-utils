@@ -1,0 +1,49 @@
+cargo-features = ["codegen-backend"]
+[workspace]
+resolver = "2"
+members = ["crates/*", "xtask"]
+
+[workspace.dependencies]
+# Async
+futures-concurrency = "7.4"
+futures-util = "0.3"
+futures = "0.3"
+
+# Errors
+eyre = "0.6"
+color-eyre = "0.6"
+
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
+serde = { version = "1", features = ["derive"] }
+redact = "0.1"
+serde_json = "1"
+url = "1"
+rand = { version = "0.8", features = ["small_rng"] }
+thiserror = "1"
+typed-builder = "0.18"
+jwt-simple = "0.11"
+rust_decimal_macros = "1"
+rust_decimal = { version = "1", features = ["maths"] }
+arrayvec = "0.7"
+itertools = "0.12"
+
+# Tests
+rstest = { version = "0.18" }
+test-log = { version = "0.2", features = ["trace"], default-features = false }
+pretty_assertions = "1"
+assert_matches = "1.5"
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "tracing-log", "json", "valuable", "tracing"] }
+
+racing-serde = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+debug = 0
+# codegen-backend = "cranelift" (not supported on m1 mac)
