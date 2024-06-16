@@ -3,4 +3,13 @@ name = "supabase-auth"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
+redact.workspace = true
+url.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+jwt-simple.workspace = true
+futures.workspace = true

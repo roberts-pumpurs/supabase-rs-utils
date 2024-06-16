@@ -3,11 +3,46 @@ cargo-features = ["codegen-backend"]
 resolver = "2"
 members = ["crates/*", "xtask"]
 
+[workspace.lints.clippy]
+cargo = { priority = -1, level = "deny" }
+complexity = { priority = -1, level = "deny" }
+correctness = { priority = -1, level = "deny" }
+nursery = { priority = -1, level = "deny" }
+pedantic = { priority = -1, level = "deny" }
+perf = { priority = -1, level = "deny" }
+restriction = { priority = -1, level = "deny" }
+style = { priority = -1, level = "deny" }
+suspicious = { priority = -1, level = "deny" }
+
+cargo_common_metadata = "allow"
+missing_docs_in_private_items = "allow"
+blanket_clippy_restriction_lints = "allow"
+implicit_return = "allow"
+dbg_macro = "allow"
+single_call_fn = "allow"
+missing_inline_in_public_items = "allow"
+question_mark_used = "allow"
+absolute_paths = "allow"
+missing_trait_methods = "allow"
+wildcard_imports = "allow"
+shadow_reuse = "allow"
+exhaustive_enums = "allow"
+ref_patterns = "allow"
+pub_use = "allow"
+single_char_lifetime_names = "allow"
+multiple_crate_versions = "allow"
+exhaustive_structs = "allow"
+future_not_send = "allow"
+separated_literal_suffix = "allow"
+mod_module_files = "allow"
+
 [workspace.dependencies]
 # Async
 futures-concurrency = "7.4"
 futures-util = "0.3"
 futures = "0.3"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] } # todo: remove "full"
 
 # Errors
 eyre = "0.6"
@@ -36,8 +71,6 @@ assert_matches = "1.5"
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "tracing-log", "json", "valuable", "tracing"] }
-
-racing-serde = "0.1"
 
 [profile.release]
 lto = true
