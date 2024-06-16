@@ -43,6 +43,8 @@ futures-util = "0.3"
 futures = "0.3"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] } # todo: remove "full"
+pin-project = "1"
+futures-timer = "3"
 
 # Errors
 eyre = "0.6"
@@ -61,6 +63,7 @@ rust_decimal_macros = "1"
 rust_decimal = { version = "1", features = ["maths"] }
 arrayvec = "0.7"
 itertools = "0.12"
+base64 = "0.22"
 
 # Tests
 rstest = { version = "0.18" }
