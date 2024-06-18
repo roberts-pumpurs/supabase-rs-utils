@@ -70,6 +70,7 @@ rstest = { version = "0.18" }
 test-log = { version = "0.2", features = ["trace"], default-features = false }
 pretty_assertions = "1"
 assert_matches = "1.5"
+mockito = "0.31"
 
 # Tracing
 tracing = "0.1"

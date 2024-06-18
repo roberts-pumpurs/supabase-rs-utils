@@ -100,7 +100,10 @@ impl<'a> Stream for RefreshStream<'a> {
                             let json_future = res.json::<AuthResponse>().boxed();
                             this.state.set(RefreshStreamState::ParseJson(json_future));
                         }
-                        Err(err) => return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err)))),
+                        Err(err) => {
+                            this.state.set(RefreshStreamState::PasswordLogin);
+                            return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))));
+                        }
                     },
                     Poll::Ready(Err(err)) => {
                         this.state.set(RefreshStreamState::PasswordLogin);
@@ -111,14 +114,17 @@ impl<'a> Stream for RefreshStream<'a> {
                 RefreshStreamState::ParseJson(fut) => match fut.poll_unpin(cx) {
                     Poll::Ready(Ok(res)) => match parse_jwt(&res.access_token) {
                         Ok(access_token) => {
-                            let valid_for: Duration = access_token.expires_at.unwrap().into();
+                            let Some(valid_for) = access_token.expires_at else {
+                                tracing::error!("`expires_at` field not present");
+                                return Poll::Ready(None)
+                            };
+                            let valid_for: Duration = valid_for.into();
                             let access_jwt_expiry = JwtExpiry::new(valid_for.div(2));
                             this.state.set(RefreshStreamState::WaitForExpiry {
                                 refresh_token: res.refresh_token.clone(),
                                 access_expiry: Box::pin(access_jwt_expiry),
                             });
 
-                            cx.waker().wake_by_ref();
                             return Poll::Ready(Some(Ok(res)));
                         }
                         Err(err) => {
@@ -150,7 +156,9 @@ impl<'a> Stream for RefreshStream<'a> {
                             .set(RefreshStreamState::WaitingForResponse(request_future));
                         continue;
                     }
-                    Poll::Pending => {}
+                    Poll::Pending => {
+                        return Poll::Pending;
+                    }
                 },
             }
         }
@@ -166,7 +174,7 @@ pub enum RefreshStreamError {
 }
 
 #[derive(Debug, Error)]
-enum JwtParseError {
+pub enum JwtParseError {
     #[error("Base64 decode error: {0}")]
     Base64Decode(#[from] base64::DecodeError),
 
@@ -200,31 +208,274 @@ pub struct AuthResponse {
 pub struct User {
     id: String,
     email: String,
-    // Add other user fields if needed
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use std::time::Duration;
 
     use futures::StreamExt;
+    use jwt_simple::algorithms::ECDSAP256kKeyPairLike;
+    use mockito::{mock, Matcher};
     use rstest::rstest;
+    use serde_json::json;
+    use tokio::time::timeout;
 
-    use crate::SupabaseAuth;
+    use super::*;
+
+    fn make_jwt(expires_in: Duration) -> String {
+        jwt_simple::algorithms::ES256kKeyPair::generate()
+            .with_key_id("secret")
+            .sign(JWTClaims {
+                issued_at: None,
+                expires_at: Some(expires_in.into()),
+                invalid_before: None,
+                issuer: None,
+                subject: None,
+                audiences: None,
+                jwt_id: None,
+                nonce: None,
+                custom: NoCustomClaims {},
+            })
+            .unwrap()
+    }
 
     #[rstest]
-    #[timeout(Duration::from_secs(3))]
-    #[test_log::test(tokio::test)]
-    async fn test_connect_and_authenticate() {
-        // todo: create a simple mock serivec of supabase?
-        let supabase_auth = SupabaseAuth::new("http://127.0.0.1:54321".parse().unwrap());
-        let token_body = crate::TokenBody {
-            email: std::borrow::Cow::Owned("trader@swoopscore.com".to_string()),
-            password: redact::Secret::new(std::borrow::Cow::Owned("pass".to_string())),
+    #[tokio::test]
+    async fn test_successful_password_login() {
+        let access_token = make_jwt(Duration::from_secs(3600));
+        let _m = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "access_token": access_token.clone(),
+                    "refresh_token": "some-refresh-token",
+                    "expires_in": 3600,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": "user-id",
+                        "email": "user@example.com"
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let url = mockito::server_url();
+        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let token_body = TokenBody {
+            email: Cow::Borrowed("user@example.com"),
+            password: redact::Secret::new(Cow::Borrowed("password")),
         };
-        let mut jwt_stream = supabase_auth.sign_in(token_body);
-        let res = jwt_stream.next().await.unwrap().unwrap();
-        dbg!(res);
-        panic!("aaaa");
+
+        let mut stream = supabase_auth.sign_in(token_body);
+
+        let response = timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+
+        dbg!(&response);
+        assert!(response.is_ok());
+        let auth_response = response.unwrap();
+        assert_eq!(auth_response.access_token, access_token);
+        assert_eq!(auth_response.refresh_token, "some-refresh-token");
+        assert_eq!(auth_response.user.email, "user@example.com");
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_password_login_error() {
+        let _m = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(400)
+            .create();
+
+        let url = mockito::server_url();
+        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let token_body = TokenBody {
+            email: Cow::Borrowed("user@example.com"),
+            password: redact::Secret::new(Cow::Borrowed("password")),
+        };
+
+        let mut stream = supabase_auth.sign_in(token_body);
+
+        let response = timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(response.is_err());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_jwt_parsing_error() {
+        let _m = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "access_token": "invalid-jwt",
+                    "refresh_token": "some-refresh-token",
+                    "expires_in": 3600,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": "user-id",
+                        "email": "user@example.com"
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let url = mockito::server_url();
+        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let token_body = TokenBody {
+            email: Cow::Borrowed("user@example.com"),
+            password: redact::Secret::new(Cow::Borrowed("password")),
+        };
+
+        let mut stream = supabase_auth.sign_in(token_body);
+
+        let response = timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(response.is_err());
+        match response {
+            Err(RefreshStreamError::JwtParse(_)) => (),
+            _ => panic!("Expected JwtParse error"),
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_retry_on_login_error() {
+        let _m1 = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(500)
+            .create();
+
+        let _m2 = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "access_token": make_jwt(Duration::from_secs(3600)),
+                    "refresh_token": "some-refresh-token",
+                    "expires_in": 3600,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": "user-id",
+                        "email": "user@example.com"
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let url = mockito::server_url();
+        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let token_body = TokenBody {
+            email: Cow::Borrowed("user@example.com"),
+            password: redact::Secret::new(Cow::Borrowed("password")),
+        };
+
+        let mut stream = supabase_auth.sign_in(token_body);
+
+        let response = stream.next().await.unwrap();
+        assert!(response.is_err());
+        let response = timeout(Duration::from_secs(10), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(response.is_ok());
+        let auth_response = response.unwrap();
+        assert_eq!(auth_response.refresh_token, "some-refresh-token");
+        assert_eq!(auth_response.user.email, "user@example.com");
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_use_refresh_token_on_expiry() {
+        let first_access_token = make_jwt(Duration::from_secs(1));
+        let _m1 = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "access_token": first_access_token.clone(),
+                    "refresh_token": "some-refresh-token",
+                    "expires_in": 1,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": "user-id",
+                        "email": "user@example.com"
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let new_access_token = make_jwt(Duration::from_secs(3600));
+        let _m2 = mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=token_refresh".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "access_token": new_access_token.clone(),
+                    "refresh_token": "new-refresh-token",
+                    "expires_in": 3600,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": "user-id",
+                        "email": "user@example.com"
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let url = mockito::server_url();
+        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let token_body = TokenBody {
+            email: Cow::Borrowed("user@example.com"),
+            password: redact::Secret::new(Cow::Borrowed("password")),
+        };
+
+        let mut stream = supabase_auth.sign_in(token_body);
+
+        // Get the initial token
+        let response1 = timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response1.is_ok());
+        let auth_response1 = response1.unwrap();
+        assert_eq!(auth_response1.access_token, first_access_token);
+        assert_eq!(auth_response1.refresh_token, "some-refresh-token");
+        assert_eq!(auth_response1.user.email, "user@example.com");
+
+        // Wait for token to expire and refresh
+        let response2 = timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response2.is_ok());
+        let auth_response2 = response2.unwrap();
+        assert_eq!(auth_response2.access_token, new_access_token);
+        assert_eq!(auth_response2.refresh_token, "new-refresh-token");
+        assert_eq!(auth_response2.user.email, "user@example.com");
     }
 }
