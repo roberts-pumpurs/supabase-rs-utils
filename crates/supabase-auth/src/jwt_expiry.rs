@@ -58,7 +58,7 @@ mod tests {
         let mut jwt_expiry = JwtExpiry::new(duration);
 
         let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
+        let cx = Context::from_waker(&waker);
 
         let start = Instant::now();
         let mut polled_once = false;

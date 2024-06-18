@@ -1,7 +1,9 @@
 mod jwt_expiry;
 use std::borrow::Cow;
+use std::ops::Div;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use base64::prelude::*;
 use futures::{FutureExt, Stream};
@@ -73,7 +75,7 @@ enum RefreshStreamState {
 impl<'a> Stream for RefreshStream<'a> {
     type Item = Result<AuthResponse, RefreshStreamError>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
 
         loop {
@@ -108,9 +110,9 @@ impl<'a> Stream for RefreshStream<'a> {
                 },
                 RefreshStreamState::ParseJson(fut) => match fut.poll_unpin(cx) {
                     Poll::Ready(Ok(res)) => match parse_jwt(&res.access_token) {
-                        (Ok(access_token)) => {
-                            let access_jwt_expiry =
-                                JwtExpiry::new(access_token.expires_at.unwrap().into());
+                        Ok(access_token) => {
+                            let valid_for: Duration = access_token.expires_at.unwrap().into();
+                            let access_jwt_expiry = JwtExpiry::new(valid_for.div(2));
                             this.state.set(RefreshStreamState::WaitForExpiry {
                                 refresh_token: res.refresh_token.clone(),
                                 access_expiry: Box::pin(access_jwt_expiry),

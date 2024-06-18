@@ -84,6 +84,11 @@ fn main() -> eyre::Result<()> {
             cmd!(sh, "cargo fmt --all").run()?;
             cmd!(
                 sh,
+                "cargo fix --allow-dirty --allow-staged --workspace --all-features --tests"
+            )
+            .run()?;
+            cmd!(
+                sh,
                 "cargo clippy --fix --allow-dirty --allow-staged --workspace --all-features --tests"
             )
             .run()?;
