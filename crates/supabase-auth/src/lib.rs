@@ -2,13 +2,11 @@ mod jwt_expiry;
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 use base64::prelude::*;
 use futures::{FutureExt, Stream};
 use jwt_expiry::JwtExpiry;
 use jwt_simple::claims::{JWTClaims, NoCustomClaims};
-use jwt_simple::token::Token;
 use pin_project::pin_project;
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
@@ -68,8 +66,6 @@ enum RefreshStreamState {
     WaitForExpiry {
         refresh_token: String,
         #[pin]
-        refresh_expiry: futures::future::BoxFuture<'static, ()>,
-        #[pin]
         access_expiry: futures::future::BoxFuture<'static, ()>,
     },
 }
@@ -105,65 +101,55 @@ impl<'a> Stream for RefreshStream<'a> {
                         Err(err) => return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err)))),
                     },
                     Poll::Ready(Err(err)) => {
+                        this.state.set(RefreshStreamState::PasswordLogin);
                         return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
                     }
                     Poll::Pending => return Poll::Pending,
                 },
                 RefreshStreamState::ParseJson(fut) => match fut.poll_unpin(cx) {
-                    Poll::Ready(Ok(res)) => {
-                        match (parse_jwt(&res.access_token), parse_jwt(&res.refresh_token)) {
-                            (Ok(access_token), Ok(refresh_token)) => {
-                                let access_jwt_expiry =
-                                    JwtExpiry::new(access_token.expires_at.unwrap().into());
-                                let refresh_jwt_expiry =
-                                    JwtExpiry::new(refresh_token.expires_at.unwrap().into());
+                    Poll::Ready(Ok(res)) => match parse_jwt(&res.access_token) {
+                        (Ok(access_token)) => {
+                            let access_jwt_expiry =
+                                JwtExpiry::new(access_token.expires_at.unwrap().into());
+                            this.state.set(RefreshStreamState::WaitForExpiry {
+                                refresh_token: res.refresh_token.clone(),
+                                access_expiry: Box::pin(access_jwt_expiry),
+                            });
 
-                                this.state.set(RefreshStreamState::WaitForExpiry {
-                                    refresh_token: res.refresh_token.clone(),
-                                    refresh_expiry: Box::pin(refresh_jwt_expiry),
-                                    access_expiry: Box::pin(access_jwt_expiry),
-                                });
-
-                                cx.waker().wake_by_ref();
-                                return Poll::Ready(Some(Ok(res)));
-                            }
-                            (Err(err), _) | (_, Err(err)) => {
-                                return Poll::Ready(Some(Err(RefreshStreamError::JwtParse(err))))
-                            }
+                            cx.waker().wake_by_ref();
+                            return Poll::Ready(Some(Ok(res)));
                         }
-                    }
+                        Err(err) => {
+                            this.state.set(RefreshStreamState::PasswordLogin);
+                            return Poll::Ready(Some(Err(RefreshStreamError::JwtParse(err))))
+                        }
+                    },
                     Poll::Ready(Err(err)) => {
+                        this.state.set(RefreshStreamState::PasswordLogin);
                         return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
                     }
                     Poll::Pending => return Poll::Pending,
                 },
                 RefreshStreamState::WaitForExpiry {
                     refresh_token,
-                    refresh_expiry,
                     access_expiry,
-                } => {
-                    match access_expiry.poll_unpin(cx) {
-                        Poll::Ready(()) => {
-                            let request_future = this
-                                .client
-                                .post(this.refresh_url.clone())
-                                .json(&json!({
-                                    "refresh_token": refresh_token,
-                                }))
-                                .send()
-                                .boxed();
+                } => match access_expiry.poll_unpin(cx) {
+                    Poll::Ready(()) => {
+                        let request_future = this
+                            .client
+                            .post(this.refresh_url.clone())
+                            .json(&json!({
+                                "refresh_token": refresh_token,
+                            }))
+                            .send()
+                            .boxed();
 
-                            this.state
-                                .set(RefreshStreamState::WaitingForResponse(request_future));
-                            continue;
-                        }
-                        Poll::Pending => {}
+                        this.state
+                            .set(RefreshStreamState::WaitingForResponse(request_future));
+                        continue;
                     }
-                    match refresh_expiry.poll_unpin(cx) {
-                        Poll::Ready(()) => this.state.set(RefreshStreamState::PasswordLogin),
-                        Poll::Pending => return Poll::Pending,
-                    }
-                }
+                    Poll::Pending => {}
+                },
             }
         }
     }
@@ -217,12 +203,10 @@ pub struct User {
 
 #[cfg(test)]
 mod tests {
-
     use std::time::Duration;
 
     use futures::StreamExt;
     use rstest::rstest;
-    use tokio::test;
 
     use crate::SupabaseAuth;
 
@@ -233,7 +217,7 @@ mod tests {
         // todo: create a simple mock serivec of supabase?
         let supabase_auth = SupabaseAuth::new("http://127.0.0.1:54321".parse().unwrap());
         let token_body = crate::TokenBody {
-            email: std::borrow::Cow::Owned("ttt@ttt.lv".to_string()),
+            email: std::borrow::Cow::Owned("trader@swoopscore.com".to_string()),
             password: redact::Secret::new(std::borrow::Cow::Owned("pass".to_string())),
         };
         let mut jwt_stream = supabase_auth.sign_in(token_body);
