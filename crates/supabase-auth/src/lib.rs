@@ -43,8 +43,8 @@ impl SupabaseAuth {
 }
 
 pub struct TokenBody<'a> {
-    email: Cow<'a, str>,
-    password: redact::Secret<Cow<'a, str>>,
+    pub email: Cow<'a, str>,
+    pub password: redact::Secret<Cow<'a, str>>,
 }
 
 #[pin_project]
