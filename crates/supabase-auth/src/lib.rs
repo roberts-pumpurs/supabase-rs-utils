@@ -14,7 +14,7 @@ use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
-pub use url;
+pub use {redact, url};
 
 pub struct SupabaseAuth {
     url: url::Url,
