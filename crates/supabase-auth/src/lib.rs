@@ -68,7 +68,7 @@ enum RefreshStreamState {
     WaitForExpiry {
         refresh_token: String,
         #[pin]
-        access_expiry: futures::future::BoxFuture<'static, ()>,
+        access_expiry: JwtExpiry,
     },
 }
 
@@ -94,25 +94,26 @@ impl<'a> Stream for RefreshStream<'a> {
                     this.state
                         .set(RefreshStreamState::WaitingForResponse(request_future));
                 }
-                RefreshStreamState::WaitingForResponse(fut) => match fut.poll_unpin(cx) {
-                    Poll::Ready(Ok(res)) => match res.error_for_status() {
-                        Ok(res) => {
-                            let json_future = res.json::<AuthResponse>().boxed();
-                            this.state.set(RefreshStreamState::ParseJson(json_future));
-                        }
+                RefreshStreamState::WaitingForResponse(fut) => {
+                    match std::task::ready!(fut.poll_unpin(cx)) {
+                        Ok(res) => match res.error_for_status() {
+                            Ok(res) => {
+                                let json_future = res.json::<AuthResponse>().boxed();
+                                this.state.set(RefreshStreamState::ParseJson(json_future));
+                            }
+                            Err(err) => {
+                                this.state.set(RefreshStreamState::PasswordLogin);
+                                return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))));
+                            }
+                        },
                         Err(err) => {
                             this.state.set(RefreshStreamState::PasswordLogin);
-                            return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))));
+                            return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
                         }
-                    },
-                    Poll::Ready(Err(err)) => {
-                        this.state.set(RefreshStreamState::PasswordLogin);
-                        return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
                     }
-                    Poll::Pending => return Poll::Pending,
-                },
-                RefreshStreamState::ParseJson(fut) => match fut.poll_unpin(cx) {
-                    Poll::Ready(Ok(res)) => match parse_jwt(&res.access_token) {
+                }
+                RefreshStreamState::ParseJson(fut) => match std::task::ready!(fut.poll_unpin(cx)) {
+                    Ok(res) => match parse_jwt(&res.access_token) {
                         Ok(access_token) => {
                             let Some(valid_for) = access_token.expires_at else {
                                 tracing::error!("`expires_at` field not present");
@@ -122,7 +123,7 @@ impl<'a> Stream for RefreshStream<'a> {
                             let access_jwt_expiry = JwtExpiry::new(valid_for.div(2));
                             this.state.set(RefreshStreamState::WaitForExpiry {
                                 refresh_token: res.refresh_token.clone(),
-                                access_expiry: Box::pin(access_jwt_expiry),
+                                access_expiry: access_jwt_expiry,
                             });
 
                             return Poll::Ready(Some(Ok(res)));
@@ -132,34 +133,29 @@ impl<'a> Stream for RefreshStream<'a> {
                             return Poll::Ready(Some(Err(RefreshStreamError::JwtParse(err))))
                         }
                     },
-                    Poll::Ready(Err(err)) => {
+                    Err(err) => {
                         this.state.set(RefreshStreamState::PasswordLogin);
                         return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
                     }
-                    Poll::Pending => return Poll::Pending,
                 },
                 RefreshStreamState::WaitForExpiry {
                     refresh_token,
                     access_expiry,
-                } => match access_expiry.poll_unpin(cx) {
-                    Poll::Ready(()) => {
-                        let request_future = this
-                            .client
-                            .post(this.refresh_url.clone())
-                            .json(&json!({
-                                "refresh_token": refresh_token,
-                            }))
-                            .send()
-                            .boxed();
+                } => {
+                    let _res = std::task::ready!(access_expiry.poll_unpin(cx));
+                    let request_future = this
+                        .client
+                        .post(this.refresh_url.clone())
+                        .json(&json!({
+                            "refresh_token": refresh_token,
+                        }))
+                        .send()
+                        .boxed();
 
-                        this.state
-                            .set(RefreshStreamState::WaitingForResponse(request_future));
-                        continue;
-                    }
-                    Poll::Pending => {
-                        return Poll::Pending;
-                    }
-                },
+                    this.state
+                        .set(RefreshStreamState::WaitingForResponse(request_future));
+                    continue;
+                }
             }
         }
     }
