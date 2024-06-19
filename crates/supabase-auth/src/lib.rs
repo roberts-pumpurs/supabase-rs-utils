@@ -14,6 +14,7 @@ use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
+pub use url;
 
 pub struct SupabaseAuth {
     url: url::Url,
@@ -24,22 +25,20 @@ impl SupabaseAuth {
         Self { url }
     }
 
-    pub fn sign_in<'a>(&self, params: TokenBody<'a>) -> RefreshStream<'a> {
-        RefreshStream {
+    pub fn sign_in<'a>(&self, params: TokenBody<'a>) -> Result<RefreshStream<'a>, url::ParseError> {
+        Ok(RefreshStream {
             password_url: self
                 .url
                 .clone()
-                .join("/auth/v1/token?grant_type=password")
-                .unwrap(),
+                .join("/auth/v1/token?grant_type=password")?,
             refresh_url: self
                 .url
                 .clone()
-                .join("/auth/v1/token?grant_type=token_refresh")
-                .unwrap(),
+                .join("/auth/v1/token?grant_type=token_refresh")?,
             client: Client::new(),
             token_body: params,
             state: RefreshStreamState::PasswordLogin,
-        }
+        })
     }
 }
 
@@ -268,7 +267,7 @@ mod tests {
             password: redact::Secret::new(Cow::Borrowed("password")),
         };
 
-        let mut stream = supabase_auth.sign_in(token_body);
+        let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         let response = timeout(Duration::from_secs(5), stream.next())
             .await
@@ -298,7 +297,7 @@ mod tests {
             password: redact::Secret::new(Cow::Borrowed("password")),
         };
 
-        let mut stream = supabase_auth.sign_in(token_body);
+        let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         let response = timeout(Duration::from_secs(5), stream.next())
             .await
@@ -337,7 +336,7 @@ mod tests {
             password: redact::Secret::new(Cow::Borrowed("password")),
         };
 
-        let mut stream = supabase_auth.sign_in(token_body);
+        let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         let response = timeout(Duration::from_secs(5), stream.next())
             .await
@@ -385,7 +384,7 @@ mod tests {
             password: redact::Secret::new(Cow::Borrowed("password")),
         };
 
-        let mut stream = supabase_auth.sign_in(token_body);
+        let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         let response = stream.next().await.unwrap();
         assert!(response.is_err());
@@ -450,7 +449,7 @@ mod tests {
             password: redact::Secret::new(Cow::Borrowed("password")),
         };
 
-        let mut stream = supabase_auth.sign_in(token_body);
+        let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         // Get the initial token
         let response1 = timeout(Duration::from_secs(5), stream.next())

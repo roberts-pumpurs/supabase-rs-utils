@@ -1,7 +1,7 @@
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use futures::{Future, FutureExt};
+use futures::Future;
 use futures_timer::Delay;
 use pin_project::pin_project;
 
@@ -35,6 +35,7 @@ mod tests {
     use futures::executor::block_on;
     use futures::future::poll_fn;
     use futures::task::noop_waker;
+    use futures::FutureExt;
 
     use super::*;
 
