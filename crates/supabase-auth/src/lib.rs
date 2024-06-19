@@ -192,17 +192,17 @@ fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
-    access_token: String,
-    refresh_token: String,
-    expires_in: u64, // in seconds
-    token_type: String,
-    user: User,
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in: u64,
+    pub token_type: String,
+    pub user: User,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
-    id: String,
-    email: String,
+    pub id: String,
+    pub email: String,
 }
 
 #[cfg(test)]
