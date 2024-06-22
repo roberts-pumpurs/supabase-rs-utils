@@ -189,8 +189,7 @@ fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {
 
     Ok(body)
 }
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AuthResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -199,7 +198,7 @@ pub struct AuthResponse {
     pub user: User,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct User {
     pub id: String,
     pub email: String,
