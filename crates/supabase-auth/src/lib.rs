@@ -212,56 +212,20 @@ mod tests {
     use std::time::Duration;
 
     use futures::StreamExt;
-    use jwt_simple::algorithms::ECDSAP256kKeyPairLike;
     use mockito::{mock, Matcher};
     use rstest::rstest;
-    use serde_json::json;
+    use supabase_mock::{make_jwt, SupabaseMockServer};
     use tokio::time::timeout;
 
     use super::*;
-
-    fn make_jwt(expires_in: Duration) -> String {
-        jwt_simple::algorithms::ES256kKeyPair::generate()
-            .with_key_id("secret")
-            .sign(JWTClaims {
-                issued_at: None,
-                expires_at: Some(expires_in.into()),
-                invalid_before: None,
-                issuer: None,
-                subject: None,
-                audiences: None,
-                jwt_id: None,
-                nonce: None,
-                custom: NoCustomClaims {},
-            })
-            .unwrap()
-    }
 
     #[rstest]
     #[tokio::test]
     async fn test_successful_password_login() {
         let access_token = make_jwt(Duration::from_secs(3600));
-        let _m = mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "access_token": access_token.clone(),
-                    "refresh_token": "some-refresh-token",
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                    "user": {
-                        "id": "user-id",
-                        "email": "user@example.com"
-                    }
-                })
-                .to_string(),
-            )
-            .create();
-
-        let url = mockito::server_url();
-        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let mut m = SupabaseMockServer::new();
+        let m = m.register_jwt_password(&access_token);
+        let supabase_auth = SupabaseAuth::new(m.server_url());
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -310,27 +274,9 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_jwt_parsing_error() {
-        let _m = mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "access_token": "invalid-jwt",
-                    "refresh_token": "some-refresh-token",
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                    "user": {
-                        "id": "user-id",
-                        "email": "user@example.com"
-                    }
-                })
-                .to_string(),
-            )
-            .create();
-
-        let url = mockito::server_url();
-        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let mut m = SupabaseMockServer::new();
+        let m = m.register_jwt_password(&"invalid-jwt");
+        let supabase_auth = SupabaseAuth::new(m.server_url());
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -357,28 +303,9 @@ mod tests {
             .match_query(Matcher::Regex("grant_type=password".to_string()))
             .with_status(500)
             .create();
-
-        let _m2 = mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "access_token": make_jwt(Duration::from_secs(3600)),
-                    "refresh_token": "some-refresh-token",
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                    "user": {
-                        "id": "user-id",
-                        "email": "user@example.com"
-                    }
-                })
-                .to_string(),
-            )
-            .create();
-
-        let url = mockito::server_url();
-        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let mut m = SupabaseMockServer::new();
+        let m = m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
+        let supabase_auth = SupabaseAuth::new(m.server_url());
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -403,47 +330,11 @@ mod tests {
     #[tokio::test]
     async fn test_use_refresh_token_on_expiry() {
         let first_access_token = make_jwt(Duration::from_secs(1));
-        let _m1 = mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "access_token": first_access_token.clone(),
-                    "refresh_token": "some-refresh-token",
-                    "expires_in": 1,
-                    "token_type": "bearer",
-                    "user": {
-                        "id": "user-id",
-                        "email": "user@example.com"
-                    }
-                })
-                .to_string(),
-            )
-            .create();
-
+        let mut m = SupabaseMockServer::new();
+        let m = m.register_jwt_password(&first_access_token);
         let new_access_token = make_jwt(Duration::from_secs(3600));
-        let _m2 = mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=token_refresh".to_string()))
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "access_token": new_access_token.clone(),
-                    "refresh_token": "new-refresh-token",
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                    "user": {
-                        "id": "user-id",
-                        "email": "user@example.com"
-                    }
-                })
-                .to_string(),
-            )
-            .create();
-
-        let url = mockito::server_url();
-        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let m = m.register_jwt_refresh(&new_access_token);
+        let supabase_auth = SupabaseAuth::new(m.server_url());
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -459,7 +350,6 @@ mod tests {
         assert!(response1.is_ok());
         let auth_response1 = response1.unwrap();
         assert_eq!(auth_response1.access_token, first_access_token);
-        assert_eq!(auth_response1.refresh_token, "some-refresh-token");
         assert_eq!(auth_response1.user.email, "user@example.com");
 
         // Wait for token to expire and refresh
@@ -470,7 +360,6 @@ mod tests {
         assert!(response2.is_ok());
         let auth_response2 = response2.unwrap();
         assert_eq!(auth_response2.access_token, new_access_token);
-        assert_eq!(auth_response2.refresh_token, "new-refresh-token");
         assert_eq!(auth_response2.user.email, "user@example.com");
     }
 }

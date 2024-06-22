@@ -1,0 +1,13 @@
+[package]
+name = "supabase-mock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mockito.workspace = true
+jwt-simple.workspace = true
+serde_json.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

@@ -37,6 +37,9 @@ separated_literal_suffix = "allow"
 mod_module_files = "allow"
 
 [workspace.dependencies]
+# our cretes
+supabase-mock = { path = "crates/supabase-mock" }
+
 # Async
 futures-concurrency = "7.4"
 futures-util = "0.3"
