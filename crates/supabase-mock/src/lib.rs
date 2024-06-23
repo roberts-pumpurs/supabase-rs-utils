@@ -1,5 +1,6 @@
 use core::net::SocketAddr;
 use core::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub use mockito;
 use mockito::{mock, Matcher};
@@ -70,11 +71,19 @@ impl SupabaseMockServer {
 #[must_use]
 pub fn make_jwt(expires_in: Duration) -> String {
     use jwt_simple::prelude::*;
+    let current_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    let will_expire_at = current_ts + expires_in;
     jwt_simple::algorithms::ES256kKeyPair::generate()
         .with_key_id("secret")
         .sign(JWTClaims {
             issued_at: None,
-            expires_at: Some(expires_in.into()),
+            expires_at: Some(Duration::new(
+                will_expire_at.as_secs(),
+                will_expire_at.subsec_nanos(),
+            )),
             invalid_before: None,
             issuer: None,
             subject: None,

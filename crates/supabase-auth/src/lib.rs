@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::ops::Div;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::prelude::*;
 use futures::{FutureExt, Stream};
@@ -114,17 +114,31 @@ impl<'a> Stream for RefreshStream<'a> {
                 RefreshStreamState::ParseJson(fut) => match std::task::ready!(fut.poll_unpin(cx)) {
                     Ok(res) => match parse_jwt(&res.access_token) {
                         Ok(access_token) => {
-                            let Some(valid_for) = access_token.expires_at else {
+                            let Some(expires_at) = access_token.expires_at else {
                                 tracing::error!("`expires_at` field not present");
                                 return Poll::Ready(None)
                             };
-                            let valid_for: Duration = valid_for.into();
-                            let access_jwt_expiry = JwtExpiry::new(valid_for.div(2));
+                            let expires_at_ts = expires_at.as_secs();
+                            // Get the current time as Unix timestamp
+                            let current_ts = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .expect("Time went backwards")
+                                .as_secs();
+
+                            // Calculate the duration until expiration
+                            let valid_for = if expires_at_ts > current_ts {
+                                // and divide by `2` just to be on the safe side
+                                Duration::from_secs(expires_at_ts - current_ts).div(2)
+                            } else {
+                                Duration::from_secs(0)
+                            };
+                            let access_jwt_expiry = JwtExpiry::new(valid_for);
                             this.state.set(RefreshStreamState::WaitForExpiry {
                                 refresh_token: res.refresh_token.clone(),
                                 access_expiry: access_jwt_expiry,
                             });
 
+                            cx.waker().wake_by_ref();
                             return Poll::Ready(Some(Ok(res)));
                         }
                         Err(err) => {
