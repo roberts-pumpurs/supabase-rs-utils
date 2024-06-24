@@ -46,7 +46,7 @@ impl<'a> SupabaseAuth<'a> {
             refresh_url: self
                 .url
                 .clone()
-                .join("/auth/v1/token?grant_type=token_refresh")?,
+                .join("/auth/v1/token?grant_type=refresh_token")?,
             api_key: self.api_key.clone(),
             client,
             token_body: params,
