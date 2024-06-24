@@ -10,22 +10,34 @@ use futures::{FutureExt, Stream};
 use jwt_expiry::JwtExpiry;
 use jwt_simple::claims::{JWTClaims, NoCustomClaims};
 use pin_project::pin_project;
+use reqwest::header::{HeaderMap, InvalidHeaderValue};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 pub use {redact, url};
 
-pub struct SupabaseAuth {
+pub struct SupabaseAuth<'a> {
     url: url::Url,
+    api_key: Cow<'a, str>,
 }
 
-impl SupabaseAuth {
-    pub fn new(url: url::Url) -> Self {
-        Self { url }
+impl<'a> SupabaseAuth<'a> {
+    /// Creates a new [`SupabaseAuth`].
+    pub fn new(url: url::Url, api_key: Cow<'a, str>) -> Self {
+        Self { url, api_key }
     }
 
-    pub fn sign_in<'a>(&self, params: TokenBody<'a>) -> Result<RefreshStream<'a>, url::ParseError> {
+    /// Creates a Stream that will attempt to log in to supabase and periodically refresh the JWT
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the provided supabase url cannot be joined with the
+    /// expected suffix.
+    pub fn sign_in<'b>(&self, params: TokenBody<'b>) -> Result<RefreshStream<'b>, SignInError> {
+        let mut default_headers = HeaderMap::new();
+        default_headers.insert("apikey", self.api_key.parse()?);
+        let client = Client::builder().default_headers(default_headers).build()?;
         Ok(RefreshStream {
             password_url: self
                 .url
@@ -35,7 +47,7 @@ impl SupabaseAuth {
                 .url
                 .clone()
                 .join("/auth/v1/token?grant_type=token_refresh")?,
-            client: Client::new(),
+            client,
             token_body: params,
             state: RefreshStreamState::PasswordLogin,
         })
@@ -183,6 +195,18 @@ pub enum RefreshStreamError {
 }
 
 #[derive(Debug, Error)]
+pub enum SignInError {
+    #[error(transparent)]
+    InvalidHeaderValue(#[from] InvalidHeaderValue),
+
+    #[error(transparent)]
+    ReqwestError(#[from] reqwest::Error),
+
+    #[error(transparent)]
+    UrlParseError(#[from] url::ParseError),
+}
+
+#[derive(Debug, Error)]
 pub enum JwtParseError {
     #[error("Base64 decode error: {0}")]
     Base64Decode(#[from] base64::DecodeError),
@@ -238,7 +262,7 @@ mod tests {
         let access_token = make_jwt(Duration::from_secs(3600));
         let mut m = SupabaseMockServer::new();
         let m = m.register_jwt_password(&access_token);
-        let supabase_auth = SupabaseAuth::new(m.server_url());
+        let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -268,7 +292,7 @@ mod tests {
             .create();
 
         let url = mockito::server_url();
-        let supabase_auth = SupabaseAuth::new(url.parse().unwrap());
+        let supabase_auth = SupabaseAuth::new(url.parse().unwrap(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -289,7 +313,7 @@ mod tests {
     async fn test_jwt_parsing_error() {
         let mut m = SupabaseMockServer::new();
         let m = m.register_jwt_password(&"invalid-jwt");
-        let supabase_auth = SupabaseAuth::new(m.server_url());
+        let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -318,7 +342,7 @@ mod tests {
             .create();
         let mut m = SupabaseMockServer::new();
         let m = m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
-        let supabase_auth = SupabaseAuth::new(m.server_url());
+        let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -347,7 +371,7 @@ mod tests {
         let m = m.register_jwt_password(&first_access_token);
         let new_access_token = make_jwt(Duration::from_secs(3600));
         let m = m.register_jwt_refresh(&new_access_token);
-        let supabase_auth = SupabaseAuth::new(m.server_url());
+        let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
