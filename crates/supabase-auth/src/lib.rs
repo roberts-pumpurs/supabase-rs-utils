@@ -10,8 +10,8 @@ use futures::{FutureExt, Stream};
 use jwt_expiry::JwtExpiry;
 use jwt_simple::claims::{JWTClaims, NoCustomClaims};
 use pin_project::pin_project;
-use reqwest::header::{HeaderMap, InvalidHeaderValue};
-use reqwest::{Client, Response};
+use reqwest::header::{self, HeaderMap, InvalidHeaderValue};
+use reqwest::{Client, ClientBuilder, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
@@ -34,9 +34,9 @@ impl<'a> SupabaseAuth<'a> {
     ///
     /// This function will return an error if the provided supabase url cannot be joined with the
     /// expected suffix.
-    pub fn sign_in<'b>(&self, params: TokenBody<'b>) -> Result<RefreshStream<'b>, SignInError> {
+    pub fn sign_in<'b>(&self, params: TokenBody<'b>) -> Result<RefreshStream<'b, 'a>, SignInError> {
         let mut default_headers = HeaderMap::new();
-        default_headers.insert("apikey", self.api_key.parse()?);
+        default_headers.insert(SUPABASE_KEY, self.api_key.parse()?);
         let client = Client::builder().default_headers(default_headers).build()?;
         Ok(RefreshStream {
             password_url: self
@@ -47,6 +47,7 @@ impl<'a> SupabaseAuth<'a> {
                 .url
                 .clone()
                 .join("/auth/v1/token?grant_type=token_refresh")?,
+            api_key: self.api_key.clone(),
             client,
             token_body: params,
             state: RefreshStreamState::PasswordLogin,
@@ -54,15 +55,18 @@ impl<'a> SupabaseAuth<'a> {
     }
 }
 
+const SUPABASE_KEY: &str = "apikey";
+
 pub struct TokenBody<'a> {
     pub email: Cow<'a, str>,
     pub password: redact::Secret<Cow<'a, str>>,
 }
 
 #[pin_project]
-pub struct RefreshStream<'a> {
+pub struct RefreshStream<'a, 'b> {
     password_url: url::Url,
     refresh_url: url::Url,
+    api_key: Cow<'b, str>,
     client: Client,
     token_body: TokenBody<'a>,
     #[pin]
@@ -83,8 +87,8 @@ enum RefreshStreamState {
     },
 }
 
-impl<'a> Stream for RefreshStream<'a> {
-    type Item = Result<AuthResponse, RefreshStreamError>;
+impl<'a, 'b> Stream for RefreshStream<'a, 'b> {
+    type Item = Result<NewTokenData<'b>, RefreshStreamError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
@@ -151,7 +155,10 @@ impl<'a> Stream for RefreshStream<'a> {
                             });
 
                             cx.waker().wake_by_ref();
-                            return Poll::Ready(Some(Ok(res)));
+                            return Poll::Ready(Some(Ok(NewTokenData {
+                                auth_data: res,
+                                api_key: this.api_key.clone(),
+                            })));
                         }
                         Err(err) => {
                             this.state.set(RefreshStreamState::PasswordLogin);
@@ -183,6 +190,30 @@ impl<'a> Stream for RefreshStream<'a> {
                 }
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct NewTokenData<'a> {
+    pub auth_data: AuthResponse,
+    pub api_key: Cow<'a, str>,
+}
+
+impl<'a> NewTokenData<'a> {
+    pub async fn new_reqwest_client(&self) -> Result<ClientBuilder, SignInError> {
+        let token = self.auth_data.access_token.as_str();
+        let builder = reqwest::Client::builder();
+        let mut headers = header::HeaderMap::new();
+        headers.insert(SUPABASE_KEY, header::HeaderValue::from_str(token)?);
+        headers.insert(
+            header::AUTHORIZATION,
+            header::HeaderValue::from_str(format!("Bearer {token}").as_str())?,
+        );
+        headers.insert(
+            header::CONTENT_TYPE,
+            header::HeaderValue::from_static("application/json"),
+        );
+        Ok(builder.default_headers(headers))
     }
 }
 
@@ -277,7 +308,7 @@ mod tests {
 
         dbg!(&response);
         assert!(response.is_ok());
-        let auth_response = response.unwrap();
+        let auth_response = response.unwrap().auth_data;
         assert_eq!(auth_response.access_token, access_token);
         assert_eq!(auth_response.refresh_token, "some-refresh-token");
         assert_eq!(auth_response.user.email, "user@example.com");
@@ -358,7 +389,7 @@ mod tests {
             .unwrap();
 
         assert!(response.is_ok());
-        let auth_response = response.unwrap();
+        let auth_response = response.unwrap().auth_data;
         assert_eq!(auth_response.refresh_token, "some-refresh-token");
         assert_eq!(auth_response.user.email, "user@example.com");
     }
@@ -385,7 +416,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(response1.is_ok());
-        let auth_response1 = response1.unwrap();
+        let auth_response1 = response1.unwrap().auth_data;
         assert_eq!(auth_response1.access_token, first_access_token);
         assert_eq!(auth_response1.user.email, "user@example.com");
 
@@ -395,7 +426,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(response2.is_ok());
-        let auth_response2 = response2.unwrap();
+        let auth_response2 = response2.unwrap().auth_data;
         assert_eq!(auth_response2.access_token, new_access_token);
         assert_eq!(auth_response2.user.email, "user@example.com");
     }
