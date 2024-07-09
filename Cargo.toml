@@ -39,6 +39,7 @@ mod_module_files = "allow"
 [workspace.dependencies]
 # our cretes
 supabase-mock = { path = "crates/supabase-mock" }
+supabase-auth = { path = "crates/supabase-auth" }
 
 # Async
 futures-concurrency = "7.4"
@@ -61,19 +62,28 @@ url = "2"
 rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "1"
 typed-builder = "0.18"
-jwt-simple = "0.11"
+jwt-simple = "0.12"
 rust_decimal_macros = "1"
 rust_decimal = { version = "1", features = ["maths"] }
 arrayvec = "0.7"
-itertools = "0.12"
+itertools = "0.13"
 base64 = "0.22"
+hyper-util = { version = "0.1.0", features = ["tokio"] }
+http-body-util = { version = "0.1.0" }
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+rustls = "0.23"
+rustls-native-certs = "0.7"
+bytes = "1.4.0"
+hyper = { version = "1", features = ["http1", "client"] }
+fastwebsockets = { version = "0.8", features = ["upgrade"] }
 
 # Tests
-rstest = { version = "0.18" }
+rstest = { version = "0.21" }
 test-log = { version = "0.2", features = ["trace"], default-features = false }
 pretty_assertions = "1"
-assert_matches = "1.5"
-mockito = "0.31"
+assert_matches = "1"
+mockito = "1"
 
 # Tracing
 tracing = "0.1"

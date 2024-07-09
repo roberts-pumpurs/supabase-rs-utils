@@ -1,0 +1,22 @@
+[package]
+name = "supabase-realtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio.workspace = true
+eyre.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+url.workspace = true
+rustls.workspace = true
+bytes.workspace = true
+hyper-util.workspace = true
+tokio-rustls.workspace = true
+rustls-native-certs.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+fastwebsockets.workspace = true
+
+[lints]
+workspace = true

@@ -3,11 +3,12 @@ use core::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub use mockito;
-use mockito::{mock, Matcher};
+use mockito::{Matcher, ServerGuard};
 use serde_json::json;
 
 pub struct SupabaseMockServer {
     pub api_mock: Vec<mockito::Mock>,
+    pub mockito_server: ServerGuard,
 }
 
 impl Default for SupabaseMockServer {
@@ -19,17 +20,21 @@ impl Default for SupabaseMockServer {
 impl SupabaseMockServer {
     #[must_use]
     pub fn new() -> Self {
-        Self { api_mock: vec![] }
+        let server = mockito::Server::new();
+        Self {
+            mockito_server: server,
+            api_mock: vec![],
+        }
     }
 
     #[must_use]
     pub fn server_address(&self) -> SocketAddr {
-        mockito::server_address()
+        self.mockito_server.socket_address()
     }
 
     #[must_use]
     pub fn server_url(&self) -> url::Url {
-        mockito::server_url().parse().unwrap()
+        self.mockito_server.url().parse().unwrap()
     }
 
     pub fn register_jwt(&mut self, jwt: &str) -> &mut Self {
@@ -45,7 +50,9 @@ impl SupabaseMockServer {
     }
 
     fn register_jwt_custom_grant_type(&mut self, jwt: &str, grant_type: &str) -> &mut Self {
-        let _m = mock("POST", "/auth/v1/token")
+        let _m = self
+            .mockito_server
+            .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex(format!("grant_type={grant_type}")))
             .with_status(200)
             .with_header("content-type", "application/json")
