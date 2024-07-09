@@ -1,17 +1,15 @@
 use std::future::Future;
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use eyre::Result;
-use fastwebsockets::{FragmentCollector, Frame, OpCode};
+use fastwebsockets::{FragmentCollector, Frame, OpCode, WebSocketError};
 use http_body_util::Empty;
 use hyper::header::{CONNECTION, UPGRADE};
 use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls::ClientConfig;
-use tokio_rustls::TlsConnector;
 
 struct SpawnExecutor;
 
@@ -25,7 +23,7 @@ where
     }
 }
 
-#[derive(thiserror::Error, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(thiserror::Error, Debug)]
 enum SupabaseRealtimeError {
     #[error("cannot load tls certs")]
     LocalCertificateLoadError,
@@ -33,6 +31,18 @@ enum SupabaseRealtimeError {
     CannotSetNativeCertificate,
     #[error("cannot convert domain to server name")]
     UnableConvertDomainToServerName,
+    #[error("Host string not present in the Stream URL")]
+    HostStringNotPresent,
+    #[error("Unable to look up host {host}:{port}")]
+    UnableToLookUpHost { host: String, port: u16 },
+    #[error("Misconfigured stream URL")]
+    MisconfiguredStreamURL,
+    #[error("IO Error {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Hyper error {0}")]
+    HypreError(#[from] hyper::http::Error),
+    #[error("WS error {0}")]
+    WebsocketError(#[from] WebSocketError),
 }
 
 fn tls_connector() -> Result<tokio_rustls::TlsConnector, SupabaseRealtimeError> {
@@ -56,39 +66,64 @@ fn tls_connector() -> Result<tokio_rustls::TlsConnector, SupabaseRealtimeError> 
     Ok(TlsConnector::from(Arc::new(config)))
 }
 
-async fn connect(domain: &str) -> Result<FragmentCollector<TokioIo<Upgraded>>> {
-    let mut addr = String::from(domain);
-    addr.push_str(":9443"); // Port number for binance stream
+async fn connect(
+    url: &url::Url,
+) -> Result<FragmentCollector<TokioIo<Upgraded>>, SupabaseRealtimeError> {
+    let host = url
+        .host_str()
+        .ok_or(SupabaseRealtimeError::HostStringNotPresent)?;
+    let port = url.port().unwrap_or(443);
+    let socket_addr = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|err| {
+            tracing::error!(?err, "unable to look up host");
+            SupabaseRealtimeError::UnableToLookUpHost {
+                host: host.to_owned(),
+                port,
+            }
+        })?
+        .next();
+    let domain = url.domain();
+    match (domain, socket_addr) {
+        (Some(domain), Some(socket_addr)) => {
+            let tcp_stream = TcpStream::connect(&socket_addr).await?;
+            let tls_connector = tls_connector().unwrap();
+            let domain =
+                rustls::pki_types::ServerName::try_from(domain.to_owned()).map_err(|err| {
+                    tracing::error!(?err, "unable to convert domain to server name");
+                    SupabaseRealtimeError::UnableConvertDomainToServerName
+                })?;
+            let tls_stream = tls_connector.connect(domain, tcp_stream).await?;
 
-    let tcp_stream = TcpStream::connect(&addr).await?;
-    let tls_connector = tls_connector().unwrap();
-    let domain = rustls::pki_types::ServerName::try_from(domain.to_owned()).map_err(|err| {
-        tracing::error!(?err, "unable to convert domain to server name");
-        SupabaseRealtimeError::UnableConvertDomainToServerName
-    })?;
-    let tls_stream = tls_connector.connect(domain, tcp_stream).await?;
+            let req = Request::builder()
+                .method("GET")
+                .uri(url.as_str()) //stream we want to subscribe to
+                .header("Host", url.host_str().unwrap())
+                .header(UPGRADE, "websocket")
+                .header(CONNECTION, "upgrade")
+                .header(
+                    "Sec-WebSocket-Key",
+                    fastwebsockets::handshake::generate_key(),
+                )
+                .header("Sec-WebSocket-Version", "13")
+                .body(Empty::<Bytes>::new())?;
 
-    let req = Request::builder()
-        .method("GET")
-        .uri(format!("wss://{}/ws/btcusdt@bookTicker", &addr)) //stream we want to subscribe to
-        .header("Host", &addr)
-        .header(UPGRADE, "websocket")
-        .header(CONNECTION, "upgrade")
-        .header(
-            "Sec-WebSocket-Key",
-            fastwebsockets::handshake::generate_key(),
-        )
-        .header("Sec-WebSocket-Version", "13")
-        .body(Empty::<Bytes>::new())?;
+            let (ws, _) =
+                fastwebsockets::handshake::client(&SpawnExecutor, req, tls_stream).await?;
+            Ok(FragmentCollector::new(ws))
+        }
+        params => {
+            tracing::error!(?params, "unable to connect to Stream API");
 
-    let (ws, _) = fastwebsockets::handshake::client(&SpawnExecutor, req, tls_stream).await?;
-    Ok(FragmentCollector::new(ws))
+            Err(SupabaseRealtimeError::MisconfiguredStreamURL)
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    let domain = "data-stream.binance.com";
-    let mut ws = connect(domain).await?;
+async fn main() -> eyre::Result<()> {
+    let domain = "wss://data-stream.binance.com:9443/ws/btcusdt@bookTicker".parse()?;
+    let mut ws = connect(&domain).await?;
 
     loop {
         let msg = match ws.read_frame().await {
