@@ -66,7 +66,7 @@ pub struct TokenBody<'a> {
 pub struct RefreshStream<'a, 'b> {
     password_url: url::Url,
     refresh_url: url::Url,
-    api_key: Cow<'b, str>,
+    pub api_key: Cow<'b, str>,
     client: Client,
     token_body: TokenBody<'a>,
     #[pin]
@@ -273,7 +273,6 @@ pub struct User {
     pub email: String,
 }
 
-#[cfg(test)]
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;

@@ -3,19 +3,22 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use fastwebsockets::{FragmentCollector, Frame, OpCode};
+use fastwebsockets::{
+    FragmentCollector, FragmentCollectorRead, Frame, OpCode, WebSocket, WebSocketWrite,
+};
 use http_body_util::Empty;
 use hyper::header::{CONNECTION, UPGRADE};
 use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
+use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 
 use crate::error;
 
-pub async fn connect(
-    url: &url::Url,
-) -> Result<FragmentCollector<TokioIo<Upgraded>>, error::SupabaseRealtimeError> {
+pub type WsSupabaseConnection = FragmentCollector<TokioIo<Upgraded>>;
+
+pub async fn connect(url: &url::Url) -> Result<WsSupabaseConnection, error::SupabaseRealtimeError> {
     let host = url
         .host_str()
         .ok_or(error::SupabaseRealtimeError::HostStringNotPresent)?;
@@ -31,7 +34,7 @@ pub async fn connect(
         })?
         .next();
     let domain = url.domain();
-    match (domain, socket_addr) {
+    let con = match (domain, socket_addr) {
         (Some(domain), Some(socket_addr)) => {
             let tcp_stream = TcpStream::connect(&socket_addr).await?;
             let tls_connector = tls_connector().unwrap();
@@ -41,30 +44,44 @@ pub async fn connect(
                     error::SupabaseRealtimeError::UnableConvertDomainToServerName
                 })?;
             let tls_stream = tls_connector.connect(domain, tcp_stream).await?;
-
-            let req = Request::builder()
-                .method("GET")
-                .uri(url.as_str()) //stream we want to subscribe to
-                .header("Host", url.host_str().unwrap())
-                .header(UPGRADE, "websocket")
-                .header(CONNECTION, "upgrade")
-                .header(
-                    "Sec-WebSocket-Key",
-                    fastwebsockets::handshake::generate_key(),
-                )
-                .header("Sec-WebSocket-Version", "13")
-                .body(Empty::<Bytes>::new())?;
-
+            let req = construct_http_ws_upgrade_req(url)?;
             let (ws, _) =
                 fastwebsockets::handshake::client(&SpawnExecutor, req, tls_stream).await?;
-            Ok(FragmentCollector::new(ws))
+            ws
+        }
+        (None, Some(socket_addr)) => {
+            let tcp_stream = TcpStream::connect(&socket_addr).await?;
+            let req = construct_http_ws_upgrade_req(url)?;
+            let (ws, _) =
+                fastwebsockets::handshake::client(&SpawnExecutor, req, tcp_stream).await?;
+            ws
         }
         params => {
             tracing::error!(?params, "unable to connect to Stream API");
 
-            Err(error::SupabaseRealtimeError::MisconfiguredStreamURL)
+            return Err(error::SupabaseRealtimeError::MisconfiguredStreamURL);
         }
-    }
+    };
+    let con = FragmentCollector::new(con);
+    Ok(con)
+}
+
+fn construct_http_ws_upgrade_req(
+    url: &url::Url,
+) -> Result<Request<Empty<Bytes>>, error::SupabaseRealtimeError> {
+    let req = Request::builder()
+        .method("GET")
+        .uri(url.as_str()) //stream we want to subscribe to
+        .header("Host", url.host_str().unwrap())
+        .header(UPGRADE, "websocket")
+        .header(CONNECTION, "upgrade")
+        .header(
+            "Sec-WebSocket-Key",
+            fastwebsockets::handshake::generate_key(),
+        )
+        .header("Sec-WebSocket-Version", "13")
+        .body(Empty::<Bytes>::new())?;
+    Ok(req)
 }
 
 struct SpawnExecutor;

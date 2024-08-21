@@ -6,6 +6,8 @@ pub enum SupabaseRealtimeError {
     CannotSetNativeCertificate,
     #[error("Host string not present in the Stream URL")]
     HostStringNotPresent,
+    #[error("Websocket processing Error")]
+    WsProcessingError,
     #[error("Hyper error {0}")]
     HypreError(#[from] hyper::http::Error),
     #[error("IO Error {0}")]
@@ -20,4 +22,10 @@ pub enum SupabaseRealtimeError {
     UnableToLookUpHost { host: String, port: u16 },
     #[error("WS error {0}")]
     WebsocketError(#[from] WebSocketError),
+    #[error("Url parse error {0}")]
+    UrlParseError(#[from] url::ParseError),
+    #[error("Serde json error {0}")]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error("Mpsc send error")]
+    MpscSendError,
 }
