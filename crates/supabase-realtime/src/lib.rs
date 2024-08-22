@@ -1,7 +1,7 @@
 use std::borrow::{BorrowMut, Cow};
 use std::future::Future;
 use std::ops::DerefMut;
-use std::task::{ready, Poll};
+use std::task::{ready, Poll, Waker};
 
 use connection::WsSupabaseConnection;
 use fastwebsockets::{
@@ -14,6 +14,7 @@ use message::InboundProtocolMesseage;
 use pin_project::pin_project;
 use supabase_auth::AuthResponse;
 use tokio::io::WriteHalf;
+use tracing::instrument::WithSubscriber;
 
 mod connection;
 mod error;
@@ -41,14 +42,21 @@ impl RealtimeConnection {
         let (mut from_ws_sender, from_ws_receiver) =
             tokio::sync::mpsc::channel::<serde_json::Value>(10);
         let (to_ws_sender, mut to_ws_reader) = tokio::sync::mpsc::channel::<serde_json::Value>(10);
+        let (waker_sender, waker_receiver) = tokio::sync::oneshot::channel::<Waker>();
 
         let handle = tokio::spawn(async move {
             let con = &mut con;
+            let Ok(waker) = waker_receiver.await else {
+                tracing::error!("waker dropped");
+                return;
+            };
             loop {
                 tokio::select! {
                     item = con.read_frame() => {
                         if let Ok(item) = item {
+                            // read from ws and send to the async task
                             read_loop(item, &mut from_ws_sender).await;
+                            waker.wake_by_ref();
                         } else {
                             tracing::error!("ws socket exited");
                             break;
@@ -56,6 +64,7 @@ impl RealtimeConnection {
                     }
                     item = to_ws_reader.recv() =>{
                         if let Some(item) = item {
+                            // write to ws
                             write_loop(item, con).await;
                         } else {
                             tracing::error!("ws reader channel exited");
@@ -75,6 +84,7 @@ impl RealtimeConnection {
             state: RealtimeConnectionState::ReadJwt,
             auth_response: None,
             message_to_send: None,
+            oneshot: waker_sender,
         };
 
         Ok(res)
@@ -104,6 +114,7 @@ pub struct LiveRealtimeConnection<
     to_ws_sender: tokio::sync::mpsc::Sender<serde_json::Value>,
     from_ws_receiver: tokio::sync::mpsc::Receiver<serde_json::Value>,
     handle: tokio::task::JoinHandle<()>,
+    oneshot: Option<tokio::sync::oneshot::Sender<Waker>>,
     #[pin]
     jwt_stream: supabase_auth::RefreshStream<'a, 'a>,
     #[pin]
@@ -134,6 +145,9 @@ where
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         let mut this = self.project();
+        if let Some(oneshot) = this.oneshot.take() {
+            oneshot.send(cx.waker().clone()).unwrap();
+        }
         loop {
             match this.state.as_mut().get_mut() {
                 RealtimeConnectionState::ReadJwt => {
