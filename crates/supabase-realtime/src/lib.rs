@@ -2,8 +2,7 @@ use std::task::{Poll, Waker};
 
 use connection::WsSupabaseConnection;
 use fastwebsockets::Frame;
-use futures::{SinkExt, Stream, StreamExt};
-// use hyper_util::rt::,
+use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use supabase_auth::AuthResponse;
 
@@ -22,7 +21,7 @@ impl RealtimeConnection {
 
     pub async fn connect<'a, S: Stream<Item = message::InboundProtocolMesseage> + Unpin>(
         self,
-        jwt_stream: supabase_auth::RefreshStream<'a, 'a>,
+        mut jwt_stream: supabase_auth::RefreshStream<'a, 'a>,
         input_stream: S,
     ) -> Result<LiveRealtimeConnection<S>, error::SupabaseRealtimeError> {
         let supabase_annon_key = jwt_stream.api_key.as_ref();
@@ -30,10 +29,17 @@ impl RealtimeConnection {
             format!("realtime/v1/websocket?apikey={supabase_annon_key}&vsn=1.0.0").as_str(),
         )?;
         let mut con = connection::connect(&url).await?;
+        let initial_auth_response = jwt_stream
+            .next()
+            .await
+            .ok_or(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly)??
+            .auth_data;
         let (mut from_ws_sender, from_ws_receiver) =
             tokio::sync::mpsc::channel::<serde_json::Value>(10);
         let (to_ws_sender, mut to_ws_reader) = tokio::sync::mpsc::channel::<serde_json::Value>(10);
         let (waker_sender, waker_receiver) = tokio::sync::oneshot::channel::<Waker>();
+        // todo: get the Waker object here rather than using oneshot channel for sending it
+        // tood: add periodic sending of heartbeats
 
         let handle = tokio::spawn(async move {
             let con = &mut con;
@@ -47,7 +53,9 @@ impl RealtimeConnection {
                     item = con.read_frame() => {
                         if let Ok(item) = item {
                             // read from ws and send to the async task
-                            read_loop(item, &mut from_ws_sender).await;
+                            if read_loop(item, &mut from_ws_sender).await.is_err() {
+                                break;
+                            }
                             waker.wake_by_ref();
                         } else {
                             tracing::error!("ws socket exited");
@@ -57,7 +65,9 @@ impl RealtimeConnection {
                     item = to_ws_reader.recv() =>{
                         if let Some(item) = item {
                             // write to ws
-                            write_loop(item, con).await;
+                            if write_loop(item, con).await.is_err() {
+                                break;
+                            }
                         } else {
                             tracing::error!("ws reader channel exited");
                             break;
@@ -65,6 +75,7 @@ impl RealtimeConnection {
                     }
                 }
             }
+            waker.wake_by_ref();
         });
 
         let res = LiveRealtimeConnection {
@@ -74,7 +85,7 @@ impl RealtimeConnection {
             jwt_stream,
             input_stream,
             state: RealtimeConnectionState::ReadJwt,
-            auth_response: None,
+            auth_response: initial_auth_response,
             message_to_send: None,
             oneshot: Some(waker_sender),
         };
@@ -83,19 +94,31 @@ impl RealtimeConnection {
     }
 }
 
-async fn write_loop(item: serde_json::Value, con: &mut WsSupabaseConnection) {
-    let message_bytes = serde_json::to_vec(&item).unwrap();
-    let payload = fastwebsockets::Payload::<'static>::Owned(message_bytes);
-    let frame = Frame::<'static>::text(payload);
-    con.write_frame(frame).await.unwrap();
+async fn write_loop(item: serde_json::Value, con: &mut WsSupabaseConnection) -> eyre::Result<()> {
+    if let Ok(message_bytes) = serde_json::to_vec(&item) {
+        let payload = fastwebsockets::Payload::<'static>::Owned(message_bytes);
+        let frame = Frame::<'static>::text(payload);
+        con.write_frame(frame).await?;
+    } else {
+        tracing::error!("could not vectorise json data");
+    }
+    Ok(())
 }
 
 async fn read_loop(
     item: fastwebsockets::Frame<'_>,
     from_ws_sender: &mut tokio::sync::mpsc::Sender<serde_json::Value>,
-) {
-    let item = serde_json::from_slice(&item.payload).unwrap();
-    from_ws_sender.send(item).await.unwrap();
+) -> eyre::Result<()> {
+    let from_slice = serde_json::from_slice(&item.payload);
+    match from_slice {
+        Ok(item) => {
+            from_ws_sender.send(item).await?;
+        }
+        Err(err) => {
+            tracing::error!(?err, payload =? &item.payload, "erorr when deserialising data");
+        }
+    };
+    Ok(())
 }
 
 #[pin_project]
@@ -114,7 +137,7 @@ pub struct LiveRealtimeConnection<
     #[pin]
     input_stream: T,
     #[pin]
-    auth_response: Option<AuthResponse>,
+    auth_response: AuthResponse,
     #[pin]
     message_to_send: Option<serde_json::Value>,
 }
@@ -152,7 +175,8 @@ where
 
                     match jwt {
                         Poll::Ready(Some(Ok(jwt))) => {
-                            this.auth_response.set(Some(jwt.auth_data));
+                            tracing::debug!("new jwt set");
+                            this.auth_response.set(jwt.auth_data);
                         }
                         Poll::Ready(Some(Err(err))) => {
                             tracing::warn!(?err, "refresh stream error");
@@ -168,7 +192,11 @@ where
                     if this.message_to_send.is_none() {
                         let msg = this.input_stream.poll_next_unpin(cx);
                         match msg {
-                            Poll::Ready(Some(msg)) => {
+                            Poll::Ready(Some(mut msg)) => {
+                                let resp = this.auth_response.as_ref().get_ref();
+                                let AuthResponse { access_token, .. } = resp;
+                                msg.set_access_token(&access_token);
+
                                 let msg = serde_json::to_value(&msg)
                                     .expect("could not serialize inbound message");
                                 this.message_to_send.set(Some(msg));

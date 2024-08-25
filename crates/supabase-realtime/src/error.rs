@@ -28,4 +28,8 @@ pub enum SupabaseRealtimeError {
     SerdeJsonError(#[from] serde_json::Error),
     #[error("Mpsc send error")]
     MpscSendError,
+    #[error("Jwt Stream closed unexpectedly")]
+    JwtStreamClosedUnexpectedly,
+    #[error("Refresh stream error")]
+    RefreshStreamError(#[from] supabase_auth::RefreshStreamError),
 }

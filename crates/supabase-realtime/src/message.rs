@@ -12,6 +12,22 @@ pub enum InboundProtocolMesseage {
     PhxReply(PhoenixMessage<phx_reply::PhxReply>),
 }
 
+impl InboundProtocolMesseage {
+    pub fn set_access_token(&mut self, new_access_token: &str) {
+        match self {
+            InboundProtocolMesseage::PhxJoin(PhoenixMessage {
+                payload: phx_join::PhxJoin { access_token, .. },
+                ..
+            }) => {
+                access_token.replace(new_access_token.to_owned());
+            }
+            InboundProtocolMesseage::PhxReply(_) => {
+                // no op
+            }
+        }
+    }
+}
+
 // Main struct generic over the event type and payload
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PhoenixMessage<T> {
@@ -75,6 +91,134 @@ pub mod phx_reply {
             assert_eq!(deserialized_struct, expected_struct);
         }
     }
+
+    // todo: handle this
+    // {
+    //   "event": "phx_reply",
+    //   "payload": {
+    //     "response": {
+    //       "postgres_changes": [
+    //         {
+    //           "event": "*",
+    //           "filter": "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329",
+    //           "id": 31339675,
+    //           "schema": "public",
+    //           "table": "profiles"
+    //         }
+    //       ]
+    //     },
+    //     "status": "ok"
+    //   },
+    //   "ref": "1",
+    //   "topic": "realtime:db"
+    // }
+
+    // todo: handle this
+    //   {
+    // "event": "presence_state",
+    // "payload": {},
+    // "ref": null,
+    // "topic": "realtime:db"
+    //   }
+
+    // todo: handle this
+    //    {
+    //   "event": "system",
+    //   "payload": {
+    //     "channel": "db",
+    //     "extension": "postgres_changes",
+    //     "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check
+    // Realtime is enabled for the given connect parameters: [event: *, filter:
+    // id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
+    //     "status": "error"
+    //   },
+    //   "ref": null,
+    //   "topic": "realtime:db"
+    // }
+
+    //     {
+    //   "event": "phx_reply",
+    //   "payload": {
+    //     "response": {
+    //       "postgres_changes": [
+    //         {
+    //           "event": "*",
+    //           "filter": "",
+    //           "id": 30636876,
+    //           "schema": "public",
+    //           "table": "profiles"
+    //         }
+    //       ]
+    //     },
+    //     "status": "ok"
+    //   },
+    //   "ref": "1",
+    //   "topic": "realtime:db"
+    // }
+
+    // todo: handle this
+    //     {
+    //   "event": "system",
+    //   "payload": {
+    //     "channel": "db",
+    //     "extension": "postgres_changes",
+    //     "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
+    //     "status": "error"
+    //   },
+    //   "ref": null,
+    //   "topic": "realtime:db"
+    // }
+
+    // todo: handle this
+    //     {
+    //   "event": "phx_error",
+    //   "payload": {},
+    //   "ref": "1",
+    //   "topic": "realtime:db"
+    // }
+
+    // todo: handle this
+    //     {
+    //   "event": "system",
+    //   "payload": {
+    //     "channel": "db",
+    //     "extension": "postgres_changes",
+    //     "message": "Subscribed to PostgreSQL",
+    //     "status": "ok"
+    //   },
+    //   "ref": null,
+    //   "topic": "realtime:db"
+    // }
+
+    // todo: handle this
+    //     {
+    //   "event": "postgres_changes",
+    //   "payload": {
+    //     "data": {
+    //       "columns": [
+    //         {"name": "id", "type": "uuid"},
+    //         {"name": "updated_at", "type": "timestamptz"},
+    //         {"name": "url", "type": "text"},
+    //       ],
+    //       "commit_timestamp": "2024-08-25T17:00:19.009Z",
+    //       "errors": null,
+    //       "old_record": {
+    //         "id": "96236356-5ac3-4403-b3ce-c660973330d9"
+    //       },
+    //       "record": {
+    //         "id": "96236356-5ac3-4403-b3ce-c660973330d9",
+    //         "updated_at": "2024-08-25T17:00:19.005328+00:00",
+    //         "url": "https://0.0.0.0:3334",
+    //       },
+    //       "schema": "public",
+    //       "table": "profiles",
+    //       "type": "UPDATE"
+    //     },
+    //     "ids": [38606455]
+    //   },
+    //   "ref": null,
+    //   "topic": "realtime:db"
+    // }
 }
 
 pub mod phx_join {
@@ -85,7 +229,7 @@ pub mod phx_join {
         #[serde(rename = "config")]
         pub config: JoinConfig,
         #[serde(rename = "access_token")]
-        pub access_token: String,
+        pub access_token: Option<String>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,7 +260,7 @@ pub mod phx_join {
         pub event: PostgresChangetEvent,
         pub schema: String,
         pub table: String,
-        pub filter: String,
+        pub filter: Option<String>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,11 +327,11 @@ pub mod phx_join {
                                 event: PostgresChangetEvent::All,
                                 schema: "public".to_string(),
                                 table: "profiles".to_string(),
-                                filter: "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string(),
+                                filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string()),
                             }
                         ],
                     },
-                    access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ".to_string(),
+                    access_token: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ".to_string()),
                 },
                 ref_field: Some("1".to_string()),
                 join_ref: Some("1".to_string()),
