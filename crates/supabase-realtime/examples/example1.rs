@@ -1,28 +1,56 @@
 use std::borrow::Cow;
 
-use futures::{StreamExt, TryStreamExt};
+use clap::Parser;
+use futures::StreamExt;
 use supabase_auth::redact::Secret;
 use tokio_stream::wrappers::ReceiverStream;
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser, Debug)]
+#[command(version, about)]
+struct Args {
+    #[arg(short, long)]
+    supabase_api_url: url::Url,
+
+    #[arg(short, long)]
+    annon_key: String,
+
+    #[arg(short, long)]
+    email: String,
+
+    #[arg(short, long)]
+    pass: String,
+}
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().init();
-
     use supabase_auth::SupabaseAuth;
-    let supabase_api_url: url::Url = "http://127.0.0.1:54321".parse().unwrap();
-    let supabase_annon_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
-    let supabase_auth =
-        SupabaseAuth::new(supabase_api_url.clone(), Cow::Borrowed(&supabase_annon_key));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .from_env()
+                .unwrap()
+                .add_directive(format!("supabase_realtime=trace").parse().unwrap())
+                .add_directive(format!("example1=debug").parse().unwrap()),
+        )
+        .init();
+
+    let args = Args::parse();
+
+    let supabase_auth = SupabaseAuth::new(
+        args.supabase_api_url.clone(),
+        Cow::Borrowed(&args.annon_key),
+    );
     let token_refresh = supabase_auth
         .sign_in(supabase_auth::TokenBody {
-            email: Cow::Borrowed("worker@swoopscore.com"),
-            password: Secret::new(Cow::Borrowed("pass")),
+            email: Cow::Borrowed(args.email.as_str()),
+            password: Secret::new(Cow::Borrowed(args.pass.as_str())),
         })
         .unwrap();
-    tracing::info!("here");
     let (tx, rx) = tokio::sync::mpsc::channel(5);
     let mut stream = ReceiverStream::new(rx);
-    let mut realtime = supabase_realtime::RealtimeConnection::new(supabase_api_url)
+    let mut realtime = supabase_realtime::RealtimeConnection::new(args.supabase_api_url)
         .connect(token_refresh, stream)
         .await
         .unwrap();
@@ -34,9 +62,11 @@ async fn main() {
     // {"topic":"realtime:db","event":"phx_join","payload":{"config":{"broadcast":{"ack":false,"self":false},"presence":{"key":""},"postgres_changes":[{"event":"*","schema":"public","table":"profiles","filter":"id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329"}]},"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ"},"ref":"1","join_ref":"1"}
     // {"topic":"realtime:db","event":"phx_leave","payload":{},"ref":"2","join_ref":"1"}
     // {"topic":"realtime:db","event":"phx_join","payload":{"config":{"broadcast":{"ack":false,"self":false},"presence":{"key":""},"postgres_changes":[{"event":"*","schema":"public","table":"assignments"},{"event":"UPDATE","schema":"public","table":"rooms"}]},"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ"},"ref":"3","join_ref":"3"}
-    // while let Some(msg) = realtime.next().await {
-    //     tracing::debug!(?msg, "reading frame");
-    // }
+    tracing::debug!("pooling realtime connection");
+    while let Some(msg) = realtime.next().await {
+        tracing::debug!(?msg, "reading frame");
+    }
+    tracing::error!("realtime connection exited");
     // let msg = match ws.read_frame().await {
     //     Ok(msg) => msg,
     //     Err(e) => {
@@ -59,5 +89,4 @@ async fn main() {
     //     }
     //     _ => {}
     // }
-    panic!()
 }

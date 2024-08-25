@@ -50,6 +50,7 @@ impl RealtimeConnection {
                 tracing::error!("waker dropped");
                 return;
             };
+            tracing::trace!("waker received");
             loop {
                 tokio::select! {
                     item = con.read_frame() => {
@@ -84,7 +85,7 @@ impl RealtimeConnection {
             state: RealtimeConnectionState::ReadJwt,
             auth_response: None,
             message_to_send: None,
-            oneshot: waker_sender,
+            oneshot: Some(waker_sender),
         };
 
         Ok(res)
@@ -127,6 +128,7 @@ pub struct LiveRealtimeConnection<
     message_to_send: Option<serde_json::Value>,
 }
 
+#[derive(Debug)]
 enum RealtimeConnectionState {
     ReadJwt,
     ReadInputMessage,
@@ -146,10 +148,14 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         let mut this = self.project();
         if let Some(oneshot) = this.oneshot.take() {
-            oneshot.send(cx.waker().clone()).unwrap();
+            if let Err(_) = oneshot.send(cx.waker().clone()) {
+                return Poll::Ready(None)
+            }
         }
         loop {
-            match this.state.as_mut().get_mut() {
+            let state = this.state.as_mut().get_mut();
+            tracing::trace!(state =? state, "trace");
+            match state {
                 RealtimeConnectionState::ReadJwt => {
                     let jwt = this.jwt_stream.poll_next_unpin(cx);
 
@@ -172,7 +178,8 @@ where
                         let msg = this.input_stream.poll_next_unpin(cx);
                         match msg {
                             Poll::Ready(Some(msg)) => {
-                                let msg = serde_json::to_value(&msg).unwrap();
+                                let msg = serde_json::to_value(&msg)
+                                    .expect("could not serialize inbound message");
                                 this.message_to_send.set(Some(msg));
                                 this.state.set(RealtimeConnectionState::SendInputMessage);
                                 continue;
@@ -205,14 +212,17 @@ where
                     if let Ok(msg) = this.from_ws_receiver.try_recv() {
                         return Poll::Ready(Some(Ok(msg)))
                     }
+                    break
                 }
             }
-
-            this.state.set(RealtimeConnectionState::ReadJwt);
-            if this.handle.is_finished() {
-                tracing::error!("the tokio handle has closed");
-                return Poll::Ready(None)
-            }
         }
+
+        // set the new default state
+        this.state.set(RealtimeConnectionState::ReadJwt);
+        if this.handle.is_finished() {
+            tracing::error!("the tokio handle has closed");
+            return Poll::Ready(None)
+        }
+        return Poll::Pending;
     }
 }
