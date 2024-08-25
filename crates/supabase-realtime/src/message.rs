@@ -21,19 +21,19 @@ pub struct PhoenixMessage<T> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PhxJoin {
     #[serde(rename = "config")]
-    config: JoinConfig,
+    pub config: JoinConfig,
     #[serde(rename = "access_token")]
-    access_token: String,
+    pub access_token: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinConfig {
     #[serde(rename = "broadcast")]
-    broadcast: BroadcastConfig,
+    pub broadcast: BroadcastConfig,
     #[serde(rename = "presence")]
-    presence: PresenceConfig,
+    pub presence: PresenceConfig,
     #[serde(rename = "postgres_changes")]
-    postgres_changes: Vec<PostgrsChanges>,
+    pub postgres_changes: Vec<PostgrsChanges>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
