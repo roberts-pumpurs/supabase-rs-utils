@@ -11,16 +11,10 @@ pub struct SupabaseMockServer {
     pub mockito_server: ServerGuard,
 }
 
-impl Default for SupabaseMockServer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SupabaseMockServer {
     #[must_use]
-    pub fn new() -> Self {
-        let server = mockito::Server::new();
+    pub async fn new() -> Self {
+        let server = mockito::Server::new_async().await;
         Self {
             mockito_server: server,
             api_mock: vec![],
@@ -46,7 +40,7 @@ impl SupabaseMockServer {
     }
 
     pub fn register_jwt_refresh(&mut self, jwt: &str) -> &mut Self {
-        self.register_jwt_custom_grant_type(jwt, "token_refresh")
+        self.register_jwt_custom_grant_type(jwt, "refresh_token")
     }
 
     fn register_jwt_custom_grant_type(&mut self, jwt: &str, grant_type: &str) -> &mut Self {

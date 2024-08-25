@@ -1,20 +1,11 @@
-use std::borrow::{BorrowMut, Cow};
-use std::future::Future;
-use std::ops::DerefMut;
-use std::task::{ready, Poll, Waker};
+use std::task::{Poll, Waker};
 
 use connection::WsSupabaseConnection;
-use fastwebsockets::{
-    FragmentCollector, FragmentCollectorRead, Frame, WebSocketError, WebSocketWrite,
-};
-use futures::{pin_mut, AsyncWrite, FutureExt, Sink, SinkExt, Stream, StreamExt, TryFuture};
-use hyper::upgrade::Upgraded;
+use fastwebsockets::Frame;
+use futures::{SinkExt, Stream, StreamExt};
 // use hyper_util::rt::,
-use message::InboundProtocolMesseage;
 use pin_project::pin_project;
 use supabase_auth::AuthResponse;
-use tokio::io::WriteHalf;
-use tracing::instrument::WithSubscriber;
 
 mod connection;
 mod error;

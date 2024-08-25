@@ -1,17 +1,13 @@
 use std::future::Future;
-use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use fastwebsockets::{
-    FragmentCollector, FragmentCollectorRead, Frame, OpCode, WebSocket, WebSocketWrite,
-};
+use fastwebsockets::FragmentCollector;
 use http_body_util::Empty;
 use hyper::header::{CONNECTION, UPGRADE};
 use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
-use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 
 use crate::error;

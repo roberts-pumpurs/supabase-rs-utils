@@ -1,6 +1,6 @@
 mod jwt_expiry;
 use std::borrow::Cow;
-use std::ops::Div;
+use std::ops::{Div, Mul};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -143,10 +143,12 @@ impl<'a, 'b> Stream for RefreshStream<'a, 'b> {
 
                             // Calculate the duration until expiration
                             let valid_for = if expires_at_ts > current_ts {
-                                // and divide by `2` just to be on the safe side
-                                Duration::from_secs(expires_at_ts - current_ts).div(2)
+                                // and divide by `2/3` just to be on the safe side
+                                Duration::from_secs(expires_at_ts - current_ts)
+                                    .mul(3)
+                                    .div(2)
                             } else {
-                                Duration::from_secs(0)
+                                Duration::from_secs(1)
                             };
                             let access_jwt_expiry = JwtExpiry::new(valid_for);
                             this.state.set(RefreshStreamState::WaitForExpiry {
@@ -276,10 +278,11 @@ pub struct User {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use std::ops::DerefMut;
     use std::time::Duration;
 
     use futures::StreamExt;
-    use mockito::{mock, Matcher};
+    use mockito::Matcher;
     use rstest::rstest;
     use supabase_mock::{make_jwt, SupabaseMockServer};
     use tokio::time::timeout;
@@ -290,7 +293,7 @@ mod tests {
     #[tokio::test]
     async fn test_successful_password_login() {
         let access_token = make_jwt(Duration::from_secs(3600));
-        let mut m = SupabaseMockServer::new();
+        let mut m = SupabaseMockServer::new().await;
         let m = m.register_jwt_password(&access_token);
         let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
@@ -316,13 +319,15 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_password_login_error() {
-        let _m = mock("POST", "/auth/v1/token")
+        let mut m = SupabaseMockServer::new().await;
+        let _m1 = m
+            .mockito_server
+            .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_string()))
             .with_status(400)
             .create();
 
-        let url = mockito::server_url();
-        let supabase_auth = SupabaseAuth::new(url.parse().unwrap(), Cow::Borrowed("api-key"));
+        let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
@@ -341,7 +346,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_jwt_parsing_error() {
-        let mut m = SupabaseMockServer::new();
+        let mut m = SupabaseMockServer::new().await;
         let m = m.register_jwt_password(&"invalid-jwt");
         let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
@@ -366,12 +371,13 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_retry_on_login_error() {
-        let _m1 = mock("POST", "/auth/v1/token")
+        let mut m = SupabaseMockServer::new().await;
+        let _m1 = m
+            .mockito_server
+            .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_string()))
             .with_status(500)
             .create();
-        let mut m = SupabaseMockServer::new();
-        let m = m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
         let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
@@ -382,6 +388,7 @@ mod tests {
 
         let response = stream.next().await.unwrap();
         assert!(response.is_err());
+        m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
         let response = timeout(Duration::from_secs(10), stream.next())
             .await
             .unwrap()
@@ -394,19 +401,22 @@ mod tests {
     }
 
     #[rstest]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_use_refresh_token_on_expiry() {
+        // setup
+        let mut m = SupabaseMockServer::new().await;
         let first_access_token = make_jwt(Duration::from_secs(1));
-        let mut m = SupabaseMockServer::new();
-        let m = m.register_jwt_password(&first_access_token);
+        m.register_jwt_password(&first_access_token);
+
         let new_access_token = make_jwt(Duration::from_secs(3600));
-        let m = m.register_jwt_refresh(&new_access_token);
+        m.register_jwt_refresh(&new_access_token);
         let supabase_auth = SupabaseAuth::new(m.server_url(), Cow::Borrowed("api-key"));
+
+        // action
         let token_body = TokenBody {
             email: Cow::Borrowed("user@example.com"),
             password: redact::Secret::new(Cow::Borrowed("password")),
         };
-
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         // Get the initial token
@@ -414,6 +424,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+        dbg!(&response1);
         assert!(response1.is_ok());
         let auth_response1 = response1.unwrap().auth_data;
         assert_eq!(auth_response1.access_token, first_access_token);
@@ -424,6 +435,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+        dbg!(&response2);
         assert!(response2.is_ok());
         let auth_response2 = response2.unwrap().auth_data;
         assert_eq!(auth_response2.access_token, new_access_token);
