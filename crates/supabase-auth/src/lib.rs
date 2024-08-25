@@ -278,7 +278,7 @@ pub struct User {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
-    use std::ops::DerefMut;
+    
     use std::time::Duration;
 
     use futures::StreamExt;

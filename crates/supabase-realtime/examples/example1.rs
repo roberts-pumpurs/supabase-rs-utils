@@ -3,10 +3,7 @@ use std::borrow::Cow;
 use clap::Parser;
 use futures::StreamExt;
 use supabase_auth::redact::Secret;
-use supabase_realtime::message::{
-    BroadcastConfig, InboundProtocolMesseage, JoinConfig, PhoenixMessage, PhxJoin,
-    PostgresChangetEvent, PostgrsChanges, PresenceConfig,
-};
+use supabase_realtime::message::{phx_join, InboundProtocolMesseage, PhoenixMessage};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing_subscriber::EnvFilter;
 
@@ -69,24 +66,24 @@ async fn main() {
 
     let message_to_send = InboundProtocolMesseage::PhxJoin(PhoenixMessage {
             topic: "realtime:db".to_string(),
-            payload: PhxJoin {
-                config: JoinConfig {
-                broadcast: BroadcastConfig {
+            payload: phx_join ::PhxJoin {
+                config: phx_join ::JoinConfig {
+                broadcast: phx_join ::BroadcastConfig {
                     self_item: false,
                     ack: false
                 },
-                presence: PresenceConfig {
+                presence: phx_join ::PresenceConfig {
                     key: "".to_string()
                 },
                 postgres_changes: vec![
-                    PostgrsChanges {
-                        event: PostgresChangetEvent::All,
-                        schema: "public".to_string(),
-                        table: "profiles".to_string(),
-                        filter: "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string(),
-                    }
-                ],
-            },
+                        phx_join::PostgrsChanges {
+                            event: phx_join::PostgresChangetEvent::All,
+                            schema: "public".to_string(),
+                            table: "profiles".to_string(),
+                            filter: "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string(),
+                        }
+                    ],
+                },
                 access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ".to_string(),
             } ,
             ref_field: Some("1".to_string()),
