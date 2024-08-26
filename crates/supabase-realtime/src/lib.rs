@@ -19,7 +19,7 @@ impl RealtimeConnection {
         Self { url }
     }
 
-    pub async fn connect<'a, S: Stream<Item = message::InboundProtocolMesseage> + Unpin>(
+    pub async fn connect<'a, S: Stream<Item = message::ProtocolMesseage> + Unpin>(
         self,
         mut jwt_stream: supabase_auth::RefreshStream<'a, 'a>,
         input_stream: S,
@@ -124,7 +124,7 @@ async fn read_loop(
 #[pin_project]
 pub struct LiveRealtimeConnection<
     'a,
-    T: Stream<Item = message::InboundProtocolMesseage> + std::marker::Unpin,
+    T: Stream<Item = message::ProtocolMesseage> + std::marker::Unpin,
 > {
     to_ws_sender: tokio::sync::mpsc::Sender<serde_json::Value>,
     from_ws_receiver: tokio::sync::mpsc::Receiver<serde_json::Value>,
@@ -152,7 +152,7 @@ enum RealtimeConnectionState {
 
 impl<'a, T> Stream for LiveRealtimeConnection<'a, T>
 where
-    T: Stream<Item = message::InboundProtocolMesseage> + std::marker::Unpin,
+    T: Stream<Item = message::ProtocolMesseage> + std::marker::Unpin,
 {
     type Item = Result<serde_json::Value, error::SupabaseRealtimeError>;
 

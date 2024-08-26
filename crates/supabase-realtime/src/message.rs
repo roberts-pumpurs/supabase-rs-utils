@@ -5,23 +5,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event")]
 #[serde(rename_all = "snake_case")]
-pub enum InboundProtocolMesseage {
+pub enum ProtocolMesseage {
     #[serde(rename = "phx_join")]
     PhxJoin(PhoenixMessage<phx_join::PhxJoin>),
     #[serde(rename = "phx_reply")]
     PhxReply(PhoenixMessage<phx_reply::PhxReply>),
 }
 
-impl InboundProtocolMesseage {
+impl ProtocolMesseage {
     pub fn set_access_token(&mut self, new_access_token: &str) {
         match self {
-            InboundProtocolMesseage::PhxJoin(PhoenixMessage {
+            ProtocolMesseage::PhxJoin(PhoenixMessage {
                 payload: phx_join::PhxJoin { access_token, .. },
                 ..
             }) => {
                 access_token.replace(new_access_token.to_owned());
             }
-            InboundProtocolMesseage::PhxReply(_) => {
+            ProtocolMesseage::PhxReply(_) => {
                 // no op
             }
         }
@@ -74,7 +74,7 @@ pub mod phx_reply {
                   "topic": "realtime:db"
                 }        "#;
 
-            let expected_struct = InboundProtocolMesseage::PhxReply(PhoenixMessage {
+            let expected_struct = ProtocolMesseage::PhxReply(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PhxReply::Error(ErrorReply {
                     reason: "Invalid JWT Token".to_string(),
@@ -85,8 +85,7 @@ pub mod phx_reply {
             let serialzed = serde_json::to_value(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: InboundProtocolMesseage =
-                serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -311,7 +310,7 @@ pub mod phx_join {
         }
         "#;
 
-            let expected_struct = InboundProtocolMesseage::PhxJoin(PhoenixMessage {
+            let expected_struct = ProtocolMesseage::PhxJoin(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: phx_join::PhxJoin {
                     config: phx_join::JoinConfig {
@@ -339,8 +338,7 @@ pub mod phx_join {
             let serialzed = serde_json::to_value(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: InboundProtocolMesseage =
-                serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
