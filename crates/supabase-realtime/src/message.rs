@@ -48,11 +48,11 @@ pub mod phx_reply {
         #[serde(rename = "error")]
         Error(ErrorReply),
         #[serde(rename = "ok")]
-        Ok(PhxReplyFilterQuery),
+        Ok(PhxReplyQuery),
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct PhxReplyFilterQuery {
+    pub struct PhxReplyQuery {
         #[serde(rename = "postgres_changes")]
         pub postgres_changes: Vec<PostgresChanges>,
     }
@@ -113,7 +113,7 @@ pub mod phx_reply {
         }
 
         #[test]
-        fn test_query_event_serialisation() {
+        fn test_filter_query_event_serialisation() {
             let json_data = r#"
             {
             "event": "phx_reply",
@@ -137,12 +137,58 @@ pub mod phx_reply {
 
             let expected_struct: ProtocolMesseage = ProtocolMesseage::PhxReply(PhoenixMessage {
                 topic: "realtime:db".to_string(),
-                payload: PhxReply::Ok(PhxReplyFilterQuery {
+                payload: PhxReply::Ok(PhxReplyQuery {
                     postgres_changes: vec![PostgresChanges {
                         schema: "public".to_string(),
                         table: "profiles".to_string(),
                         id: 31339675,
                         filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string()),
+                        event: PostgresChangetEvent::All,
+                    }],
+                }),
+                ref_field: Some("1".to_string()),
+                join_ref: None,
+            });
+
+            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[test]
+        fn test_event_query_serialisation() {
+            let json_data = r#"
+            {
+            "event": "phx_reply",
+            "payload": {
+            "response": {
+                "postgres_changes": [
+            {
+            "event": "*",
+            "filter": "",
+            "id": 30636876,
+            "schema": "public",
+            "table": "profiles"
+            }
+            ]
+        },
+        "status": "ok"
+        },
+            "ref": "1",
+            "topic":  "realtime:db"
+            } "#;
+
+            let expected_struct: ProtocolMesseage = ProtocolMesseage::PhxReply(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload: PhxReply::Ok(PhxReplyQuery {
+                    postgres_changes: vec![PostgresChanges {
+                        schema: "public".to_string(),
+                        table: "profiles".to_string(),
+                        id: 30636876,
+                        filter: Some("".to_string()),
                         event: PostgresChangetEvent::All,
                     }],
                 }),
@@ -305,26 +351,6 @@ pub mod phx_join {
 //     "status": "error"
 //   },
 //   "ref": null,
-//   "topic": "realtime:db"
-// }
-
-//     {
-//   "event": "phx_reply",
-//   "payload": {
-//     "response": {
-//       "postgres_changes": [
-//         {
-//           "event": "*",
-//           "filter": "",
-//           "id": 30636876,
-//           "schema": "public",
-//           "table": "profiles"
-//         }
-//       ]
-//     },
-//     "status": "ok"
-//   },
-//   "ref": "1",
 //   "topic": "realtime:db"
 // }
 
