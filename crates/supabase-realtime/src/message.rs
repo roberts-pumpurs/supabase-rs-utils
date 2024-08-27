@@ -10,6 +10,8 @@ pub enum ProtocolMesseage {
     PhxJoin(PhoenixMessage<phx_join::PhxJoin>),
     #[serde(rename = "phx_reply")]
     PhxReply(PhoenixMessage<phx_reply::PhxReply>),
+    #[serde(rename = "presence_state")]
+    PresenceState(PhoenixMessage<presence_state::PresenceState>),
 }
 
 impl ProtocolMesseage {
@@ -24,9 +26,12 @@ impl ProtocolMesseage {
             ProtocolMesseage::PhxReply(_) => {
                 // no op
             }
+            ProtocolMesseage::PresenceState(_) => {}
         }
     }
 }
+
+
 
 // Main struct generic over the event type and payload
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -331,13 +336,47 @@ pub mod phx_join {
     }
 }
 
-// todo: handle this
-//   {
-// "event": "presence_state",
-// "payload": {},
-// "ref": null,
-// "topic": "realtime:db"
-//   }
+pub mod presence_state {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct PresenceState;
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+      
+        #[test]
+        fn test_presence_state_serialization() {
+            let json_data = r#"
+            {
+                "event": "presence_state",
+                "payload": {},
+                "ref": null,
+                "topic": "realtime:db"
+            }
+            "#;
+
+            let expected_struct = ProtocolMesseage::PresenceState(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload:  PresenceState {},
+                ref_field: None,
+                join_ref: None,
+            });
+            dbg!(&expected_struct);
+
+            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+
 
 // todo: handle this
 //    {
