@@ -47,11 +47,33 @@ pub mod phx_reply {
     pub enum PhxReply {
         #[serde(rename = "error")]
         Error(ErrorReply),
+        #[serde(rename = "ok")]
+        Ok(PhxReplyFilterQuery),
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct PhxReplyFilterQuery {
+        #[serde(rename = "postgres_changes")]
+        pub postgres_changes: Vec<PostgresChanges>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct ErrorReply {
         reason: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct PostgresChanges {
+        pub event: PostgresChangetEvent,
+        pub schema: String,
+        pub table: String,
+        pub filter: Option<String>,
+        pub id: i32,
+    }
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum PostgresChangetEvent {
+        #[serde(rename = "*")]
+        All,
     }
 
     #[cfg(test)]
@@ -89,135 +111,53 @@ pub mod phx_reply {
 
             assert_eq!(deserialized_struct, expected_struct);
         }
+
+        #[test]
+        fn test_query_event_serialisation() {
+            let json_data = r#"
+            {
+            "event": "phx_reply",
+            "payload": {
+            "response": {
+              "postgres_changes": [
+                {
+                  "event": "*",
+                  "filter": "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329",
+                  "id": 31339675,
+                  "schema": "public",
+                  "table": "profiles"
+                }
+              ]
+            },
+            "status": "ok"
+          },
+          "ref": "1",
+          "topic": "realtime:db"
+        } "#;
+
+            let expected_struct: ProtocolMesseage = ProtocolMesseage::PhxReply(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload: PhxReply::Ok(PhxReplyFilterQuery {
+                    postgres_changes: vec![PostgresChanges {
+                        schema: "public".to_string(),
+                        table: "profiles".to_string(),
+                        id: 31339675,
+                        filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string()),
+                        event: PostgresChangetEvent::All,
+                    }],
+                }),
+                ref_field: Some("1".to_string()),
+                join_ref: None,
+            });
+
+            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
     }
-
-    // todo: handle this
-    // {
-    //   "event": "phx_reply",
-    //   "payload": {
-    //     "response": {
-    //       "postgres_changes": [
-    //         {
-    //           "event": "*",
-    //           "filter": "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329",
-    //           "id": 31339675,
-    //           "schema": "public",
-    //           "table": "profiles"
-    //         }
-    //       ]
-    //     },
-    //     "status": "ok"
-    //   },
-    //   "ref": "1",
-    //   "topic": "realtime:db"
-    // }
-
-    // todo: handle this
-    //   {
-    // "event": "presence_state",
-    // "payload": {},
-    // "ref": null,
-    // "topic": "realtime:db"
-    //   }
-
-    // todo: handle this
-    //    {
-    //   "event": "system",
-    //   "payload": {
-    //     "channel": "db",
-    //     "extension": "postgres_changes",
-    //     "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check
-    // Realtime is enabled for the given connect parameters: [event: *, filter:
-    // id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
-    //     "status": "error"
-    //   },
-    //   "ref": null,
-    //   "topic": "realtime:db"
-    // }
-
-    //     {
-    //   "event": "phx_reply",
-    //   "payload": {
-    //     "response": {
-    //       "postgres_changes": [
-    //         {
-    //           "event": "*",
-    //           "filter": "",
-    //           "id": 30636876,
-    //           "schema": "public",
-    //           "table": "profiles"
-    //         }
-    //       ]
-    //     },
-    //     "status": "ok"
-    //   },
-    //   "ref": "1",
-    //   "topic": "realtime:db"
-    // }
-
-    // todo: handle this
-    //     {
-    //   "event": "system",
-    //   "payload": {
-    //     "channel": "db",
-    //     "extension": "postgres_changes",
-    //     "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
-    //     "status": "error"
-    //   },
-    //   "ref": null,
-    //   "topic": "realtime:db"
-    // }
-
-    // todo: handle this
-    //     {
-    //   "event": "phx_error",
-    //   "payload": {},
-    //   "ref": "1",
-    //   "topic": "realtime:db"
-    // }
-
-    // todo: handle this
-    //     {
-    //   "event": "system",
-    //   "payload": {
-    //     "channel": "db",
-    //     "extension": "postgres_changes",
-    //     "message": "Subscribed to PostgreSQL",
-    //     "status": "ok"
-    //   },
-    //   "ref": null,
-    //   "topic": "realtime:db"
-    // }
-
-    // todo: handle this
-    //     {
-    //   "event": "postgres_changes",
-    //   "payload": {
-    //     "data": {
-    //       "columns": [
-    //         {"name": "id", "type": "uuid"},
-    //         {"name": "updated_at", "type": "timestamptz"},
-    //         {"name": "url", "type": "text"},
-    //       ],
-    //       "commit_timestamp": "2024-08-25T17:00:19.009Z",
-    //       "errors": null,
-    //       "old_record": {
-    //         "id": "96236356-5ac3-4403-b3ce-c660973330d9"
-    //       },
-    //       "record": {
-    //         "id": "96236356-5ac3-4403-b3ce-c660973330d9",
-    //         "updated_at": "2024-08-25T17:00:19.005328+00:00",
-    //         "url": "https://0.0.0.0:3334",
-    //       },
-    //       "schema": "public",
-    //       "table": "profiles",
-    //       "type": "UPDATE"
-    //     },
-    //     "ids": [38606455]
-    //   },
-    //   "ref": null,
-    //   "topic": "realtime:db"
-    // }
 }
 
 pub mod phx_join {
@@ -344,3 +284,110 @@ pub mod phx_join {
         }
     }
 }
+
+// todo: handle this
+//   {
+// "event": "presence_state",
+// "payload": {},
+// "ref": null,
+// "topic": "realtime:db"
+//   }
+
+// todo: handle this
+//    {
+//   "event": "system",
+//   "payload": {
+//     "channel": "db",
+//     "extension": "postgres_changes",
+//     "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check
+// Realtime is enabled for the given connect parameters: [event: *, filter:
+// id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
+//     "status": "error"
+//   },
+//   "ref": null,
+//   "topic": "realtime:db"
+// }
+
+//     {
+//   "event": "phx_reply",
+//   "payload": {
+//     "response": {
+//       "postgres_changes": [
+//         {
+//           "event": "*",
+//           "filter": "",
+//           "id": 30636876,
+//           "schema": "public",
+//           "table": "profiles"
+//         }
+//       ]
+//     },
+//     "status": "ok"
+//   },
+//   "ref": "1",
+//   "topic": "realtime:db"
+// }
+
+// todo: handle this
+//     {
+//   "event": "system",
+//   "payload": {
+//     "channel": "db",
+//     "extension": "postgres_changes",
+//     "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
+//     "status": "error"
+//   },
+//   "ref": null,
+//   "topic": "realtime:db"
+// }
+
+// todo: handle this
+//     {
+//   "event": "phx_error",
+//   "payload": {},
+//   "ref": "1",
+//   "topic": "realtime:db"
+// }
+
+// todo: handle this
+//     {
+//   "event": "system",
+//   "payload": {
+//     "channel": "db",
+//     "extension": "postgres_changes",
+//     "message": "Subscribed to PostgreSQL",
+//     "status": "ok"
+//   },
+//   "ref": null,
+//   "topic": "realtime:db"
+// }
+
+// todo: handle this
+//     {
+//   "event": "postgres_changes",
+//   "payload": {
+//     "data": {
+//       "columns": [
+//         {"name": "id", "type": "uuid"},
+//         {"name": "updated_at", "type": "timestamptz"},
+//         {"name": "url", "type": "text"},
+//       ],
+//       "commit_timestamp": "2024-08-25T17:00:19.009Z",
+//       "errors": null,
+//       "old_record": {
+//         "id": "96236356-5ac3-4403-b3ce-c660973330d9"
+//       },
+//       "record": {
+//         "id": "96236356-5ac3-4403-b3ce-c660973330d9",
+//         "updated_at": "2024-08-25T17:00:19.005328+00:00",
+//         "url": "https://0.0.0.0:3334",
+//       },
+//       "schema": "public",
+//       "table": "profiles",
+//       "type": "UPDATE"
+//     },
+//     "ids": [38606455]
+//   },
+//   "ref": null,
+//   "topic": "realtime:db"
+// }
