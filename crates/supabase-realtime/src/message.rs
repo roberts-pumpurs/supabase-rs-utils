@@ -421,7 +421,7 @@ pub mod system {
 
             let expected_struct = ProtocolMesseage::System(PhoenixMessage {
                 topic: "realtime:db".to_string(),
-                payload: System {
+                payload: system::System {
                     channel: "db".to_string(),
                     extension: "postgres_changes".to_string(),
                     message:"{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}".to_string(),
@@ -440,27 +440,86 @@ pub mod system {
 
             assert_eq!(deserialized_struct, expected_struct);
         }
+
+        #[test]
+        fn test_system_error_parse_filter_serialization() {
+            let json_data = r#"
+            {
+                "event": "system",
+                "payload": {
+                "channel": "db",
+                "extension": "postgres_changes",
+                "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
+                "status": "error"
+                },
+                "ref": null,
+                "topic": "realtime:db"
+            }
+            "#;
+
+            let expected_struct = ProtocolMesseage::System(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload: system::System {
+                    channel: "db".to_string(),
+                    extension: "postgres_changes".to_string(),
+                    message:"{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}".to_string(),
+                    status: "error".to_string(),
+                },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            dbg!(&expected_struct);
+
+            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[test]
+        fn test_system_ok_psql_sub_serialization() {
+            let json_data = r#"
+            {
+                "event": "system",
+                "payload": {
+                "channel": "db",
+                "extension": "postgres_changes",
+                "message": "Subscribed to PostgreSQL",
+                "status": "ok"
+                },
+                "ref": null,
+                "topic": "realtime:db"
+            }
+            "#;
+
+            let expected_struct = ProtocolMesseage::System(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload: system::System {
+                    channel: "db".to_string(),
+                    extension: "postgres_changes".to_string(),
+                    message:"Subscribed to PostgreSQL".to_string(),
+                    status: "ok".to_string(),
+                },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            dbg!(&expected_struct);
+
+            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
     }
 }
 
 
-// todo: handle this
-
-
-// todo: handle this
-//     {
-//   "event": "system",
-//   "payload": {
-//     "channel": "db",
-//     "extension": "postgres_changes",
-//     "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
-//     "status": "error"
-//   },
-//   "ref": null,
-//   "topic": "realtime:db"
-// }
-
-// todo: handle this
 //     {
 //   "event": "phx_error",
 //   "payload": {},
@@ -468,18 +527,7 @@ pub mod system {
 //   "topic": "realtime:db"
 // }
 
-// todo: handle this
-//     {
-//   "event": "system",
-//   "payload": {
-//     "channel": "db",
-//     "extension": "postgres_changes",
-//     "message": "Subscribed to PostgreSQL",
-//     "status": "ok"
-//   },
-//   "ref": null,
-//   "topic": "realtime:db"
-// }
+
 
 // todo: handle this
 //     {
