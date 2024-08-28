@@ -12,6 +12,8 @@ pub enum ProtocolMesseage {
     PhxReply(PhoenixMessage<phx_reply::PhxReply>),
     #[serde(rename = "presence_state")]
     PresenceState(PhoenixMessage<presence_state::PresenceState>),
+    #[serde(rename = "system")]
+    System(PhoenixMessage<system::System>),
 }
 
 impl ProtocolMesseage {
@@ -27,6 +29,7 @@ impl ProtocolMesseage {
                 // no op
             }
             ProtocolMesseage::PresenceState(_) => {}
+            ProtocolMesseage::System(_) => {}
         }
     }
 }
@@ -364,7 +367,6 @@ pub mod presence_state {
                 ref_field: None,
                 join_ref: None,
             });
-            dbg!(&expected_struct);
 
             let serialzed = serde_json::to_value(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -378,20 +380,72 @@ pub mod presence_state {
 
 
 
+
+pub mod system {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    
+    pub struct System {
+        #[serde(rename = "channel")]
+        pub channel: String,
+        #[serde(rename = "extension")]
+        pub extension: String,
+        #[serde(rename = "message")]
+        pub message: String,
+        #[serde(rename = "status")]
+        pub status: String,
+    }
+
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+      
+        #[test]
+        fn test_system_subscribe_error_serialization() {
+            let json_data = r#"
+            {
+            "event": "system",
+            "payload": {
+            "channel": "db",
+            "extension": "postgres_changes",
+            "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
+            "status": "error"
+                },
+            "ref": null,
+            "topic": "realtime:db"
+            }
+            "#;
+
+            let expected_struct = ProtocolMesseage::System(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload: System {
+                    channel: "db".to_string(),
+                    extension: "postgres_changes".to_string(),
+                    message:"{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}".to_string(),
+                    status: "error".to_string(),
+                },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            dbg!(&expected_struct);
+
+            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+
 // todo: handle this
-//    {
-//   "event": "system",
-//   "payload": {
-//     "channel": "db",
-//     "extension": "postgres_changes",
-//     "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check
-// Realtime is enabled for the given connect parameters: [event: *, filter:
-// id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
-//     "status": "error"
-//   },
-//   "ref": null,
-//   "topic": "realtime:db"
-// }
+
 
 // todo: handle this
 //     {
