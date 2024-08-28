@@ -14,6 +14,8 @@ pub enum ProtocolMesseage {
     PresenceState(PhoenixMessage<presence_state::PresenceState>),
     #[serde(rename = "system")]
     System(PhoenixMessage<system::System>),
+    #[serde(rename = "phx_error")]
+    PhxError(PhoenixMessage<phx_error::PhxError>),
 }
 
 impl ProtocolMesseage {
@@ -30,6 +32,7 @@ impl ProtocolMesseage {
             }
             ProtocolMesseage::PresenceState(_) => {}
             ProtocolMesseage::System(_) => {}
+            ProtocolMesseage::PhxError(_) => {}
         }
     }
 }
@@ -519,6 +522,46 @@ pub mod system {
     }
 }
 
+
+pub mod phx_error {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct PhxError;
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_phx_error_serialization() {
+            let json_data = r#"
+            {
+                "event": "phx_error",
+                "payload": {},
+                "ref": "1",
+                "topic": "realtime:db"
+            }
+            "#;
+
+            let expected_struct = ProtocolMesseage::PhxError(PhoenixMessage {
+                topic: "realtime:db".to_string(),
+                payload: PhxError {},
+                ref_field: Some("1".to_string()),
+                join_ref: None,
+            });
+
+            let serialized = serde_json::to_value(&expected_struct).unwrap();
+            dbg!(serialized);
+
+            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            dbg!(&deserialized_struct);
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
 
 //     {
 //   "event": "phx_error",
