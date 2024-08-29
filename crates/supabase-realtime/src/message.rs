@@ -18,7 +18,6 @@ pub enum ProtocolMesseage {
     PhxError(PhoenixMessage<phx_error::PhxError>),
     #[serde(rename = "postgres_changes")]
     PostgresChanges(PhoenixMessage<postgres_changes::PostgresChangesPayload>),
-
 }
 
 impl ProtocolMesseage {
@@ -40,8 +39,6 @@ impl ProtocolMesseage {
         }
     }
 }
-
-
 
 // Main struct generic over the event type and payload
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,23 +174,23 @@ pub mod phx_reply {
         fn test_event_query_serialisation() {
             let json_data = r#"
             {
-            "event": "phx_reply",
-            "payload": {
-            "response": {
-                "postgres_changes": [
-            {
-            "event": "*",
-            "filter": "",
-            "id": 30636876,
-            "schema": "public",
-            "table": "profiles"
-            }
-            ]
-        },
-        "status": "ok"
-        },
-            "ref": "1",
-            "topic":  "realtime:db"
+                "event": "phx_reply",
+                "payload": {
+                "response": {
+                    "postgres_changes": [
+                        {
+                            "event": "*",
+                            "filter": "",
+                            "id": 30636876,
+                            "schema": "public",
+                            "table": "profiles"
+                            }
+                        ]
+                    },
+                    "status": "ok"
+                },
+                "ref": "1",
+                "topic":  "realtime:db"
             } "#;
 
             let expected_struct: ProtocolMesseage = ProtocolMesseage::PhxReply(PhoenixMessage {
@@ -356,7 +353,7 @@ pub mod presence_state {
     #[cfg(test)]
     mod tests {
         use super::*;
-      
+
         #[test]
         fn test_presence_state_serialization() {
             let json_data = r#"
@@ -370,7 +367,7 @@ pub mod presence_state {
 
             let expected_struct = ProtocolMesseage::PresenceState(PhoenixMessage {
                 topic: "realtime:db".to_string(),
-                payload:  PresenceState {},
+                payload: PresenceState {},
                 ref_field: None,
                 join_ref: None,
             });
@@ -385,15 +382,12 @@ pub mod presence_state {
     }
 }
 
-
-
-
 pub mod system {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
-    
+
     pub struct System {
         #[serde(rename = "channel")]
         pub channel: String,
@@ -405,22 +399,21 @@ pub mod system {
         pub status: String,
     }
 
-
     #[cfg(test)]
     mod tests {
         use super::*;
-      
+
         #[test]
         fn test_system_subscribe_error_serialization() {
             let json_data = r#"
             {
             "event": "system",
             "payload": {
-            "channel": "db",
-            "extension": "postgres_changes",
-            "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
-            "status": "error"
-                },
+                "channel": "db",
+                "extension": "postgres_changes",
+                "message": "{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}",
+                "status": "error"
+            },
             "ref": null,
             "topic": "realtime:db"
             }
@@ -454,10 +447,10 @@ pub mod system {
             {
                 "event": "system",
                 "payload": {
-                "channel": "db",
-                "extension": "postgres_changes",
-                "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
-                "status": "error"
+                    "channel": "db",
+                    "extension": "postgres_changes",
+                    "message": "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}",
+                    "status": "error"
                 },
                 "ref": null,
                 "topic": "realtime:db"
@@ -469,7 +462,7 @@ pub mod system {
                 payload: system::System {
                     channel: "db".to_string(),
                     extension: "postgres_changes".to_string(),
-                    message:"{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}".to_string(),
+                    message: "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}".to_string(),
                     status: "error".to_string(),
                 },
                 ref_field: None,
@@ -492,10 +485,10 @@ pub mod system {
             {
                 "event": "system",
                 "payload": {
-                "channel": "db",
-                "extension": "postgres_changes",
-                "message": "Subscribed to PostgreSQL",
-                "status": "ok"
+                    "channel": "db",
+                    "extension": "postgres_changes",
+                    "message": "Subscribed to PostgreSQL",
+                    "status": "ok"
                 },
                 "ref": null,
                 "topic": "realtime:db"
@@ -507,7 +500,7 @@ pub mod system {
                 payload: system::System {
                     channel: "db".to_string(),
                     extension: "postgres_changes".to_string(),
-                    message:"Subscribed to PostgreSQL".to_string(),
+                    message: "Subscribed to PostgreSQL".to_string(),
                     status: "ok".to_string(),
                 },
                 ref_field: None,
@@ -525,7 +518,6 @@ pub mod system {
         }
     }
 }
-
 
 pub mod phx_error {
     use super::*;
@@ -567,7 +559,6 @@ pub mod phx_error {
     }
 }
 
-
 pub mod postgres_changes {
     use super::*;
 
@@ -599,7 +590,7 @@ pub mod postgres_changes {
     pub struct Column {
         pub name: String,
         #[serde(rename = "type")]
-        pub type_: String, 
+        pub type_: String,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -608,9 +599,9 @@ pub mod postgres_changes {
         #[serde(rename = "id")]
         pub id: String,
         #[serde(rename = "updated_at")]
-        pub updated_at: Option<String>, 
+        pub updated_at: Option<String>,
         #[serde(rename = "url")]
-        pub url: Option<String>, 
+        pub url: Option<String>,
     }
 
     #[cfg(test)]
@@ -655,9 +646,18 @@ pub mod postgres_changes {
                 payload: PostgresChangesPayload {
                     data: Data {
                         columns: vec![
-                            Column { name: "id".to_string(), type_: "uuid".to_string() },
-                            Column { name: "updated_at".to_string(), type_: "timestamptz".to_string() },
-                            Column { name: "url".to_string(), type_: "text".to_string() },
+                            Column {
+                                name: "id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                            Column {
+                                name: "updated_at".to_string(),
+                                type_: "timestamptz".to_string(),
+                            },
+                            Column {
+                                name: "url".to_string(),
+                                type_: "text".to_string(),
+                            },
                         ],
                         commit_timestamp: "2024-08-25T17:00:19.009Z".to_string(),
                         errors: None,
@@ -691,5 +691,3 @@ pub mod postgres_changes {
         }
     }
 }
-
-
