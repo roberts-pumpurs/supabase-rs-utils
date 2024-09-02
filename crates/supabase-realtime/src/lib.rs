@@ -15,16 +15,19 @@ pub struct RealtimeConnection {
 }
 
 impl RealtimeConnection {
+    const WS_RECV_BUFFER: usize = 10;
+    const WS_SEND_BUFFER: usize = 10;
+
     pub fn new(url: url::Url) -> Self {
         Self { url }
     }
 
     pub async fn connect<'a, S: Stream<Item = message::ProtocolMesseage> + Unpin>(
         self,
-        mut jwt_stream: supabase_auth::RefreshStream<'a, 'a>,
+        mut jwt_stream: supabase_auth::RefreshStream<'a>,
         input_stream: S,
     ) -> Result<LiveRealtimeConnection<S>, error::SupabaseRealtimeError> {
-        let supabase_annon_key = jwt_stream.api_key.as_ref();
+        let supabase_annon_key = &jwt_stream.api_key;
         let url = self.url.join(
             format!("realtime/v1/websocket?apikey={supabase_annon_key}&vsn=1.0.0").as_str(),
         )?;
@@ -32,11 +35,11 @@ impl RealtimeConnection {
         let initial_auth_response = jwt_stream
             .next()
             .await
-            .ok_or(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly)??
-            .auth_data;
+            .ok_or(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly)??;
         let (mut from_ws_sender, from_ws_receiver) =
-            tokio::sync::mpsc::channel::<serde_json::Value>(10);
-        let (to_ws_sender, mut to_ws_reader) = tokio::sync::mpsc::channel::<serde_json::Value>(10);
+            tokio::sync::mpsc::channel::<serde_json::Value>(Self::WS_RECV_BUFFER);
+        let (to_ws_sender, mut to_ws_reader) =
+            tokio::sync::mpsc::channel::<serde_json::Value>(Self::WS_SEND_BUFFER);
         let (waker_sender, waker_receiver) = tokio::sync::oneshot::channel::<Waker>();
         // todo: get the Waker object here rather than using oneshot channel for sending it
         // tood: add periodic sending of heartbeats
@@ -131,7 +134,7 @@ pub struct LiveRealtimeConnection<
     handle: tokio::task::JoinHandle<()>,
     oneshot: Option<tokio::sync::oneshot::Sender<Waker>>,
     #[pin]
-    jwt_stream: supabase_auth::RefreshStream<'a, 'a>,
+    jwt_stream: supabase_auth::RefreshStream<'a>,
     #[pin]
     state: RealtimeConnectionState,
     #[pin]
@@ -174,9 +177,9 @@ where
                     let jwt = this.jwt_stream.poll_next_unpin(cx);
 
                     match jwt {
-                        Poll::Ready(Some(Ok(jwt))) => {
+                        Poll::Ready(Some(Ok(auth_resp))) => {
                             tracing::debug!("new jwt set");
-                            this.auth_response.set(jwt.auth_data);
+                            this.auth_response.set(auth_resp);
                         }
                         Poll::Ready(Some(Err(err))) => {
                             tracing::warn!(?err, "refresh stream error");
