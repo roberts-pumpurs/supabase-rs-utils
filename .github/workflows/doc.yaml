@@ -1,0 +1,27 @@
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+name: docs
+jobs:
+  doc:
+    runs-on: ubuntu-22.04
+    name: doc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Setup repo
+        uses: ./.github/actions/setup-repo
+
+      - name: cargo doc
+        run: cargo xtask doc

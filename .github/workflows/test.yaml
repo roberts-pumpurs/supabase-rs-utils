@@ -1,0 +1,33 @@
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+name: test
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    name: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Setup repo
+        uses: ./.github/actions/setup-repo
+
+      - name: cargo coverage
+        run: cargo xtask coverage
+
+      - name: Output coverage
+        uses: 5monkeys/cobertura-action@v13
+        with:
+          path: target/coverage/cobertura.xml
+          minimum_coverage: 85
+          fail_below_threshold: true
+          show_missing: true

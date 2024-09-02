@@ -1,0 +1,38 @@
+# https://github.com/marketplace/actions/conventional-pr-title
+# This is helpful when you're using semantic-release with the Conventional Commits preset.
+# When using the Squash and merge strategy, GitHub will suggest to use the PR title as
+# the commit message. With this action you can validate that the PR title will l
+# ead to a correct commit message.
+
+name: conventional-pr
+permissions:
+  contents: read
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: semantic-pull-request
+        uses: amannn/action-semantic-pull-request@v3.2.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Configure additional validation for the subject based on a regex.
+          # This example ensures the subject doesn't start with an uppercase character.
+          subjectPattern: ^(?![A-Z]).+$
+          # If `subjectPattern` is configured, you can use this property to override
+          # the default error message that is shown when the pattern doesn't match.
+          # The variables `subject` and `title` can be used within the message.
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            didn't match the configured pattern. Please ensure that the subject
+            doesn't start with an uppercase character.
