@@ -48,10 +48,7 @@ async fn main() {
 
     let args = Args::parse();
 
-    let supabase_auth = SupabaseAuth::new(
-        args.supabase_api_url.clone(),
-        Cow::Borrowed(&args.annon_key),
-    );
+    let supabase_auth = SupabaseAuth::new(args.supabase_api_url.clone(), args.annon_key);
     let token_refresh = supabase_auth
         .sign_in(supabase_auth::TokenBody {
             email: Cow::Borrowed(args.email.as_str()),
