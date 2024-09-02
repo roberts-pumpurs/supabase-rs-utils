@@ -108,7 +108,7 @@ fn main() -> eyre::Result<()> {
         Commands::UnusedDeps => {
             println!("unused deps");
             cmd!(sh, "cargo install cargo-machete").run()?;
-            cmd!(sh, "cargo machete").run()?;
+            cmd!(sh, "cargo-machete").run()?;
         }
     }
 
