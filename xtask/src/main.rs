@@ -32,7 +32,7 @@ fn main() -> eyre::Result<()> {
     match args.command {
         Commands::Deny => {
             println!("cargo deny");
-            cmd!(sh, "cargo install --locked cargo-deny").run()?;
+            cmd!(sh, "cargo install cargo-deny").run()?;
             cmd!(sh, "cargo deny check").run()?;
         }
         Commands::Test { args, coverage } => {
@@ -40,7 +40,7 @@ fn main() -> eyre::Result<()> {
             cmd!(sh, "cargo install cargo-nextest").run()?;
 
             if coverage {
-                cmd!(sh, "cargo install --locked grcov").run()?;
+                cmd!(sh, "cargo install grcov").run()?;
                 for (key, val) in [
                     ("CARGO_INCREMENTAL", "0"),
                     ("RUSTFLAGS", "-Cinstrument-coverage"),
@@ -71,7 +71,7 @@ fn main() -> eyre::Result<()> {
         }
         Commands::Audit => {
             println!("cargo audit");
-            cmd!(sh, "cargo install --locked cargo-audit").run()?;
+            cmd!(sh, "cargo install cargo-audit").run()?;
             cmd!(sh, "cargo audit").run()?;
         }
         Commands::Check => {
@@ -107,7 +107,7 @@ fn main() -> eyre::Result<()> {
         }
         Commands::UnusedDeps => {
             println!("unused deps");
-            cmd!(sh, "cargo install --locked cargo-machete").run()?;
+            cmd!(sh, "cargo install cargo-machete").run()?;
             cmd!(sh, "cargo machete").run()?;
         }
     }
