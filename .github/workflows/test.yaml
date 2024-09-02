@@ -25,7 +25,7 @@ jobs:
         run: cargo xtask test --coverage
 
       - name: Output coverage
-        uses: 5monkeys/cobertura-action@v13
+        uses: 5monkeys/cobertura-action@v14
         with:
           path: target/coverage/cobertura.xml
           minimum_coverage: 85
