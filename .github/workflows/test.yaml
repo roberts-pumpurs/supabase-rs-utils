@@ -22,7 +22,7 @@ jobs:
         uses: ./.github/actions/setup-repo
 
       - name: cargo coverage
-        run: cargo xtask coverage
+        run: cargo xtask test --coverage
 
       - name: Output coverage
         uses: 5monkeys/cobertura-action@v13
