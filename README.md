@@ -21,4 +21,4 @@ The client will also automatically fetch a new auth token using the refresh toke
 
 ## Supabase instance for local development
 1. [Install Supabase CLI](https://supabase.com/docs/guides/cli/getting-started)
-2. Run `cd crates/supabase-fixture && supabase start` to run local supabase instance
+2. Run `supabase start` to run local supabase instance
