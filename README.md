@@ -17,3 +17,8 @@ The client will also automatically fetch a new auth token using the refresh toke
 2. All tasks and actions are managed by `cargo xtask`. Try running `cargo xtask --help` to see all the available commands.
 3. `cargo xtask fmt` -- format the code
 4. `cargo xtask test -- my_test_name` -- run specific tests
+
+
+## Supabase instance for local development
+1. [Install Supabase CLI](https://supabase.com/docs/guides/cli/getting-started)
+2. Run `supabase start` to run local supabase instance
