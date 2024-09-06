@@ -1,3 +1,5 @@
+extern crate alloc;
+
 mod jwt_expiry;
 use std::borrow::Cow;
 use std::ops::{Div, Mul};
