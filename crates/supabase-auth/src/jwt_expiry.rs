@@ -1,12 +1,13 @@
-use std::task::{Context, Poll};
-use std::time::Duration;
+use core::pin::Pin;
+use core::task::{Context, Poll};
+use core::time::Duration;
 
 use futures::Future;
 use futures_timer::Delay;
 use pin_project::pin_project;
 
 #[pin_project]
-pub(crate) struct JwtExpiry {
+pub struct JwtExpiry {
     #[pin]
     delay: Delay,
 }
@@ -22,7 +23,7 @@ impl JwtExpiry {
 impl Future for JwtExpiry {
     type Output = ();
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project().delay.poll(cx)
     }
 }

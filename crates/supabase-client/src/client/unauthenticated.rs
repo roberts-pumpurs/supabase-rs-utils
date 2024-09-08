@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use supabase_auth::futures::StreamExt;
+use futures::StreamExt;
 use supabase_auth::TokenBody;
 use tokio::sync::RwLock;
 
