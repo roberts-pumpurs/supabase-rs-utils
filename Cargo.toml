@@ -63,7 +63,7 @@ url = "2"
 rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "1"
 typed-builder = "0.18"
-jwt-simple = "0.12"
+jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust"] }
 rust_decimal_macros = "1"
 rust_decimal = { version = "1", features = ["maths"] }
 arrayvec = "0.7"
