@@ -1,10 +1,10 @@
 extern crate alloc;
 
 mod jwt_expiry;
-use std::borrow::Cow;
-use std::ops::{Div, Mul};
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use alloc::borrow::Cow;
+use core::ops::{Div, Mul};
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::prelude::*;
@@ -28,7 +28,8 @@ pub struct SupabaseAuth {
 
 impl SupabaseAuth {
     /// Creates a new [`SupabaseAuth`].
-    pub fn new(url: url::Url, api_key: String) -> Self {
+    #[must_use]
+    pub const fn new(url: url::Url, api_key: String) -> Self {
         Self { url, api_key }
     }
 
@@ -65,7 +66,8 @@ pub struct TokenBody<'a> {
 }
 
 impl<'a> TokenBody<'a> {
-    pub fn new(email: &'a str, password: &'a str) -> Self {
+    #[must_use]
+    pub const fn new(email: &'a str, password: &'a str) -> Self {
         Self {
             email: Cow::Borrowed(email),
             password: redact::Secret::new(Cow::Borrowed(password)),
@@ -75,17 +77,17 @@ impl<'a> TokenBody<'a> {
 
 #[pin_project]
 pub struct RefreshStream<'a> {
-    password_url: url::Url,
-    refresh_url: url::Url,
+    pub password_url: url::Url,
+    pub refresh_url: url::Url,
     pub api_key: String,
-    client: Client,
-    token_body: TokenBody<'a>,
+    pub client: Client,
+    pub token_body: TokenBody<'a>,
     #[pin]
-    state: RefreshStreamState,
+    pub state: RefreshStreamState,
 }
 
 #[pin_project]
-enum RefreshStreamState {
+pub enum RefreshStreamState {
     PasswordLogin,
     WaitingForResponse(
         #[pin] futures::future::BoxFuture<'static, Result<Response, reqwest::Error>>,
@@ -149,15 +151,15 @@ impl<'a> Stream for RefreshStream<'a> {
                             // Get the current time as Unix timestamp
                             let current_ts = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
-                                .expect("Time went backwards")
+                                .unwrap_or_else(|_| Duration::from_secs(0)) // Fallback to 0
                                 .as_secs();
 
                             // Calculate the duration until expiration
                             let valid_for = if expires_at_ts > current_ts {
-                                // and divide by `2/3` just to be on the safe side
-                                Duration::from_secs(expires_at_ts - current_ts)
-                                    .mul(3)
-                                    .div(2)
+                                // Use saturating_sub to handle underflow
+                                let remaining_secs = expires_at_ts.saturating_sub(current_ts);
+                                // Divide by `2/3` just to be on the safe side
+                                Duration::from_secs(remaining_secs).mul(2).div(3)
                             } else {
                                 Duration::from_secs(1)
                             };
@@ -184,7 +186,8 @@ impl<'a> Stream for RefreshStream<'a> {
                     refresh_token,
                     access_expiry,
                 } => {
-                    let _res = std::task::ready!(access_expiry.poll_unpin(cx));
+                    std::task::ready!(access_expiry.poll_unpin(cx));
+
                     let request_future = this
                         .client
                         .post(this.refresh_url.clone())
