@@ -16,45 +16,47 @@ pub trait SupabaseClientExt {
     fn supabase_url(&self) -> &url::Url;
 
     #[tracing::instrument(skip_all)]
-    async fn execute<T: PostgRestQuery>(
+    fn execute<T: PostgRestQuery>(
         &mut self,
         query: T,
-    ) -> Result<T::Output, error::SupabaseClientError> {
-        let client = self.client().await;
-        let query_builder = query.to_query()?;
-        let method = query_builder.reqwest_method();
-        let (path, body) = query_builder.build();
-        let url = self.supabase_url().join("/rest/v1/")?.join(path.as_str())?;
-        let current = Span::current();
-        current.record("url", url.as_str());
-        if let Some(body) = &body {
-            current.record("body", format!("{body:#?}"));
-        }
-
-        let response = client.request(method, url).json(&body).send().await?;
-
-        let status = response.status();
-        let mut bytes = response.bytes().await?.to_vec();
-        if status.is_success() {
-            {
-                let json = String::from_utf8_lossy(bytes.as_ref());
-                tracing::info!(response_body = ?json, "Response JSON");
-            }
-            let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
-            Ok(result)
-        } else {
-            {
-                let json = String::from_utf8_lossy(bytes.as_ref());
-                tracing::error!(
-                    status = %status,
-                    body = %json,
-                    "Failed to execute query"
-                );
+    ) -> impl std::future::Future<Output = Result<T::Output, error::SupabaseClientError>> {
+        async {
+            let client = self.client().await;
+            let query_builder = query.to_query()?;
+            let method = query_builder.reqwest_method();
+            let (path, body) = query_builder.build();
+            let url = self.supabase_url().join("/rest/v1/")?.join(path.as_str())?;
+            let current = Span::current();
+            current.record("url", url.as_str());
+            if let Some(body) = &body {
+                current.record("body", format!("{body:#?}"));
             }
 
-            let result = simd_json::from_slice::<error::PostgrestError>(bytes.as_mut())?;
+            let response = client.request(method, url).json(&body).send().await?;
 
-            Err(error::SupabaseClientError::PostgRestError(result))
+            let status = response.status();
+            let mut bytes = response.bytes().await?.to_vec();
+            if status.is_success() {
+                {
+                    let json = String::from_utf8_lossy(bytes.as_ref());
+                    tracing::info!(response_body = ?json, "Response JSON");
+                }
+                let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
+                Ok(result)
+            } else {
+                {
+                    let json = String::from_utf8_lossy(bytes.as_ref());
+                    tracing::error!(
+                        status = %status,
+                        body = %json,
+                        "Failed to execute query"
+                    );
+                }
+
+                let result = simd_json::from_slice::<error::PostgrestError>(bytes.as_mut())?;
+
+                Err(error::SupabaseClientError::PostgRestError(result))
+            }
         }
     }
 }
@@ -105,7 +107,7 @@ pub trait PostgRestQuery {
     fn to_query(&self) -> Result<query_builder::QueryBuilder, error::SupabaseClientError>;
 }
 
-mod query_builder {
+pub mod query_builder {
 
     pub enum QueryBuilder {
         Post(PostQuery),

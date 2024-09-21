@@ -11,7 +11,7 @@ pub enum SupabaseClientError {
     UlrParseError(#[from] url::ParseError),
     #[error(transparent)]
     InvalidHeaderValue(#[from] InvalidHeaderValue),
-    #[error("PostgREST Error {0}")]
+    #[error("PostgREST Error {0:?}")]
     PostgRestError(PostgrestError),
     #[error("Serde JSON error {0}")]
     SerdeJsonError(#[from] simd_json::Error),
@@ -28,11 +28,5 @@ pub struct PostgrestError {
 impl From<PostgrestError> for SupabaseClientError {
     fn from(value: PostgrestError) -> Self {
         SupabaseClientError::PostgRestError(value)
-    }
-}
-
-impl Display for PostgrestError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
     }
 }
