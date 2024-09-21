@@ -1,4 +1,7 @@
+use std::fmt::Display;
+
 use reqwest::header::InvalidHeaderValue;
+use serde::{Deserialize, Serialize};
 
 #[derive(thiserror::Error, Debug)]
 pub enum SupabaseClientError {
@@ -8,4 +11,28 @@ pub enum SupabaseClientError {
     UlrParseError(#[from] url::ParseError),
     #[error(transparent)]
     InvalidHeaderValue(#[from] InvalidHeaderValue),
+    #[error("PostgREST Error {0}")]
+    PostgRestError(PostgrestError),
+    #[error("Serde JSON error {0}")]
+    SerdeJsonError(#[from] serde_json::error::Error),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PostgrestError {
+    pub message: String,
+    pub code: String,
+    pub details: Option<String>,
+    pub hint: Option<String>,
+}
+
+impl From<PostgrestError> for SupabaseClientError {
+    fn from(value: PostgrestError) -> Self {
+        SupabaseClientError::PostgRestError(value)
+    }
+}
+
+impl Display for PostgrestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
