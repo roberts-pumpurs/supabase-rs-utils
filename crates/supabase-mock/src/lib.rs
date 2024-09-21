@@ -44,25 +44,24 @@ impl SupabaseMockServer {
     }
 
     fn register_jwt_custom_grant_type(&mut self, jwt: &str, grant_type: &str) -> &mut Self {
+        let body = json!({
+            "access_token": jwt,
+            "refresh_token": "some-refresh-token",
+            "expires_in": 3600,
+            "token_type": "bearer",
+            "user": {
+                "id": "user-id",
+                "email": "user@example.com"
+            }
+        });
+        let body = simd_json::to_string(&body).unwrap();
         let _m = self
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex(format!("grant_type={grant_type}")))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(
-                json!({
-                    "access_token": jwt,
-                    "refresh_token": "some-refresh-token",
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                    "user": {
-                        "id": "user-id",
-                        "email": "user@example.com"
-                    }
-                })
-                .to_string(),
-            )
+            .with_body(body)
             .create();
         self.api_mock.push(_m);
         self

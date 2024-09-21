@@ -1,3 +1,5 @@
+#![feature(result_flattening)]
+
 mod jwt_expiry;
 use std::borrow::Cow;
 use std::ops::{Div, Mul};
@@ -36,6 +38,7 @@ impl SupabaseAuth {
     ///
     /// This function will return an error if the provided supabase url cannot be joined with the
     /// expected suffix.
+    #[tracing::instrument(skip_all, err)]
     pub fn sign_in<'a>(&self, params: TokenBody<'a>) -> Result<RefreshStream<'a>, SignInError> {
         let mut default_headers = HeaderMap::new();
         default_headers.insert(SUPABASE_KEY, self.api_key.parse()?);
@@ -88,7 +91,7 @@ enum RefreshStreamState {
     WaitingForResponse(
         #[pin] futures::future::BoxFuture<'static, Result<Response, reqwest::Error>>,
     ),
-    ParseJson(#[pin] futures::future::BoxFuture<'static, Result<AuthResponse, reqwest::Error>>),
+    ParseJson(#[pin] futures::future::BoxFuture<'static, Result<AuthResponse, RefreshStreamError>>),
     WaitForExpiry {
         refresh_token: String,
         #[pin]
@@ -99,6 +102,10 @@ enum RefreshStreamState {
 impl<'a> Stream for RefreshStream<'a> {
     type Item = Result<AuthResponse, RefreshStreamError>;
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "poll funcions tend to become like this"
+    )]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
 
@@ -122,7 +129,23 @@ impl<'a> Stream for RefreshStream<'a> {
                     match std::task::ready!(fut.poll_unpin(cx)) {
                         Ok(res) => match res.error_for_status() {
                             Ok(res) => {
-                                let json_future = res.json::<AuthResponse>().boxed();
+                                let json_future = res
+                                    .bytes()
+                                    .map(|x| {
+                                        x.map(|reqwest_bytes| {
+                                            let span =
+                                                tracing::debug_span!("decoding Auth Response");
+                                            let _g = span.entered();
+                                            let mut bytes = reqwest_bytes.to_vec();
+                                            let response = String::from_utf8_lossy(bytes.as_ref());
+                                            tracing::debug!(response = ?response, "auth resp");
+                                            simd_json::from_slice::<AuthResponse>(&mut bytes)
+                                                .map_err(RefreshStreamError::from)
+                                        })
+                                        .map_err(RefreshStreamError::from)
+                                        .flatten()
+                                    })
+                                    .boxed();
                                 this.state.set(RefreshStreamState::ParseJson(json_future));
                             }
                             Err(err) => {
@@ -175,7 +198,7 @@ impl<'a> Stream for RefreshStream<'a> {
                     },
                     Err(err) => {
                         this.state.set(RefreshStreamState::PasswordLogin);
-                        return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
+                        return Poll::Ready(Some(Err(err)))
                     }
                 },
                 RefreshStreamState::WaitForExpiry {
@@ -205,6 +228,8 @@ impl<'a> Stream for RefreshStream<'a> {
 pub enum RefreshStreamError {
     #[error("Request error: {0}")]
     Reqwest(#[from] reqwest::Error),
+    #[error("JSON parse error: {0}")]
+    JsonParse(#[from] simd_json::Error),
     #[error("JWT parse error: {0}")]
     JwtParse(#[from] JwtParseError),
 }
@@ -233,12 +258,15 @@ pub enum JwtParseError {
     JsonParse(#[from] simd_json::Error),
 }
 
+#[tracing::instrument(err, skip_all)]
 fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {
     let mut tokens = token.split('.');
     let _header = tokens.next();
     let body = tokens.next().ok_or(JwtParseError::InvalidJwt)?;
     let mut body = BASE64_STANDARD.decode(body)?;
+    tracing::info!("ddd");
     let body = simd_json::from_slice::<JWTClaims<NoCustomClaims>>(body.as_mut_slice())?;
+    tracing::info!("aaa");
 
     Ok(body)
 }
@@ -264,14 +292,16 @@ mod tests {
 
     use futures::StreamExt;
     use mockito::Matcher;
+    use pretty_assertions::assert_eq;
     use rstest::rstest;
     use supabase_mock::{make_jwt, SupabaseMockServer};
+    use test_log::test;
     use tokio::time::timeout;
 
     use super::*;
 
     #[rstest]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_successful_password_login() {
         let access_token = make_jwt(Duration::from_secs(3600));
         let mut m = SupabaseMockServer::new().await;
@@ -298,7 +328,7 @@ mod tests {
     }
 
     #[rstest]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_password_login_error() {
         let mut m = SupabaseMockServer::new().await;
         let _m1 = m
@@ -325,7 +355,7 @@ mod tests {
     }
 
     #[rstest]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_jwt_parsing_error() {
         let mut m = SupabaseMockServer::new().await;
         let m = m.register_jwt_password(&"invalid-jwt");
@@ -343,14 +373,13 @@ mod tests {
             .unwrap();
 
         assert!(response.is_err());
-        match response {
-            Err(RefreshStreamError::JwtParse(_)) => (),
-            _ => panic!("Expected JwtParse error"),
-        }
+
+        dbg!(&response);
+        assert!(matches!(response, Err(RefreshStreamError::JwtParse(_))));
     }
 
     #[rstest]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_retry_on_login_error() {
         let mut m = SupabaseMockServer::new().await;
         let _m1 = m
@@ -375,6 +404,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
+        dbg!(&response);
         assert!(response.is_ok());
         let auth_response = response.unwrap();
         assert_eq!(auth_response.refresh_token, "some-refresh-token");
