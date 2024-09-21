@@ -2304,6 +2304,7 @@ dependencies = [
 name = "supabase-client"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "reqwest",
  "serde",
  "simd-json",
@@ -2311,6 +2312,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
