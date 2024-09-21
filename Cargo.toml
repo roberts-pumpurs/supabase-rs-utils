@@ -81,7 +81,7 @@ hyper = { version = "1", features = ["http1", "client"] }
 fastwebsockets = { version = "0.8", features = ["upgrade"] }
 
 # Tests
-rstest = { version = "0.21" }
+rstest = { version = "0.22" }
 test-log = { version = "0.2", features = ["trace"], default-features = false }
 pretty_assertions = "1"
 assert_matches = "1"
