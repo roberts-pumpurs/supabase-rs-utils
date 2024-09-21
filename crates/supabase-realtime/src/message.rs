@@ -116,10 +116,11 @@ pub mod phx_reply {
                 ref_field: Some("1".to_string()),
                 join_ref: None,
             });
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -162,10 +163,11 @@ pub mod phx_reply {
                 join_ref: None,
             });
 
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -208,10 +210,11 @@ pub mod phx_reply {
                 join_ref: None,
             });
 
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -333,10 +336,11 @@ pub mod phx_join {
                 ref_field: Some("1".to_string()),
                 join_ref: Some("1".to_string()),
             });
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -372,10 +376,11 @@ pub mod presence_state {
                 join_ref: None,
             });
 
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -433,10 +438,11 @@ pub mod system {
 
             dbg!(&expected_struct);
 
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -471,10 +477,11 @@ pub mod system {
 
             dbg!(&expected_struct);
 
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let mut serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -509,10 +516,11 @@ pub mod system {
 
             dbg!(&expected_struct);
 
-            let serialzed = serde_json::to_value(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
         }
@@ -548,10 +556,11 @@ pub mod phx_error {
                 join_ref: None,
             });
 
-            let serialized = serde_json::to_value(&expected_struct).unwrap();
+            let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
             dbg!(&deserialized_struct);
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -681,10 +690,11 @@ pub mod postgres_changes {
                 join_ref: None,
             });
 
-            let serialized = serde_json::to_value(&expected_struct).unwrap();
+            let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
 
-            let deserialized_struct: ProtocolMesseage = serde_json::from_str(json_data).unwrap();
+            let deserialized_struct: ProtocolMesseage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
             dbg!(&deserialized_struct);
 
             assert_eq!(deserialized_struct, expected_struct);

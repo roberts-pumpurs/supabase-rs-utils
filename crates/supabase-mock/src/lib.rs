@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub use mockito;
 use mockito::{Matcher, ServerGuard};
-use serde_json::json;
+use simd_json::json;
 
 pub struct SupabaseMockServer {
     pub api_mock: Vec<mockito::Mock>,

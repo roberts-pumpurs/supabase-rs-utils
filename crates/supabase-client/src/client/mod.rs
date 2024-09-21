@@ -34,19 +34,25 @@ pub trait SupabaseClientExt {
         let response = client.request(method, url).json(&body).send().await?;
 
         let status = response.status();
-        let json = response.json::<serde_json::Value>().await?;
+        let mut bytes = response.bytes().await?.to_vec();
         if status.is_success() {
-            tracing::info!(response_body = ?json, "Response JSON");
-            let result = serde_json::from_value::<T::Output>(json)?;
+            {
+                let json = String::from_utf8_lossy(bytes.as_ref());
+                tracing::info!(response_body = ?json, "Response JSON");
+            }
+            let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
             Ok(result)
         } else {
-            tracing::error!(
-                status = %status,
-                body = %json,
-                "Failed to execute query"
-            );
+            {
+                let json = String::from_utf8_lossy(bytes.as_ref());
+                tracing::error!(
+                    status = %status,
+                    body = %json,
+                    "Failed to execute query"
+                );
+            }
 
-            let result = serde_json::from_value::<error::PostgrestError>(json)?;
+            let result = simd_json::from_slice::<error::PostgrestError>(bytes.as_mut())?;
 
             Err(error::SupabaseClientError::PostgRestError(result))
         }
@@ -100,7 +106,6 @@ pub trait PostgRestQuery {
 }
 
 mod query_builder {
-    use serde_json::Value;
 
     pub enum QueryBuilder {
         Post(PostQuery),
@@ -110,7 +115,7 @@ mod query_builder {
     }
 
     impl QueryBuilder {
-        pub fn build(self) -> (String, Option<Value>) {
+        pub fn build(self) -> (String, Option<Vec<u8>>) {
             match self {
                 QueryBuilder::Post(query) => query.build(),
                 QueryBuilder::Get(query) => query.build(),
@@ -133,16 +138,16 @@ mod query_builder {
         pub filters: Vec<filter::Filter>,
         pub returning: Option<&'static str>,
         pub upsert: bool,
-        pub body: Value,
+        pub body: Vec<u8>,
     }
 
     impl PostQuery {
-        pub fn new(body: Value) -> Self {
+        pub fn new(body: impl Into<Vec<u8>>) -> Self {
             PostQuery {
                 filters: Vec::new(),
                 returning: None,
                 upsert: false,
-                body,
+                body: body.into(),
             }
         }
 
@@ -161,7 +166,7 @@ mod query_builder {
             self
         }
 
-        pub fn build(self) -> (String, Option<Value>) {
+        pub fn build(self) -> (String, Option<Vec<u8>>) {
             let mut params = Vec::new();
 
             for filter in self.filters {
@@ -220,7 +225,7 @@ mod query_builder {
             self
         }
 
-        pub fn build(self) -> (String, Option<Value>) {
+        pub fn build(self) -> (String, Option<Vec<u8>>) {
             let mut params = Vec::new();
 
             if let Some(select) = self.select_fields {
@@ -247,15 +252,15 @@ mod query_builder {
     pub struct PatchQuery {
         pub filters: Vec<filter::Filter>,
         pub returning: Option<&'static str>,
-        pub body: Value,
+        pub body: Vec<u8>,
     }
 
     impl PatchQuery {
-        pub fn new(body: Value) -> Self {
+        pub fn new(body: impl Into<Vec<u8>>) -> Self {
             PatchQuery {
                 filters: Vec::new(),
                 returning: None,
-                body,
+                body: body.into(),
             }
         }
 
@@ -269,7 +274,7 @@ mod query_builder {
             self
         }
 
-        pub fn build(self) -> (String, Option<Value>) {
+        pub fn build(self) -> (String, Option<Vec<u8>>) {
             let mut params = Vec::new();
 
             for filter in self.filters {
@@ -308,7 +313,7 @@ mod query_builder {
             self
         }
 
-        pub fn build(self) -> (String, Option<Value>) {
+        pub fn build(self) -> (String, Option<Vec<u8>>) {
             let mut params = Vec::<String>::new();
 
             for filter in self.filters {

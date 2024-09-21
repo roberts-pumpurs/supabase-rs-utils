@@ -37,9 +37,9 @@ impl RealtimeConnection {
             .await
             .ok_or(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly)??;
         let (mut from_ws_sender, from_ws_receiver) =
-            tokio::sync::mpsc::channel::<serde_json::Value>(Self::WS_RECV_BUFFER);
+            tokio::sync::mpsc::channel::<simd_json::OwnedValue>(Self::WS_RECV_BUFFER);
         let (to_ws_sender, mut to_ws_reader) =
-            tokio::sync::mpsc::channel::<serde_json::Value>(Self::WS_SEND_BUFFER);
+            tokio::sync::mpsc::channel::<Vec<u8>>(Self::WS_SEND_BUFFER);
         let (waker_sender, waker_receiver) = tokio::sync::oneshot::channel::<Waker>();
         // todo: get the Waker object here rather than using oneshot channel for sending it
         // tood: add periodic sending of heartbeats
@@ -97,28 +97,24 @@ impl RealtimeConnection {
     }
 }
 
-async fn write_loop(item: serde_json::Value, con: &mut WsSupabaseConnection) -> eyre::Result<()> {
-    if let Ok(message_bytes) = serde_json::to_vec(&item) {
-        let payload = fastwebsockets::Payload::<'static>::Owned(message_bytes);
-        let frame = Frame::<'static>::text(payload);
-        con.write_frame(frame).await?;
-    } else {
-        tracing::error!("could not vectorise json data");
-    }
+async fn write_loop(message_bytes: Vec<u8>, con: &mut WsSupabaseConnection) -> eyre::Result<()> {
+    let payload = fastwebsockets::Payload::<'static>::Owned(message_bytes);
+    let frame = Frame::<'static>::text(payload);
+    con.write_frame(frame).await?;
     Ok(())
 }
 
 async fn read_loop(
-    item: fastwebsockets::Frame<'_>,
-    from_ws_sender: &mut tokio::sync::mpsc::Sender<serde_json::Value>,
+    mut item: fastwebsockets::Frame<'_>,
+    from_ws_sender: &mut tokio::sync::mpsc::Sender<simd_json::OwnedValue>,
 ) -> eyre::Result<()> {
-    let from_slice = serde_json::from_slice(&item.payload);
+    let from_slice = simd_json::from_slice(item.payload.to_mut());
     match from_slice {
         Ok(item) => {
             from_ws_sender.send(item).await?;
         }
         Err(err) => {
-            tracing::error!(?err, payload =? &item.payload, "erorr when deserialising data");
+            tracing::error!(?err, payload =? &item.payload, "error when deserialising data");
         }
     };
     Ok(())
@@ -129,8 +125,8 @@ pub struct LiveRealtimeConnection<
     'a,
     T: Stream<Item = message::ProtocolMesseage> + std::marker::Unpin,
 > {
-    to_ws_sender: tokio::sync::mpsc::Sender<serde_json::Value>,
-    from_ws_receiver: tokio::sync::mpsc::Receiver<serde_json::Value>,
+    to_ws_sender: tokio::sync::mpsc::Sender<Vec<u8>>,
+    from_ws_receiver: tokio::sync::mpsc::Receiver<simd_json::OwnedValue>,
     handle: tokio::task::JoinHandle<()>,
     oneshot: Option<tokio::sync::oneshot::Sender<Waker>>,
     #[pin]
@@ -142,7 +138,7 @@ pub struct LiveRealtimeConnection<
     #[pin]
     auth_response: AuthResponse,
     #[pin]
-    message_to_send: Option<serde_json::Value>,
+    message_to_send: Option<message::ProtocolMesseage>,
 }
 
 #[derive(Debug)]
@@ -157,7 +153,7 @@ impl<'a, T> Stream for LiveRealtimeConnection<'a, T>
 where
     T: Stream<Item = message::ProtocolMesseage> + std::marker::Unpin,
 {
-    type Item = Result<serde_json::Value, error::SupabaseRealtimeError>;
+    type Item = Result<simd_json::OwnedValue, error::SupabaseRealtimeError>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
@@ -200,8 +196,6 @@ where
                                 let AuthResponse { access_token, .. } = resp;
                                 msg.set_access_token(&access_token);
 
-                                let msg = serde_json::to_value(&msg)
-                                    .expect("could not serialize inbound message");
                                 this.message_to_send.set(Some(msg));
                                 this.state.set(RealtimeConnectionState::SendInputMessage);
                                 continue;
@@ -213,13 +207,16 @@ where
                     this.state.set(RealtimeConnectionState::ReadWsMessage);
                 }
                 RealtimeConnectionState::SendInputMessage => {
-                    if let Some(msg) = this.message_to_send.take() {
+                    if let Some(protocol_msg) = this.message_to_send.take() {
+                        let msg = simd_json::to_vec(&protocol_msg)
+                            .expect("could not serialize inbound message");
+
                         use tokio::sync::mpsc::error::TrySendError;
                         match this.to_ws_sender.try_send(msg) {
                             Ok(()) => {}
                             Err(TrySendError::Full(msg)) => {
                                 tracing::warn!("could not send message");
-                                this.message_to_send.set(Some(msg));
+                                this.message_to_send.set(Some(protocol_msg));
                             }
                             Err(TrySendError::Closed(_)) => {
                                 tracing::error!("ws sender channel has been closed");

@@ -25,7 +25,7 @@ pub enum SupabaseRealtimeError {
     #[error("Url parse error {0}")]
     UrlParseError(#[from] url::ParseError),
     #[error("Serde json error {0}")]
-    SerdeJsonError(#[from] serde_json::Error),
+    SerdeJsonError(#[from] simd_json::Error),
     #[error("Mpsc send error")]
     MpscSendError,
     #[error("Jwt Stream closed unexpectedly")]

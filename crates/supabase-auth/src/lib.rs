@@ -13,7 +13,7 @@ use pin_project::pin_project;
 use reqwest::header::{HeaderMap, InvalidHeaderValue};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use simd_json::json;
 use thiserror::Error;
 pub use {futures, redact, url};
 
@@ -230,15 +230,15 @@ pub enum JwtParseError {
     InvalidJwt,
 
     #[error("JSON parse error: {0}")]
-    JsonParse(#[from] serde_json::Error),
+    JsonParse(#[from] simd_json::Error),
 }
 
 fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {
     let mut tokens = token.split('.');
     let _header = tokens.next();
     let body = tokens.next().ok_or(JwtParseError::InvalidJwt)?;
-    let body = BASE64_STANDARD.decode(body)?;
-    let body = serde_json::from_slice::<JWTClaims<NoCustomClaims>>(&body)?;
+    let mut body = BASE64_STANDARD.decode(body)?;
+    let body = simd_json::from_slice::<JWTClaims<NoCustomClaims>>(body.as_mut_slice())?;
 
     Ok(body)
 }

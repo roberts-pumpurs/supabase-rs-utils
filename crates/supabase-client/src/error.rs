@@ -14,7 +14,7 @@ pub enum SupabaseClientError {
     #[error("PostgREST Error {0}")]
     PostgRestError(PostgrestError),
     #[error("Serde JSON error {0}")]
-    SerdeJsonError(#[from] serde_json::error::Error),
+    SerdeJsonError(#[from] simd_json::Error),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

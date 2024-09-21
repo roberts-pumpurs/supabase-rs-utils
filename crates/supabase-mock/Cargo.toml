@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 mockito.workspace = true
 jwt-simple.workspace = true
-serde_json.workspace = true
+simd-json.workspace = true
 url.workspace = true
 
 [lints]
