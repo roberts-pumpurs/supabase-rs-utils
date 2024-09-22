@@ -109,7 +109,14 @@ pub trait PostgRestQuery {
 
 pub mod query_builder {
 
-    pub enum QueryBuilder {
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
+    pub struct QueryBuilder {
+        pub table_name: &'static str,
+        pub operation: QueryBuilderOperation,
+    }
+
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
+    pub enum QueryBuilderOperation {
         Post(PostQuery),
         Get(GetQuery),
         Patch(PatchQuery),
@@ -118,24 +125,26 @@ pub mod query_builder {
 
     impl QueryBuilder {
         pub fn build(self) -> (String, Option<Vec<u8>>) {
-            match self {
-                QueryBuilder::Post(query) => query.build(),
-                QueryBuilder::Get(query) => query.build(),
-                QueryBuilder::Patch(query) => query.build(),
-                QueryBuilder::Delete(query) => query.build(),
-            }
+            let (query, body) = match self.operation {
+                QueryBuilderOperation::Post(query) => query.build(),
+                QueryBuilderOperation::Get(query) => query.build(),
+                QueryBuilderOperation::Patch(query) => query.build(),
+                QueryBuilderOperation::Delete(query) => query.build(),
+            };
+            (format!("{}?{query}", self.table_name), body)
         }
 
         pub fn reqwest_method(&self) -> reqwest::Method {
-            match self {
-                QueryBuilder::Post(_) => reqwest::Method::POST,
-                QueryBuilder::Get(_) => reqwest::Method::GET,
-                QueryBuilder::Patch(_) => reqwest::Method::PATCH,
-                QueryBuilder::Delete(_) => reqwest::Method::DELETE,
+            match self.operation {
+                QueryBuilderOperation::Post(_) => reqwest::Method::POST,
+                QueryBuilderOperation::Get(_) => reqwest::Method::GET,
+                QueryBuilderOperation::Patch(_) => reqwest::Method::PATCH,
+                QueryBuilderOperation::Delete(_) => reqwest::Method::DELETE,
             }
         }
     }
 
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
     pub struct PostQuery {
         pub filters: Vec<filter::Filter>,
         pub returning: Option<&'static str>,
@@ -189,6 +198,7 @@ pub mod query_builder {
         }
     }
 
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
     pub struct GetQuery {
         pub select_fields: Option<&'static str>,
         pub filters: Vec<filter::Filter>,
@@ -251,6 +261,7 @@ pub mod query_builder {
         }
     }
 
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
     pub struct PatchQuery {
         pub filters: Vec<filter::Filter>,
         pub returning: Option<&'static str>,
@@ -292,6 +303,7 @@ pub mod query_builder {
         }
     }
 
+    #[derive(Debug, Clone, PartialEq, PartialOrd)]
     pub struct DeleteQuery {
         pub filters: Vec<filter::Filter>,
         pub returning: Option<&'static str>,
@@ -332,7 +344,7 @@ pub mod query_builder {
     }
 
     pub mod filter {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd)]
         pub enum Operator {
             Eq,
             Neq,
@@ -363,7 +375,7 @@ pub mod query_builder {
             }
         }
 
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd)]
         pub struct Filter {
             field: &'static str,
             operator: Operator,
@@ -384,6 +396,7 @@ pub mod query_builder {
             }
         }
 
+        #[derive(Debug, Clone, PartialEq, PartialOrd)]
         pub struct FilterBuilder {
             field: &'static str,
         }

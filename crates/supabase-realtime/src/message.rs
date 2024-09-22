@@ -477,7 +477,7 @@ pub mod system {
 
             dbg!(&expected_struct);
 
-            let mut serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
             let deserialized_struct: ProtocolMesseage =

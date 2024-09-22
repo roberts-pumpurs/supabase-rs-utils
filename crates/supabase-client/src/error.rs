@@ -1,4 +1,3 @@
-use std::fmt::Display;
 
 use reqwest::header::InvalidHeaderValue;
 use serde::{Deserialize, Serialize};
