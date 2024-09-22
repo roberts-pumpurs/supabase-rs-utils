@@ -104,7 +104,7 @@ impl<'a> Stream for RefreshStream<'a> {
 
     #[allow(
         clippy::too_many_lines,
-        reason = "poll funcions tend to become like this"
+        reason = "poll functions tend to become like this"
     )]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();

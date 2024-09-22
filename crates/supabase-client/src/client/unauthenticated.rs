@@ -55,6 +55,7 @@ impl SupabaseClient {
             supabase_url: self.supabase_url,
             client,
             token_refresh: handle,
+            user: auth_resp.user,
         })
     }
 }
