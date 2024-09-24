@@ -53,7 +53,9 @@ pub trait SupabaseClientExt {
                     );
                 }
 
-                let result = simd_json::from_slice::<error::PostgrestError>(bytes.as_mut())?;
+                let result =
+                    simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
+                let result = error::postgrest_error::Error::from_error_response(result);
 
                 Err(error::SupabaseClientError::PostgRestError(result))
             }
