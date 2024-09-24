@@ -9,7 +9,8 @@ use supabase_auth::SUPABASE_KEY;
 use tracing::Span;
 pub use unauthenticated::SupabaseClient;
 
-use crate::{error, SupabaseClientError};
+use crate::error;
+use crate::error::SupabaseClientError;
 
 pub trait SupabaseClientExt {
     fn client(&mut self) -> impl Future<Output = reqwest::Client> + Send;

@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use super::authenticated::AuthenticatedSupabaseClient;
 use super::construct_client;
-use crate::SupabaseClientError;
+use crate::error::SupabaseClientError;
 
 pub struct SupabaseClient {
     pub(crate) supabase_url: url::Url,
