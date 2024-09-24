@@ -30,9 +30,12 @@ impl SupabaseClient {
     ) -> Result<AuthenticatedSupabaseClient, SupabaseClientError> {
         let auth =
             supabase_auth::SupabaseAuth::new(self.supabase_url.clone(), self.anon_key.clone());
-        let mut auth = auth.sign_in(token_body).unwrap();
-        let auth_resp = auth.next().await.unwrap().unwrap();
-        let client = construct_client(&self.anon_key, &auth_resp.access_token).unwrap();
+        let mut auth = auth.sign_in(token_body)?;
+        let auth_resp = auth
+            .next()
+            .await
+            .ok_or_else(|| SupabaseClientError::JwtStreamCrash)??;
+        let client = construct_client(&self.anon_key, &auth_resp.access_token)?;
         let client = Arc::new(RwLock::new(client));
 
         let handle = tokio::spawn({
