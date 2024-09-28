@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 pub use authenticated::AuthenticatedSupabaseClient;
 use reqwest::header;
 use supabase_auth::SUPABASE_KEY;
-use tracing::{info_span, Instrument};
+use tracing::{error, info, info_span, instrument, Instrument};
 pub use unauthenticated::SupabaseClient;
 
 use crate::error;
@@ -17,6 +17,7 @@ pub trait SupabaseClientExt {
     fn client(&mut self) -> reqwest::Client;
     fn supabase_url(&self) -> &url::Url;
 
+    #[instrument(name = "build_request", skip(self, query))]
     fn build_request<T: PostgRestQuery>(
         &mut self,
         query: T,
@@ -26,7 +27,7 @@ pub trait SupabaseClientExt {
         let client = self.client();
         let (path, body) = query_builder.build();
         let url = self.supabase_url().join("/rest/v1/")?.join(path.as_str())?;
-        let request = client.request(method, url.as_str());
+        let request = client.request(method.clone(), url.as_str());
         let request = if let Some(body) = body {
             request.body(body)
         } else {
@@ -42,13 +43,14 @@ pub trait SupabaseClientExt {
     }
 }
 
-struct SupabaseRequest<T: PostgRestQuery> {
+pub struct SupabaseRequest<T: PostgRestQuery> {
     request: reqwest::Request,
     client: reqwest::Client,
     query: PhantomData<T>,
 }
 
 impl<T: PostgRestQuery> SupabaseRequest<T> {
+    #[instrument(name = "execute_request", skip(self), fields(method = %self.request.method(), url = %self.request.url()))]
     pub async fn execute(self) -> Result<SupabaseResponse<T>, SupabaseClientError> {
         let response = self.client.execute(self.request).await?;
 
@@ -59,16 +61,19 @@ impl<T: PostgRestQuery> SupabaseRequest<T> {
     }
 }
 
-struct SupabaseResponse<T: PostgRestQuery> {
+pub struct SupabaseResponse<T: PostgRestQuery> {
     response: reqwest::Response,
     query: PhantomData<T>,
 }
+
 impl<T: PostgRestQuery> SupabaseResponse<T> {
+    #[instrument(name = "response_ok", skip(self))]
     pub async fn ok(self) -> Result<(), SupabaseClientError> {
         self.response.error_for_status()?;
         Ok(())
     }
 
+    // #[instrument(name = "parse_json_err", skip(self))]
     pub async fn json_err(
         self,
     ) -> Result<Result<(), error::postgrest_error::Error>, SupabaseClientError> {
@@ -77,50 +82,44 @@ impl<T: PostgRestQuery> SupabaseResponse<T> {
         if status.is_success() {
             Ok(Ok(()))
         } else {
-            {
-                let json = String::from_utf8_lossy(bytes.as_ref());
-                tracing::error!(
-                    status = %status,
-                    body = %json,
-                    "Failed to execute request"
-                );
-            };
-
-            let error =
-                simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
-            let error = error::postgrest_error::Error::from_error_response(error);
-            Ok(Err(error))
+            let res = parse_postgrset_error(bytes, status)?;
+            Ok(Err(res))
         }
     }
 
+    #[instrument(name = "parse_json", skip(self))]
     pub async fn json(
         self,
     ) -> Result<Result<T::Output, error::postgrest_error::Error>, SupabaseClientError> {
         let status = self.response.status();
         let mut bytes = self.response.bytes().await?.to_vec();
         if status.is_success() {
-            {
-                let json = String::from_utf8_lossy(bytes.as_ref());
-                tracing::info!(response_body = ?json, "Response JSON");
-            };
+            let json = String::from_utf8_lossy(bytes.as_ref());
+            info!(response_body = %json, "Response JSON");
+
             let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
             Ok(Ok(result))
         } else {
-            {
-                let json = String::from_utf8_lossy(bytes.as_ref());
-                tracing::error!(
-                    status = %status,
-                    body = %json,
-                    "Failed to execute request"
-                );
-            };
-
-            let error =
-                simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
-            let error = error::postgrest_error::Error::from_error_response(error);
-            Ok(Err(error))
+            let res = parse_postgrset_error(bytes, status)?;
+            Ok(Err(res))
         }
     }
+}
+
+fn parse_postgrset_error(
+    mut bytes: Vec<u8>,
+    status: reqwest::StatusCode,
+) -> Result<error::postgrest_error::Error, SupabaseClientError> {
+    let json = String::from_utf8_lossy(bytes.as_ref());
+    error!(
+        status = %status,
+        body = %json,
+        "Failed to execute request"
+    );
+
+    let error = simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
+    let error = error::postgrest_error::Error::from_error_response(error);
+    Ok(error)
 }
 
 impl SupabaseClientExt for AuthenticatedSupabaseClient {
