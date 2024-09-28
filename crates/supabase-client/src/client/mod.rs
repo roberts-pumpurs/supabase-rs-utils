@@ -50,11 +50,7 @@ pub trait SupabaseClientExt {
 
             let response = client.execute(request.build()?).await?;
             let status = response.status();
-            let mut bytes = response
-                .bytes()
-                .await?
-                .try_into_mut()
-                .expect("not holding unique data on the buffer");
+            let mut bytes = response.bytes().await?.to_vec();
             if status.is_success() {
                 {
                     let json = String::from_utf8_lossy(bytes.as_ref());
