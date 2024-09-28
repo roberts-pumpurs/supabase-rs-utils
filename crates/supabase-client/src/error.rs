@@ -9,8 +9,6 @@ pub enum SupabaseClientError {
     UlrParseError(#[from] url::ParseError),
     #[error(transparent)]
     InvalidHeaderValue(#[from] InvalidHeaderValue),
-    #[error("PostgREST Error {0:?}")]
-    PostgRestError(#[from] postgrest_error::Error),
     #[error("Serde JSON error {0}")]
     SerdeJsonError(#[from] simd_json::Error),
     #[error("Supabase Sign in Error {0}")]

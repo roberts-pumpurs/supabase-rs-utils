@@ -6,7 +6,7 @@ use std::future::Future;
 pub use authenticated::AuthenticatedSupabaseClient;
 use reqwest::header;
 use supabase_auth::SUPABASE_KEY;
-use tracing::Span;
+use tracing::{info_span, Instrument};
 pub use unauthenticated::SupabaseClient;
 
 use crate::error;
@@ -20,47 +20,66 @@ pub trait SupabaseClientExt {
     fn execute<T: PostgRestQuery>(
         &mut self,
         query: T,
-    ) -> impl std::future::Future<Output = Result<T::Output, error::SupabaseClientError>> {
-        async {
-            let client = self.client().await;
-            let query_builder = query.to_query()?;
-            let method = query_builder.reqwest_method();
+    ) -> Result<
+        impl std::future::Future<
+            Output = Result<
+                Result<T::Output, error::postgrest_error::Error>,
+                error::SupabaseClientError,
+            >,
+        >,
+        SupabaseClientError,
+    > {
+        let query_builder = query.to_query()?;
+        let method = query_builder.reqwest_method();
+        let m = method.clone();
+
+        let res = async {
             let (path, body) = query_builder.build();
             let url = self.supabase_url().join("/rest/v1/")?.join(path.as_str())?;
-            let current = Span::current();
-            current.record("url", url.as_str());
-            if let Some(body) = &body {
-                current.record("body", format!("{body:#?}"));
-            }
+            let json = body.as_ref().map(|x| String::from_utf8_lossy(x.as_ref()));
+            tracing::debug!(?json, "json");
+            tracing::debug!(?url, "url");
 
-            let response = client.request(method, url).json(&body).send().await?;
+            let client = self.client().await;
+            let request = client.request(method, url.as_str());
+            let request = if let Some(body) = body {
+                request.body(body)
+            } else {
+                request
+            };
 
+            let response = client.execute(request.build()?).await?;
             let status = response.status();
-            let mut bytes = response.bytes().await?.to_vec();
+            let mut bytes = response
+                .bytes()
+                .await?
+                .try_into_mut()
+                .expect("not holding unique data on the buffer");
             if status.is_success() {
                 {
                     let json = String::from_utf8_lossy(bytes.as_ref());
                     tracing::info!(response_body = ?json, "Response JSON");
-                }
+                };
                 let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
-                Ok(result)
+                Ok(Ok(result))
             } else {
                 {
                     let json = String::from_utf8_lossy(bytes.as_ref());
                     tracing::error!(
                         status = %status,
                         body = %json,
-                        "Failed to execute query"
+                        "Failed to execute request"
                     );
-                }
+                };
 
-                let result =
+                let error =
                     simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
-                let result = error::postgrest_error::Error::from_error_response(result);
-
-                Err(error::SupabaseClientError::PostgRestError(result))
+                let error = error::postgrest_error::Error::from_error_response(error);
+                Ok(Err(error))
             }
         }
+        .instrument(info_span!("supabase api request", method =?m).or_current());
+        Ok(res)
     }
 }
 
