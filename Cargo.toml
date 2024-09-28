@@ -58,7 +58,7 @@ color-eyre = "0.6"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
 serde = { version = "1", features = ["derive"] }
 redact = "0.1"
-simd-json = "0.13"
+simd-json = "0.14"
 url = "2"
 rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "1"
@@ -74,14 +74,14 @@ http-body-util = { version = "0.1.0" }
 tokio-rustls = "0.26"
 rustls-pemfile = "2"
 rustls = "0.23"
-rustls-native-certs = "0.7"
+rustls-native-certs = "0.8"
 bytes = "1.7"
 clap = { version = "4.5", features = ["derive"] }
 hyper = { version = "1", features = ["http1", "client"] }
 fastwebsockets = { version = "0.8", features = ["upgrade"] }
 
 # Tests
-rstest = { version = "0.21" }
+rstest = "0.22"
 test-log = { version = "0.2", features = ["trace"], default-features = false }
 pretty_assertions = "1"
 assert_matches = "1"

@@ -96,10 +96,7 @@ fn tls_connector() -> Result<tokio_rustls::TlsConnector, error::SupabaseRealtime
     use tokio_rustls::TlsConnector;
 
     let mut roots = rustls::RootCertStore::empty();
-    let native_certs = rustls_native_certs::load_native_certs().map_err(|err| {
-        tracing::error!(?err, "Cannot load native certificates");
-        error::SupabaseRealtimeError::LocalCertificateLoadError
-    })?;
+    let native_certs = rustls_native_certs::load_native_certs().certs;
     for cert in native_certs {
         roots.add(cert).map_err(|err| {
             tracing::error!(?err, "Cannot set native certificate");
