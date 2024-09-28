@@ -1,13 +1,12 @@
 mod authenticated;
 mod unauthenticated;
 
-use std::future::Future;
 use std::marker::PhantomData;
 
 pub use authenticated::AuthenticatedSupabaseClient;
 use reqwest::header;
 use supabase_auth::SUPABASE_KEY;
-use tracing::{error, info, info_span, instrument, Instrument};
+use tracing::{error, info, instrument};
 pub use unauthenticated::SupabaseClient;
 
 use crate::error;
@@ -73,12 +72,12 @@ impl<T: PostgRestQuery> SupabaseResponse<T> {
         Ok(())
     }
 
-    // #[instrument(name = "parse_json_err", skip(self))]
+    #[instrument(name = "parse_json_err", skip(self))]
     pub async fn json_err(
         self,
     ) -> Result<Result<(), error::postgrest_error::Error>, SupabaseClientError> {
         let status = self.response.status();
-        let mut bytes = self.response.bytes().await?.to_vec();
+        let bytes = self.response.bytes().await?.to_vec();
         if status.is_success() {
             Ok(Ok(()))
         } else {
