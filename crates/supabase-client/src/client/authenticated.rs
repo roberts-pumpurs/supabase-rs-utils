@@ -1,7 +1,6 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use supabase_auth::User;
-use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
 #[derive(Debug)]

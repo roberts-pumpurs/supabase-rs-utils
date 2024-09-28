@@ -2,6 +2,7 @@ mod authenticated;
 mod unauthenticated;
 
 use std::future::Future;
+use std::marker::PhantomData;
 
 pub use authenticated::AuthenticatedSupabaseClient;
 use reqwest::header;
@@ -13,75 +14,118 @@ use crate::error;
 use crate::error::SupabaseClientError;
 
 pub trait SupabaseClientExt {
-    fn client(&mut self) -> impl Future<Output = reqwest::Client> + Send;
+    fn client(&mut self) -> reqwest::Client;
     fn supabase_url(&self) -> &url::Url;
 
-    #[tracing::instrument(skip_all)]
-    fn execute<T: PostgRestQuery>(
+    fn build_request<T: PostgRestQuery>(
         &mut self,
         query: T,
-    ) -> Result<
-        impl std::future::Future<
-            Output = Result<
-                Result<T::Output, error::postgrest_error::Error>,
-                error::SupabaseClientError,
-            >,
-        >,
-        SupabaseClientError,
-    > {
+    ) -> Result<SupabaseRequest<T>, SupabaseClientError> {
         let query_builder = query.to_query()?;
         let method = query_builder.reqwest_method();
-        let m = method.clone();
+        let client = self.client();
+        let (path, body) = query_builder.build();
+        let url = self.supabase_url().join("/rest/v1/")?.join(path.as_str())?;
+        let request = client.request(method, url.as_str());
+        let request = if let Some(body) = body {
+            request.body(body)
+        } else {
+            request
+        }
+        .build()?;
 
-        let res = async {
-            let (path, body) = query_builder.build();
-            let url = self.supabase_url().join("/rest/v1/")?.join(path.as_str())?;
-            let json = body.as_ref().map(|x| String::from_utf8_lossy(x.as_ref()));
-            tracing::debug!(?json, "json");
-            tracing::debug!(?url, "url");
+        Ok(SupabaseRequest {
+            request,
+            client,
+            query: PhantomData,
+        })
+    }
+}
 
-            let client = self.client().await;
-            let request = client.request(method, url.as_str());
-            let request = if let Some(body) = body {
-                request.body(body)
-            } else {
-                request
+struct SupabaseRequest<T: PostgRestQuery> {
+    request: reqwest::Request,
+    client: reqwest::Client,
+    query: PhantomData<T>,
+}
+
+impl<T: PostgRestQuery> SupabaseRequest<T> {
+    pub async fn execute(self) -> Result<SupabaseResponse<T>, SupabaseClientError> {
+        let response = self.client.execute(self.request).await?;
+
+        Ok(SupabaseResponse {
+            response,
+            query: PhantomData,
+        })
+    }
+}
+
+struct SupabaseResponse<T: PostgRestQuery> {
+    response: reqwest::Response,
+    query: PhantomData<T>,
+}
+impl<T: PostgRestQuery> SupabaseResponse<T> {
+    pub async fn ok(self) -> Result<(), SupabaseClientError> {
+        self.response.error_for_status()?;
+        Ok(())
+    }
+
+    pub async fn json_err(
+        self,
+    ) -> Result<Result<(), error::postgrest_error::Error>, SupabaseClientError> {
+        let status = self.response.status();
+        let mut bytes = self.response.bytes().await?.to_vec();
+        if status.is_success() {
+            Ok(Ok(()))
+        } else {
+            {
+                let json = String::from_utf8_lossy(bytes.as_ref());
+                tracing::error!(
+                    status = %status,
+                    body = %json,
+                    "Failed to execute request"
+                );
             };
 
-            let response = client.execute(request.build()?).await?;
-            let status = response.status();
-            let mut bytes = response.bytes().await?.to_vec();
-            if status.is_success() {
-                {
-                    let json = String::from_utf8_lossy(bytes.as_ref());
-                    tracing::info!(response_body = ?json, "Response JSON");
-                };
-                let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
-                Ok(Ok(result))
-            } else {
-                {
-                    let json = String::from_utf8_lossy(bytes.as_ref());
-                    tracing::error!(
-                        status = %status,
-                        body = %json,
-                        "Failed to execute request"
-                    );
-                };
-
-                let error =
-                    simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
-                let error = error::postgrest_error::Error::from_error_response(error);
-                Ok(Err(error))
-            }
+            let error =
+                simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
+            let error = error::postgrest_error::Error::from_error_response(error);
+            Ok(Err(error))
         }
-        .instrument(info_span!("supabase api request", method =?m).or_current());
-        Ok(res)
+    }
+
+    pub async fn json(
+        self,
+    ) -> Result<Result<T::Output, error::postgrest_error::Error>, SupabaseClientError> {
+        let status = self.response.status();
+        let mut bytes = self.response.bytes().await?.to_vec();
+        if status.is_success() {
+            {
+                let json = String::from_utf8_lossy(bytes.as_ref());
+                tracing::info!(response_body = ?json, "Response JSON");
+            };
+            let result = simd_json::from_slice::<T::Output>(bytes.as_mut())?;
+            Ok(Ok(result))
+        } else {
+            {
+                let json = String::from_utf8_lossy(bytes.as_ref());
+                tracing::error!(
+                    status = %status,
+                    body = %json,
+                    "Failed to execute request"
+                );
+            };
+
+            let error =
+                simd_json::from_slice::<error::postgrest_error::ErrorResponse>(bytes.as_mut())?;
+            let error = error::postgrest_error::Error::from_error_response(error);
+            Ok(Err(error))
+        }
     }
 }
 
 impl SupabaseClientExt for AuthenticatedSupabaseClient {
-    async fn client(&mut self) -> reqwest::Client {
-        let client = self.client.read().await;
+    fn client(&mut self) -> reqwest::Client {
+        let client = self.client.read().expect("rw lock is poisoned");
         client.clone()
     }
 
@@ -91,7 +135,7 @@ impl SupabaseClientExt for AuthenticatedSupabaseClient {
 }
 
 impl SupabaseClientExt for SupabaseClient {
-    async fn client(&mut self) -> reqwest::Client {
+    fn client(&mut self) -> reqwest::Client {
         self.client.clone()
     }
 

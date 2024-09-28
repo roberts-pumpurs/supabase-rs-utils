@@ -1,8 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use supabase_auth::futures::StreamExt;
 use supabase_auth::TokenBody;
-use tokio::sync::RwLock;
 
 use super::authenticated::AuthenticatedSupabaseClient;
 use super::construct_client;
@@ -44,12 +43,13 @@ impl SupabaseClient {
 
             async move {
                 while let Some(Ok(auth_resp)) = auth.next().await {
-                    let mut w = client.write().await;
+                    let mut w = client.write().expect("lock poisoned");
                     if let Ok(new_client) = construct_client(&anon_key, &auth_resp.access_token) {
                         *w = new_client;
                     } else {
                         tracing::warn!("could not create a new client");
                     }
+                    drop(w);
                 }
             }
         });
