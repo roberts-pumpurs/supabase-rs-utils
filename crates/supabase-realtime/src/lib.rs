@@ -38,7 +38,7 @@ impl RealtimeConnection {
             .await
             .ok_or(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly)??;
         let (mut from_ws_sender, from_ws_receiver) =
-            tokio::sync::mpsc::channel::<simd_json::OwnedValue>(Self::WS_RECV_BUFFER);
+            tokio::sync::mpsc::channel(Self::WS_RECV_BUFFER);
         let (to_ws_sender, mut to_ws_reader) =
             tokio::sync::mpsc::channel::<Vec<u8>>(Self::WS_SEND_BUFFER);
         let (waker_sender, waker_receiver) = tokio::sync::oneshot::channel::<Waker>();
@@ -111,6 +111,7 @@ impl RealtimeConnection {
     }
 }
 
+#[tracing::instrument(skip_all, err)]
 async fn write_heartbeat(
     message_bytes: ProtocolMessage,
     con: &mut WsSupabaseConnection,
@@ -119,6 +120,7 @@ async fn write_heartbeat(
     write_loop(message_bytes, con).await
 }
 
+#[tracing::instrument(skip_all, err)]
 async fn write_loop(message_bytes: Vec<u8>, con: &mut WsSupabaseConnection) -> eyre::Result<()> {
     let payload = fastwebsockets::Payload::<'static>::Owned(message_bytes);
     let frame = Frame::<'static>::text(payload);
@@ -126,9 +128,10 @@ async fn write_loop(message_bytes: Vec<u8>, con: &mut WsSupabaseConnection) -> e
     Ok(())
 }
 
+#[tracing::instrument(skip_all, err)]
 async fn read_loop(
     mut item: fastwebsockets::Frame<'_>,
-    from_ws_sender: &mut tokio::sync::mpsc::Sender<simd_json::OwnedValue>,
+    from_ws_sender: &mut tokio::sync::mpsc::Sender<message::ProtocolMessage>,
 ) -> eyre::Result<()> {
     let from_slice = simd_json::from_slice(item.payload.to_mut());
     match from_slice {
@@ -148,7 +151,7 @@ pub struct LiveRealtimeConnection<
     T: Stream<Item = message::ProtocolMessage> + std::marker::Unpin,
 > {
     to_ws_sender: tokio::sync::mpsc::Sender<Vec<u8>>,
-    from_ws_receiver: tokio::sync::mpsc::Receiver<simd_json::OwnedValue>,
+    from_ws_receiver: tokio::sync::mpsc::Receiver<message::ProtocolMessage>,
     handle: tokio::task::JoinHandle<()>,
     oneshot: Option<tokio::sync::oneshot::Sender<Waker>>,
     #[pin]
@@ -175,7 +178,7 @@ impl<'a, T> Stream for LiveRealtimeConnection<'a, T>
 where
     T: Stream<Item = message::ProtocolMessage> + std::marker::Unpin,
 {
-    type Item = Result<simd_json::OwnedValue, error::SupabaseRealtimeError>;
+    type Item = Result<message::ProtocolMessage, error::SupabaseRealtimeError>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,

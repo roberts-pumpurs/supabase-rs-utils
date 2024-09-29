@@ -87,7 +87,7 @@ async fn main() {
     tx.send(message_to_send).await.unwrap();
     tracing::debug!("pooling realtime connection");
     while let Some(msg) = realtime.next().await {
-        tracing::debug!(?msg, "reading frame");
+        tracing::debug!(?msg, "reading protocol message");
     }
     tracing::error!("realtime connection exited");
 }
