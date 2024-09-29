@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use clap::Parser;
 use futures::StreamExt;
 use supabase_auth::redact::Secret;
-use supabase_realtime::message::{phx_join, PhoenixMessage, ProtocolMesseage};
+use supabase_realtime::message::{phx_join, PhoenixMessage, ProtocolMessage};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing_subscriber::EnvFilter;
 
@@ -61,7 +61,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let message_to_send = ProtocolMesseage::PhxJoin(PhoenixMessage {
+    let message_to_send = ProtocolMessage::PhxJoin(PhoenixMessage {
         topic: "realtime:db".to_string(),
         payload: phx_join::PhxJoin {
             config: phx_join::JoinConfig {

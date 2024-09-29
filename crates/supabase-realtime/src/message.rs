@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event")]
 #[serde(rename_all = "snake_case")]
-pub enum ProtocolMesseage {
+pub enum ProtocolMessage {
+    #[serde(rename = "heartbeat")]
+    Heartbeat(PhoenixMessage<heartbeat::Heartbeat>),
+    #[serde(rename = "access_token")]
+    AccessToken(PhoenixMessage<access_token::AccessToken>),
     #[serde(rename = "phx_join")]
     PhxJoin(PhoenixMessage<phx_join::PhxJoin>),
     #[serde(rename = "phx_reply")]
@@ -20,22 +24,29 @@ pub enum ProtocolMesseage {
     PostgresChanges(PhoenixMessage<postgres_changes::PostgresChangesPayload>),
 }
 
-impl ProtocolMesseage {
+impl ProtocolMessage {
     pub fn set_access_token(&mut self, new_access_token: &str) {
         match self {
-            ProtocolMesseage::PhxJoin(PhoenixMessage {
+            ProtocolMessage::PhxJoin(PhoenixMessage {
                 payload: phx_join::PhxJoin { access_token, .. },
                 ..
             }) => {
                 access_token.replace(new_access_token.to_owned());
             }
-            ProtocolMesseage::PhxReply(_) => {
+            ProtocolMessage::PhxReply(_) => {
                 // no op
             }
-            ProtocolMesseage::PresenceState(_) => {}
-            ProtocolMesseage::System(_) => {}
-            ProtocolMesseage::PhxError(_) => {}
-            ProtocolMesseage::PostgresChanges(_) => {}
+            ProtocolMessage::PresenceState(_) => {}
+            ProtocolMessage::System(_) => {}
+            ProtocolMessage::PhxError(_) => {}
+            ProtocolMessage::PostgresChanges(_) => {}
+            ProtocolMessage::Heartbeat(_) => {}
+            ProtocolMessage::AccessToken(PhoenixMessage {
+                payload: access_token::AccessToken { access_token },
+                ..
+            }) => {
+                *access_token = new_access_token.to_owned();
+            }
         }
     }
 }
@@ -108,7 +119,7 @@ pub mod phx_reply {
                   "topic": "realtime:db"
                 }        "#;
 
-            let expected_struct = ProtocolMesseage::PhxReply(PhoenixMessage {
+            let expected_struct = ProtocolMessage::PhxReply(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PhxReply::Error(ErrorReply {
                     reason: "Invalid JWT Token".to_string(),
@@ -119,7 +130,7 @@ pub mod phx_reply {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -148,7 +159,7 @@ pub mod phx_reply {
           "topic": "realtime:db"
         } "#;
 
-            let expected_struct: ProtocolMesseage = ProtocolMesseage::PhxReply(PhoenixMessage {
+            let expected_struct: ProtocolMessage = ProtocolMessage::PhxReply(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PhxReply::Ok(PhxReplyQuery {
                     postgres_changes: vec![PostgresChanges {
@@ -166,7 +177,7 @@ pub mod phx_reply {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -195,7 +206,7 @@ pub mod phx_reply {
                 "topic":  "realtime:db"
             } "#;
 
-            let expected_struct: ProtocolMesseage = ProtocolMesseage::PhxReply(PhoenixMessage {
+            let expected_struct: ProtocolMessage = ProtocolMessage::PhxReply(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PhxReply::Ok(PhxReplyQuery {
                     postgres_changes: vec![PostgresChanges {
@@ -213,7 +224,7 @@ pub mod phx_reply {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -311,7 +322,7 @@ pub mod phx_join {
         }
         "#;
 
-            let expected_struct = ProtocolMesseage::PhxJoin(PhoenixMessage {
+            let expected_struct = ProtocolMessage::PhxJoin(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: phx_join::PhxJoin {
                     config: phx_join::JoinConfig {
@@ -339,7 +350,7 @@ pub mod phx_join {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -369,7 +380,7 @@ pub mod presence_state {
             }
             "#;
 
-            let expected_struct = ProtocolMesseage::PresenceState(PhoenixMessage {
+            let expected_struct = ProtocolMessage::PresenceState(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PresenceState {},
                 ref_field: None,
@@ -379,7 +390,93 @@ pub mod presence_state {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+pub mod heartbeat {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Heartbeat;
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_presence_state_serialization() {
+            let json_data = r#"
+            {
+               "event": "heartbeat",
+               "topic": "phoenix",
+               "payload": {},
+               "ref": null
+            }
+            "#;
+
+            let expected_struct = ProtocolMessage::Heartbeat(PhoenixMessage {
+                topic: "phoenix".to_string(),
+                payload: Heartbeat,
+                ref_field: None,
+                join_ref: None,
+            });
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+pub mod access_token {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct AccessToken {
+        pub access_token: String,
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_presence_state_serialization() {
+            let json_data = r#"
+            {
+               "event": "access_token",
+               "topic": "realtime::something::something",
+               "payload":{
+                  "access_token": "ssss"
+               },
+               "ref": null
+            }
+            "#;
+
+            let expected_struct = ProtocolMessage::AccessToken(PhoenixMessage {
+                topic: "realtime::something::something".to_string(),
+                payload: AccessToken {
+                    access_token: "ssss".to_string(),
+                },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -424,7 +521,7 @@ pub mod system {
             }
             "#;
 
-            let expected_struct = ProtocolMesseage::System(PhoenixMessage {
+            let expected_struct = ProtocolMessage::System(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: system::System {
                     channel: "db".to_string(),
@@ -441,7 +538,7 @@ pub mod system {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -463,7 +560,7 @@ pub mod system {
             }
             "#;
 
-            let expected_struct = ProtocolMesseage::System(PhoenixMessage {
+            let expected_struct = ProtocolMessage::System(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: system::System {
                     channel: "db".to_string(),
@@ -480,7 +577,7 @@ pub mod system {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -502,7 +599,7 @@ pub mod system {
             }
             "#;
 
-            let expected_struct = ProtocolMesseage::System(PhoenixMessage {
+            let expected_struct = ProtocolMessage::System(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: system::System {
                     channel: "db".to_string(),
@@ -519,7 +616,7 @@ pub mod system {
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
@@ -549,7 +646,7 @@ pub mod phx_error {
             }
             "#;
 
-            let expected_struct = ProtocolMesseage::PhxError(PhoenixMessage {
+            let expected_struct = ProtocolMessage::PhxError(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PhxError {},
                 ref_field: Some("1".to_string()),
@@ -559,7 +656,7 @@ pub mod phx_error {
             let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
             dbg!(&deserialized_struct);
 
@@ -650,7 +747,7 @@ pub mod postgres_changes {
             }
             "#;
 
-            let expected_struct = ProtocolMesseage::PostgresChanges(PhoenixMessage {
+            let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
                 topic: "realtime:db".to_string(),
                 payload: PostgresChangesPayload {
                     data: Data {
@@ -693,7 +790,7 @@ pub mod postgres_changes {
             let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
 
-            let deserialized_struct: ProtocolMesseage =
+            let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
             dbg!(&deserialized_struct);
 

@@ -3,6 +3,7 @@ use std::task::{Poll, Waker};
 use connection::WsSupabaseConnection;
 use fastwebsockets::Frame;
 use futures::{Stream, StreamExt};
+use message::{PhoenixMessage, ProtocolMessage};
 use pin_project::pin_project;
 use supabase_auth::AuthResponse;
 
@@ -22,7 +23,7 @@ impl RealtimeConnection {
         Self { url }
     }
 
-    pub async fn connect<'a, S: Stream<Item = message::ProtocolMesseage> + Unpin>(
+    pub async fn connect<'a, S: Stream<Item = message::ProtocolMessage> + Unpin>(
         self,
         mut jwt_stream: supabase_auth::RefreshStream<'a>,
         input_stream: S,
@@ -42,17 +43,30 @@ impl RealtimeConnection {
             tokio::sync::mpsc::channel::<Vec<u8>>(Self::WS_SEND_BUFFER);
         let (waker_sender, waker_receiver) = tokio::sync::oneshot::channel::<Waker>();
         // todo: get the Waker object here rather than using oneshot channel for sending it
-        // tood: add periodic sending of heartbeats
 
         let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(20));
+            interval.reset();
             let con = &mut con;
             let Ok(waker) = waker_receiver.await else {
                 tracing::error!("waker dropped");
                 return;
             };
             tracing::trace!("waker received");
+            let hb_msg = message::ProtocolMessage::Heartbeat(PhoenixMessage {
+                topic: "phoneix".to_string(),
+                payload: message::heartbeat::Heartbeat,
+                ref_field: None,
+                join_ref: None,
+            });
             loop {
                 tokio::select! {
+                    _ = interval.tick() => {
+                        if write_heartbeat(hb_msg.clone(), con).await.is_err() {
+                            tracing::error!("hb error");
+                            break;
+                        }
+                    }
                     item = con.read_frame() => {
                         if let Ok(item) = item {
                             // read from ws and send to the async task
@@ -97,6 +111,14 @@ impl RealtimeConnection {
     }
 }
 
+async fn write_heartbeat(
+    message_bytes: ProtocolMessage,
+    con: &mut WsSupabaseConnection,
+) -> eyre::Result<()> {
+    let message_bytes = simd_json::to_vec(&message_bytes)?;
+    write_loop(message_bytes, con).await
+}
+
 async fn write_loop(message_bytes: Vec<u8>, con: &mut WsSupabaseConnection) -> eyre::Result<()> {
     let payload = fastwebsockets::Payload::<'static>::Owned(message_bytes);
     let frame = Frame::<'static>::text(payload);
@@ -123,7 +145,7 @@ async fn read_loop(
 #[pin_project]
 pub struct LiveRealtimeConnection<
     'a,
-    T: Stream<Item = message::ProtocolMesseage> + std::marker::Unpin,
+    T: Stream<Item = message::ProtocolMessage> + std::marker::Unpin,
 > {
     to_ws_sender: tokio::sync::mpsc::Sender<Vec<u8>>,
     from_ws_receiver: tokio::sync::mpsc::Receiver<simd_json::OwnedValue>,
@@ -138,7 +160,7 @@ pub struct LiveRealtimeConnection<
     #[pin]
     auth_response: AuthResponse,
     #[pin]
-    message_to_send: Option<message::ProtocolMesseage>,
+    message_to_send: Option<message::ProtocolMessage>,
 }
 
 #[derive(Debug)]
@@ -151,7 +173,7 @@ enum RealtimeConnectionState {
 
 impl<'a, T> Stream for LiveRealtimeConnection<'a, T>
 where
-    T: Stream<Item = message::ProtocolMesseage> + std::marker::Unpin,
+    T: Stream<Item = message::ProtocolMessage> + std::marker::Unpin,
 {
     type Item = Result<simd_json::OwnedValue, error::SupabaseRealtimeError>;
 
@@ -214,7 +236,7 @@ where
                         use tokio::sync::mpsc::error::TrySendError;
                         match this.to_ws_sender.try_send(msg) {
                             Ok(()) => {}
-                            Err(TrySendError::Full(msg)) => {
+                            Err(TrySendError::Full(_msg)) => {
                                 tracing::warn!("could not send message");
                                 this.message_to_send.set(Some(protocol_msg));
                             }
