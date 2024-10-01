@@ -264,9 +264,7 @@ fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {
     let _header = tokens.next();
     let body = tokens.next().ok_or(JwtParseError::InvalidJwt)?;
     let mut body = BASE64_STANDARD.decode(body)?;
-    tracing::info!("ddd");
     let body = simd_json::from_slice::<JWTClaims<NoCustomClaims>>(body.as_mut_slice())?;
-    tracing::info!("aaa");
 
     Ok(body)
 }

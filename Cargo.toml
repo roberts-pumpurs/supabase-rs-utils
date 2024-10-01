@@ -40,6 +40,7 @@ mod_module_files = "allow"
 # our cretes
 supabase-mock = { path = "crates/supabase-mock" }
 supabase-auth = { path = "crates/supabase-auth" }
+postgrest-error = { path = "crates/postgrest-error" }
 
 # Async
 futures-concurrency = "7.4"

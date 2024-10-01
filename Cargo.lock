@@ -1514,6 +1514,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "postgrest-error"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2221,22 +2228,6 @@ dependencies = [
  "simd-json",
  "supabase-mock",
  "test-log",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
-name = "supabase-client"
-version = "0.1.0"
-dependencies = [
- "clap",
- "reqwest",
- "serde",
- "simd-json",
- "supabase-auth",
  "thiserror",
  "tokio",
  "tracing",
