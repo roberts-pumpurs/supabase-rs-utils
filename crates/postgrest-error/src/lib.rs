@@ -1,4 +1,3 @@
-
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -7,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
 pub struct ErrorResponse {
     pub message: String,
+    #[serde(default)]
     pub code: String,
     pub details: Option<String>,
     pub hint: Option<String>,
@@ -717,6 +717,22 @@ mod tests {
         assert_eq!(
             std_error.to_string(),
             "PostgresError [NotNullViolation]: Some error"
+        );
+    }
+
+    #[test]
+    fn non_standard_error() {
+        let error_response = ErrorResponse {
+            message: "no Route matched with those values".to_string(),
+            code: "".to_string(),
+            details: None,
+            hint: None,
+        };
+        let error = Error::from_error_response(error_response);
+        let std_error: &dyn std::error::Error = &error;
+        assert_eq!(
+            std_error.to_string(),
+            "CustomError []: no Route matched with those values"
         );
     }
 }
