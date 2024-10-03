@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Represents the error response returned by PostgREST.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
 pub struct ErrorResponse {
+    #[serde(default)]
     pub message: String,
     #[serde(default)]
     pub code: String,
