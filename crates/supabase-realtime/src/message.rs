@@ -12,6 +12,8 @@ pub enum ProtocolMessage {
     AccessToken(PhoenixMessage<access_token::AccessToken>),
     #[serde(rename = "phx_join")]
     PhxJoin(PhoenixMessage<phx_join::PhxJoin>),
+    #[serde(rename = "phx_close")]
+    PhxClose(PhoenixMessage<phx_close::PhxClose>),
     #[serde(rename = "phx_reply")]
     PhxReply(PhoenixMessage<phx_reply::PhxReply>),
     #[serde(rename = "presence_state")]
@@ -47,6 +49,7 @@ impl ProtocolMessage {
             }) => {
                 *access_token = new_access_token.to_owned();
             }
+            ProtocolMessage::PhxClose(_) => {}
         }
     }
 }
@@ -223,7 +226,6 @@ pub mod phx_reply {
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
-
             let deserialized_struct: ProtocolMessage =
                 simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
 
@@ -469,6 +471,46 @@ pub mod access_token {
                 payload: AccessToken {
                     access_token: "ssss".to_string(),
                 },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+pub mod phx_close {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct PhxClose {}
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_presence_state_serialization() {
+            let json_data = r#"
+            {
+               "event": "phx_close",
+               "topic": "realtime::something::something",
+               "payload":{},
+               "ref": null
+            }
+            "#;
+
+            let expected_struct = ProtocolMessage::PhxClose(PhoenixMessage {
+                topic: "realtime::something::something".to_string(),
+                payload: PhxClose {},
                 ref_field: None,
                 join_ref: None,
             });
