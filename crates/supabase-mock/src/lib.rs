@@ -114,10 +114,9 @@ pub fn make_jwt(expires_in: Duration) -> String {
 }
 
 fn current_ts() -> Duration {
-    let current_ts = SystemTime::now()
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    current_ts
+        .expect("Time went backwards")
 }
 
 fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {

@@ -1,19 +1,13 @@
 #![feature(result_flattening)]
 
-use std::borrow::Cow;
-use std::future::Future;
 use std::ops::{Div, Mul};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use base64::prelude::*;
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, Stream};
-use jwt_simple::claims::{JWTClaims, NoCustomClaims};
-use pin_project::pin_project;
+use futures::Stream;
 use reqwest::header::{HeaderMap, InvalidHeaderValue};
-use reqwest::{Client, Response};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use simd_json::json;
 use thiserror::Error;
