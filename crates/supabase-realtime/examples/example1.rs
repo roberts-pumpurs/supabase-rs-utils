@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::time::Duration;
 
 use clap::Parser;
 use futures::StreamExt;
@@ -48,11 +49,16 @@ async fn main() {
 
     let args = Args::parse();
 
-    let supabase_auth = SupabaseAuth::new(args.supabase_api_url.clone(), args.annon_key);
+    let supabase_auth = SupabaseAuth::new(
+        args.supabase_api_url.clone(),
+        args.annon_key,
+        5,
+        Duration::from_secs(3),
+    );
     let token_refresh = supabase_auth
         .sign_in(supabase_auth::TokenBody {
-            email: Cow::Borrowed(args.email.as_str()),
-            password: Secret::new(Cow::Borrowed(args.pass.as_str())),
+            email: args.email.as_str(),
+            password: args.pass.as_str(),
         })
         .unwrap();
     let (tx, rx) = tokio::sync::mpsc::channel(5);

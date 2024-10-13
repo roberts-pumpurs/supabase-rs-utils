@@ -23,6 +23,7 @@ impl RealtimeConnection {
         Self { url }
     }
 
+    // todo work on this shit
     pub async fn connect<'a, S: Stream<Item = message::ProtocolMessage> + Unpin>(
         self,
         mut jwt_stream: supabase_auth::RefreshStream<'a>,

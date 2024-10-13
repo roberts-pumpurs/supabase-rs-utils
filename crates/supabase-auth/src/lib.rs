@@ -1,15 +1,15 @@
 #![feature(result_flattening)]
 
-mod jwt_expiry;
 use std::borrow::Cow;
+use std::future::Future;
 use std::ops::{Div, Mul};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::prelude::*;
+use futures::stream::FuturesUnordered;
 use futures::{FutureExt, Stream};
-use jwt_expiry::JwtExpiry;
 use jwt_simple::claims::{JWTClaims, NoCustomClaims};
 use pin_project::pin_project;
 use reqwest::header::{HeaderMap, InvalidHeaderValue};
@@ -17,6 +17,7 @@ use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use simd_json::json;
 use thiserror::Error;
+use tokio::task::JoinSet;
 pub use {futures, redact, url};
 
 pub const SUPABASE_KEY: &str = "apikey";
@@ -24,12 +25,24 @@ pub const SUPABASE_KEY: &str = "apikey";
 pub struct SupabaseAuth {
     url: url::Url,
     api_key: String,
+    max_reconnect_attempts: u8,
+    reconnect_intereval: std::time::Duration,
 }
 
 impl SupabaseAuth {
     /// Creates a new [`SupabaseAuth`].
-    pub fn new(url: url::Url, api_key: String) -> Self {
-        Self { url, api_key }
+    pub fn new(
+        url: url::Url,
+        api_key: String,
+        max_reconnect_attempts: u8,
+        reconnect_intereval: std::time::Duration,
+    ) -> Self {
+        Self {
+            url,
+            api_key,
+            max_reconnect_attempts,
+            reconnect_intereval,
+        }
     }
 
     /// Creates a Stream that will attempt to log in to supabase and periodically refresh the JWT
@@ -55,173 +68,159 @@ impl SupabaseAuth {
             api_key: self.api_key.clone(),
             client,
             token_body: params,
-            state: RefreshStreamState::PasswordLogin,
+            max_reconnect_attempts: self.max_reconnect_attempts,
+            current_reconnect_attempts: 0,
+            background_tasks: JoinSet::new(),
+            reconnect_intereval: self.reconnect_intereval,
         })
     }
 }
 
 pub struct TokenBody<'a> {
-    pub email: Cow<'a, str>,
-    pub password: redact::Secret<Cow<'a, str>>,
+    pub email: &'a str,
+    pub password: &'a str,
 }
 
-impl<'a> TokenBody<'a> {
-    pub fn new(email: &'a str, password: &'a str) -> Self {
-        Self {
-            email: Cow::Borrowed(email),
-            password: redact::Secret::new(Cow::Borrowed(password)),
-        }
-    }
-}
-
-#[pin_project]
 pub struct RefreshStream<'a> {
     password_url: url::Url,
     refresh_url: url::Url,
     pub api_key: String,
     client: Client,
     token_body: TokenBody<'a>,
-    #[pin]
-    state: RefreshStreamState,
-}
-
-#[pin_project]
-enum RefreshStreamState {
-    PasswordLogin,
-    WaitingForResponse(
-        #[pin] futures::future::BoxFuture<'static, Result<Response, reqwest::Error>>,
-    ),
-    ParseJson(#[pin] futures::future::BoxFuture<'static, Result<AuthResponse, RefreshStreamError>>),
-    WaitForExpiry {
-        refresh_token: String,
-        #[pin]
-        access_expiry: JwtExpiry,
-    },
+    max_reconnect_attempts: u8,
+    current_reconnect_attempts: u8,
+    reconnect_intereval: std::time::Duration,
+    background_tasks: JoinSet<Result<AuthResponse, RefreshStreamError>>,
 }
 
 impl<'a> Stream for RefreshStream<'a> {
     type Item = Result<AuthResponse, RefreshStreamError>;
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "poll functions tend to become like this"
-    )]
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut this = self.project();
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.background_tasks.poll_join_next(cx) {
+            Poll::Ready(Some(Ok(item))) => {
+                match &item {
+                    Ok(access_token) => {
+                        // spawn refresh task
+                        let request_future = self
+                            .client
+                            .post(self.refresh_url.clone())
+                            .json(&json!({
+                                "refresh_token": access_token.refresh_token,
+                            }))
+                            .build();
 
-        loop {
-            match this.state.as_mut().get_mut() {
-                RefreshStreamState::PasswordLogin => {
-                    let request_future = this
-                        .client
-                        .post(this.password_url.clone())
-                        .json(&json!({
-                            "email": this.token_body.email,
-                            "password": this.token_body.password.expose_secret(),
-                        }))
-                        .send()
-                        .boxed();
+                        let client = self.client.clone();
+                        let expires_at_ts = access_token.expires_in;
 
-                    this.state
-                        .set(RefreshStreamState::WaitingForResponse(request_future));
-                }
-                RefreshStreamState::WaitingForResponse(fut) => {
-                    match std::task::ready!(fut.poll_unpin(cx)) {
-                        Ok(res) => match res.error_for_status() {
-                            Ok(res) => {
-                                let json_future = res
-                                    .bytes()
-                                    .map(|x| {
-                                        x.map(|reqwest_bytes| {
-                                            let span =
-                                                tracing::debug_span!("decoding Auth Response");
-                                            let _g = span.entered();
-                                            let mut bytes = reqwest_bytes.to_vec();
-                                            let response = String::from_utf8_lossy(bytes.as_ref());
-                                            tracing::debug!(response = ?response, "auth resp");
-                                            simd_json::from_slice::<AuthResponse>(&mut bytes)
-                                                .map_err(RefreshStreamError::from)
-                                        })
-                                        .map_err(RefreshStreamError::from)
-                                        .flatten()
-                                    })
-                                    .boxed();
-                                this.state.set(RefreshStreamState::ParseJson(json_future));
-                            }
-                            Err(err) => {
-                                this.state.set(RefreshStreamState::PasswordLogin);
-                                return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))));
-                            }
-                        },
-                        Err(err) => {
-                            this.state.set(RefreshStreamState::PasswordLogin);
-                            return Poll::Ready(Some(Err(RefreshStreamError::Reqwest(err))))
-                        }
+                        let task = async move {
+                            let request = request_future.map_err(RefreshStreamError::Reqwest)?;
+                            let refresh_in = calculate_refresh_sleep_duration(expires_at_ts);
+                            tokio::time::sleep(refresh_in).await;
+                            auth_request(client, request).await
+                        };
+                        self.current_reconnect_attempts = 0;
+                        self.background_tasks.spawn(task);
                     }
-                }
-                RefreshStreamState::ParseJson(fut) => match std::task::ready!(fut.poll_unpin(cx)) {
-                    Ok(res) => match parse_jwt(&res.access_token) {
-                        Ok(access_token) => {
-                            let Some(expires_at) = access_token.expires_at else {
-                                tracing::error!("`expires_at` field not present");
-                                return Poll::Ready(None)
-                            };
-                            let expires_at_ts = expires_at.as_secs();
-                            // Get the current time as Unix timestamp
-                            let current_ts = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .expect("Time went backwards")
-                                .as_secs();
-
-                            // Calculate the duration until expiration
-                            let valid_for = if expires_at_ts > current_ts {
-                                // and divide by `2/3` just to be on the safe side
-                                Duration::from_secs(expires_at_ts - current_ts)
-                                    .mul(3)
-                                    .div(2)
-                            } else {
-                                Duration::from_secs(1)
-                            };
-                            let access_jwt_expiry = JwtExpiry::new(valid_for);
-                            this.state.set(RefreshStreamState::WaitForExpiry {
-                                refresh_token: res.refresh_token.clone(),
-                                access_expiry: access_jwt_expiry,
-                            });
-
-                            cx.waker().wake_by_ref();
-                            return Poll::Ready(Some(Ok(res)));
-                        }
-                        Err(err) => {
-                            this.state.set(RefreshStreamState::PasswordLogin);
-                            return Poll::Ready(Some(Err(RefreshStreamError::JwtParse(err))))
-                        }
-                    },
                     Err(err) => {
-                        this.state.set(RefreshStreamState::PasswordLogin);
-                        return Poll::Ready(Some(Err(err)))
-                    }
-                },
-                RefreshStreamState::WaitForExpiry {
-                    refresh_token,
-                    access_expiry,
-                } => {
-                    let _res = std::task::ready!(access_expiry.poll_unpin(cx));
-                    let request_future = this
-                        .client
-                        .post(this.refresh_url.clone())
-                        .json(&json!({
-                            "refresh_token": refresh_token,
-                        }))
-                        .send()
-                        .boxed();
+                        if self.current_reconnect_attempts >= self.max_reconnect_attempts {
+                            tracing::error!(?err, "supabase login max reconnect attempts exceeded");
+                            return Poll::Ready(None)
+                        }
 
-                    this.state
-                        .set(RefreshStreamState::WaitingForResponse(request_future));
-                    continue;
+                        // if we got an error, then we spawn late-login
+                        tracing::warn!(
+                            self.current_reconnect_attempts,
+                            self.max_reconnect_attempts,
+                            "Attempting another login"
+                        );
+                        let request_future = self.login_request();
+
+                        let client = self.client.clone();
+                        let reconnect_interval = self.reconnect_intereval.clone();
+                        let task = async move {
+                            tokio::time::sleep(reconnect_interval).await;
+                            let request = request_future.map_err(RefreshStreamError::Reqwest)?;
+                            auth_request(client, request).await
+                        };
+                        self.background_tasks.spawn(task);
+                        self.current_reconnect_attempts += 1;
+                    }
                 }
+                return Poll::Ready(Some(item));
             }
+            Poll::Ready(Some(Err(join_error))) => {
+                tracing::error!(?join_error, "internal join error");
+                return Poll::Ready(None);
+            }
+            Poll::Ready(None) => {
+                // if we have no tasks, then try to log in
+                tracing::debug!("attempting to log in");
+                let request_future = self.login_request();
+                let client = self.client.clone();
+                let task = async move {
+                    let request = request_future.map_err(RefreshStreamError::Reqwest)?;
+                    auth_request(client, request).await
+                };
+                self.current_reconnect_attempts += 1;
+                self.background_tasks.spawn(task);
+                return Poll::Pending;
+            }
+            Poll::Pending => return Poll::Pending,
         }
     }
+}
+
+impl<'a> RefreshStream<'a> {
+    fn login_request(&self) -> Result<reqwest::Request, reqwest::Error> {
+        let request_future = self
+            .client
+            .post(self.password_url.clone())
+            .json(&json!({
+                "email": self.token_body.email,
+                "password": self.token_body.password,
+            }))
+            .build();
+        request_future
+    }
+}
+
+async fn auth_request(
+    client: Client,
+    request: reqwest::Request,
+) -> Result<AuthResponse, RefreshStreamError> {
+    let result = client.execute(request).await?;
+    if result.status().is_success() {
+        let mut vec = result.bytes().await?.to_vec();
+        {
+            let response = String::from_utf8_lossy(&vec);
+            tracing::debug!(?response, "auth response");
+        }
+        let result = simd_json::from_slice::<AuthResponse>(&mut vec)?;
+        return Ok(result)
+    }
+    let error = result.text().await?;
+    tracing::warn!(?error, "auth erorr response");
+    Err(RefreshStreamError::SupabaseApiError(error))
+}
+
+fn calculate_refresh_sleep_duration(expires_at_ts: u64) -> Duration {
+    // Get the current time as Unix timestamp
+    let current_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
+
+    // Calculate the duration until expiration
+    let refresh_in = if expires_at_ts > current_ts {
+        // and divide by `2/3` just to be on the safe side
+        Duration::from_secs(expires_at_ts - current_ts)
+            .mul(3)
+            .div(2)
+    } else {
+        Duration::from_secs(1)
+    };
+    refresh_in
 }
 
 #[derive(Debug, Error)]
@@ -230,8 +229,8 @@ pub enum RefreshStreamError {
     Reqwest(#[from] reqwest::Error),
     #[error("JSON parse error: {0}")]
     JsonParse(#[from] simd_json::Error),
-    #[error("JWT parse error: {0}")]
-    JwtParse(#[from] JwtParseError),
+    #[error("Supabase API erorr: {0}")]
+    SupabaseApiError(String),
 }
 
 #[derive(Debug, Error)]
@@ -246,28 +245,6 @@ pub enum SignInError {
     UrlParseError(#[from] url::ParseError),
 }
 
-#[derive(Debug, Error)]
-pub enum JwtParseError {
-    #[error("Base64 decode error: {0}")]
-    Base64Decode(#[from] base64::DecodeError),
-
-    #[error("Invalid JWT")]
-    InvalidJwt,
-
-    #[error("JSON parse error: {0}")]
-    JsonParse(#[from] simd_json::Error),
-}
-
-#[tracing::instrument(err, skip_all)]
-fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {
-    let mut tokens = token.split('.');
-    let _header = tokens.next();
-    let body = tokens.next().ok_or(JwtParseError::InvalidJwt)?;
-    let mut body = BASE64_STANDARD.decode(body)?;
-    let body = simd_json::from_slice::<JWTClaims<NoCustomClaims>>(body.as_mut_slice())?;
-
-    Ok(body)
-}
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AuthResponse {
     pub access_token: String,
@@ -284,8 +261,7 @@ pub struct User {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::borrow::Cow;
+mod auth_tests {
     use std::time::Duration;
 
     use futures::StreamExt;
@@ -298,16 +274,26 @@ mod tests {
 
     use super::*;
 
+    fn ms(ms: u32) -> Duration {
+        Duration::from_millis(ms.into())
+    }
+
     #[rstest]
     #[test(tokio::test)]
+    #[timeout(ms(5_000))]
     async fn test_successful_password_login() {
         let access_token = make_jwt(Duration::from_secs(3600));
         let mut m = SupabaseMockServer::new().await;
         let m = m.register_jwt_password(&access_token);
-        let supabase_auth = SupabaseAuth::new(m.server_url(), "api-key".to_string());
+        let supabase_auth = SupabaseAuth::new(
+            m.server_url(),
+            "api-key".to_string(),
+            1,
+            Duration::from_secs(1),
+        );
         let token_body = TokenBody {
-            email: Cow::Borrowed("user@example.com"),
-            password: redact::Secret::new(Cow::Borrowed("password")),
+            email: "user@example.com",
+            password: "password",
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -327,6 +313,7 @@ mod tests {
 
     #[rstest]
     #[test(tokio::test)]
+    #[timeout(ms(100))]
     async fn test_password_login_error() {
         let mut m = SupabaseMockServer::new().await;
         let _m1 = m
@@ -336,10 +323,15 @@ mod tests {
             .with_status(400)
             .create();
 
-        let supabase_auth = SupabaseAuth::new(m.server_url(), "api-key".to_string());
+        let supabase_auth = SupabaseAuth::new(
+            m.server_url(),
+            "api-key".to_string(),
+            1,
+            Duration::from_secs(1),
+        );
         let token_body = TokenBody {
-            email: Cow::Borrowed("user@example.com"),
-            password: redact::Secret::new(Cow::Borrowed("password")),
+            email: ("user@example.com"),
+            password: "password",
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -354,30 +346,7 @@ mod tests {
 
     #[rstest]
     #[test(tokio::test)]
-    async fn test_jwt_parsing_error() {
-        let mut m = SupabaseMockServer::new().await;
-        let m = m.register_jwt_password(&"invalid-jwt");
-        let supabase_auth = SupabaseAuth::new(m.server_url(), "api-key".to_string());
-        let token_body = TokenBody {
-            email: Cow::Borrowed("user@example.com"),
-            password: redact::Secret::new(Cow::Borrowed("password")),
-        };
-
-        let mut stream = supabase_auth.sign_in(token_body).unwrap();
-
-        let response = timeout(Duration::from_secs(5), stream.next())
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert!(response.is_err());
-
-        dbg!(&response);
-        assert!(matches!(response, Err(RefreshStreamError::JwtParse(_))));
-    }
-
-    #[rstest]
-    #[test(tokio::test)]
+    #[timeout(ms(100))]
     async fn test_retry_on_login_error() {
         let mut m = SupabaseMockServer::new().await;
         let _m1 = m
@@ -386,10 +355,15 @@ mod tests {
             .match_query(Matcher::Regex("grant_type=password".to_string()))
             .with_status(500)
             .create();
-        let supabase_auth = SupabaseAuth::new(m.server_url(), "api-key".to_string());
+        let supabase_auth = SupabaseAuth::new(
+            m.server_url(),
+            "api-key".to_string(),
+            1,
+            Duration::from_secs(1),
+        );
         let token_body = TokenBody {
-            email: Cow::Borrowed("user@example.com"),
-            password: redact::Secret::new(Cow::Borrowed("password")),
+            email: "user@example.com",
+            password: "password",
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -411,6 +385,7 @@ mod tests {
 
     #[rstest]
     #[test_log::test(tokio::test)]
+    #[timeout(ms(100))]
     async fn test_use_refresh_token_on_expiry() {
         // setup
         let mut m = SupabaseMockServer::new().await;
@@ -419,12 +394,17 @@ mod tests {
 
         let new_access_token = make_jwt(Duration::from_secs(3600));
         m.register_jwt_refresh(&new_access_token);
-        let supabase_auth = SupabaseAuth::new(m.server_url(), "api-key".to_string());
+        let supabase_auth = SupabaseAuth::new(
+            m.server_url(),
+            "api-key".to_string(),
+            1,
+            Duration::from_secs(1),
+        );
 
         // action
         let token_body = TokenBody {
-            email: Cow::Borrowed("user@example.com"),
-            password: redact::Secret::new(Cow::Borrowed("password")),
+            email: "user@example.com",
+            password: "password",
         };
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
