@@ -7,6 +7,8 @@ edition = "2021"
 mockito.workspace = true
 jwt-simple.workspace = true
 simd-json.workspace = true
+thiserror.workspace = true
+base64.workspace = true
 url.workspace = true
 
 [lints]

@@ -26,7 +26,7 @@ pub struct SupabaseAuth {
     url: url::Url,
     api_key: String,
     max_reconnect_attempts: u8,
-    reconnect_intereval: std::time::Duration,
+    reconnect_interval: std::time::Duration,
 }
 
 impl SupabaseAuth {
@@ -35,13 +35,13 @@ impl SupabaseAuth {
         url: url::Url,
         api_key: String,
         max_reconnect_attempts: u8,
-        reconnect_intereval: std::time::Duration,
+        reconnect_interval: std::time::Duration,
     ) -> Self {
         Self {
             url,
             api_key,
             max_reconnect_attempts,
-            reconnect_intereval,
+            reconnect_interval,
         }
     }
 
@@ -71,7 +71,7 @@ impl SupabaseAuth {
             max_reconnect_attempts: self.max_reconnect_attempts,
             current_reconnect_attempts: 0,
             background_tasks: JoinSet::new(),
-            reconnect_intereval: self.reconnect_intereval,
+            reconnect_interval: self.reconnect_interval,
         })
     }
 }
@@ -89,8 +89,61 @@ pub struct RefreshStream<'a> {
     token_body: TokenBody<'a>,
     max_reconnect_attempts: u8,
     current_reconnect_attempts: u8,
-    reconnect_intereval: std::time::Duration,
+    reconnect_interval: std::time::Duration,
     background_tasks: JoinSet<Result<AuthResponse, RefreshStreamError>>,
+}
+
+impl<'a> RefreshStream<'a> {
+    fn login_request(&self) -> Result<reqwest::Request, reqwest::Error> {
+        self.client
+            .post(self.password_url.clone())
+            .json(&json!({
+                "email": self.token_body.email,
+                "password": self.token_body.password,
+            }))
+            .build()
+    }
+
+    fn spawn_login_task(&mut self, delay: Option<std::time::Duration>) {
+        let request = match self.login_request() {
+            Ok(req) => req,
+            Err(e) => {
+                tracing::error!(?e, "Failed to build login request");
+                return;
+            }
+        };
+        let client = self.client.clone();
+        let task = async move {
+            if let Some(duration) = delay {
+                tokio::time::sleep(duration).await;
+            }
+            auth_request(client, request).await
+        };
+        self.background_tasks.spawn(task);
+    }
+
+    fn spawn_refresh_task(&mut self, access_token: &AuthResponse) {
+        let request = match self
+            .client
+            .post(self.refresh_url.clone())
+            .json(&json!({ "refresh_token": access_token.refresh_token }))
+            .build()
+        {
+            Ok(req) => req,
+            Err(e) => {
+                tracing::error!(?e, "Failed to build refresh request");
+                return;
+            }
+        };
+        let client = self.client.clone();
+        let expires_at_ts = access_token.expires_in;
+        let task = async move {
+            let refresh_in = calculate_refresh_sleep_duration(expires_at_ts);
+            tokio::time::sleep(refresh_in).await;
+            auth_request(client, request).await
+        };
+        self.background_tasks.spawn(task);
+    }
 }
 
 impl<'a> Stream for RefreshStream<'a> {
@@ -101,87 +154,53 @@ impl<'a> Stream for RefreshStream<'a> {
             Poll::Ready(Some(Ok(item))) => {
                 match &item {
                     Ok(access_token) => {
-                        // spawn refresh task
-                        let request_future = self
-                            .client
-                            .post(self.refresh_url.clone())
-                            .json(&json!({
-                                "refresh_token": access_token.refresh_token,
-                            }))
-                            .build();
-
-                        let client = self.client.clone();
-                        let expires_at_ts = access_token.expires_in;
-
-                        let task = async move {
-                            let request = request_future.map_err(RefreshStreamError::Reqwest)?;
-                            let refresh_in = calculate_refresh_sleep_duration(expires_at_ts);
-                            tokio::time::sleep(refresh_in).await;
-                            auth_request(client, request).await
-                        };
+                        // Reset reconnect attempts on success
                         self.current_reconnect_attempts = 0;
-                        self.background_tasks.spawn(task);
+                        // Spawn a task to refresh the token before it expires
+                        self.spawn_refresh_task(access_token);
+                        cx.waker().wake_by_ref();
                     }
                     Err(err) => {
                         if self.current_reconnect_attempts >= self.max_reconnect_attempts {
-                            tracing::error!(?err, "supabase login max reconnect attempts exceeded");
-                            return Poll::Ready(None)
+                            tracing::error!(
+                                ?err,
+                                "Max reconnect attempts exceeded; terminating stream"
+                            );
+                            return Poll::Ready(None);
                         }
-
-                        // if we got an error, then we spawn late-login
                         tracing::warn!(
-                            self.current_reconnect_attempts,
-                            self.max_reconnect_attempts,
-                            "Attempting another login"
+                            attempts = self.current_reconnect_attempts,
+                            max_attempts = self.max_reconnect_attempts,
+                            "Login failed; retrying"
                         );
-                        let request_future = self.login_request();
-
-                        let client = self.client.clone();
-                        let reconnect_interval = self.reconnect_intereval.clone();
-                        let task = async move {
-                            tokio::time::sleep(reconnect_interval).await;
-                            let request = request_future.map_err(RefreshStreamError::Reqwest)?;
-                            auth_request(client, request).await
-                        };
-                        self.background_tasks.spawn(task);
                         self.current_reconnect_attempts += 1;
+                        // Spawn a login task with a delay
+                        let duration = self.reconnect_interval;
+                        self.spawn_login_task(Some(duration));
+                        cx.waker().wake_by_ref();
                     }
                 }
                 return Poll::Ready(Some(item));
             }
             Poll::Ready(Some(Err(join_error))) => {
-                tracing::error!(?join_error, "internal join error");
+                tracing::error!(?join_error, "Task panicked; terminating stream");
                 return Poll::Ready(None);
             }
             Poll::Ready(None) => {
-                // if we have no tasks, then try to log in
-                tracing::debug!("attempting to log in");
-                let request_future = self.login_request();
-                let client = self.client.clone();
-                let task = async move {
-                    let request = request_future.map_err(RefreshStreamError::Reqwest)?;
-                    auth_request(client, request).await
-                };
+                // No tasks left; start the initial login attempt
+                if self.current_reconnect_attempts >= self.max_reconnect_attempts {
+                    tracing::error!("Max reconnect attempts exceeded; terminating stream");
+                    return Poll::Ready(None);
+                }
+                tracing::debug!("No tasks running; attempting initial login");
                 self.current_reconnect_attempts += 1;
-                self.background_tasks.spawn(task);
+                self.spawn_login_task(None);
+                // Yield control to allow the task to start
+                cx.waker().wake_by_ref();
                 return Poll::Pending;
             }
             Poll::Pending => return Poll::Pending,
         }
-    }
-}
-
-impl<'a> RefreshStream<'a> {
-    fn login_request(&self) -> Result<reqwest::Request, reqwest::Error> {
-        let request_future = self
-            .client
-            .post(self.password_url.clone())
-            .json(&json!({
-                "email": self.token_body.email,
-                "password": self.token_body.password,
-            }))
-            .build();
-        request_future
     }
 }
 
@@ -326,7 +345,7 @@ mod auth_tests {
         let supabase_auth = SupabaseAuth::new(
             m.server_url(),
             "api-key".to_string(),
-            1,
+            2,
             Duration::from_secs(1),
         );
         let token_body = TokenBody {
@@ -343,6 +362,37 @@ mod auth_tests {
 
         assert!(response.is_err());
     }
+    #[rstest]
+    #[test(tokio::test)]
+    #[timeout(ms(100))]
+    async fn test_password_login_error_no_retries() {
+        let mut m = SupabaseMockServer::new().await;
+        let _m1 = m
+            .mockito_server
+            .mock("POST", "/auth/v1/token")
+            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .with_status(400)
+            .create();
+
+        let supabase_auth = SupabaseAuth::new(
+            m.server_url(),
+            "api-key".to_string(),
+            1,
+            Duration::from_secs(1),
+        );
+        let token_body = TokenBody {
+            email: ("user@example.com"),
+            password: "password",
+        };
+
+        let mut stream = supabase_auth.sign_in(token_body).unwrap();
+
+        let response = timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap();
+
+        assert!(response.is_none());
+    }
 
     #[rstest]
     #[test(tokio::test)]
@@ -358,8 +408,8 @@ mod auth_tests {
         let supabase_auth = SupabaseAuth::new(
             m.server_url(),
             "api-key".to_string(),
-            1,
-            Duration::from_secs(1),
+            2,
+            Duration::from_millis(20),
         );
         let token_body = TokenBody {
             email: "user@example.com",
@@ -385,11 +435,11 @@ mod auth_tests {
 
     #[rstest]
     #[test_log::test(tokio::test)]
-    #[timeout(ms(100))]
+    #[timeout(ms(3_000))]
     async fn test_use_refresh_token_on_expiry() {
         // setup
         let mut m = SupabaseMockServer::new().await;
-        let first_access_token = make_jwt(Duration::from_secs(1));
+        let first_access_token = make_jwt(Duration::from_millis(5));
         m.register_jwt_password(&first_access_token);
 
         let new_access_token = make_jwt(Duration::from_secs(3600));
@@ -398,7 +448,7 @@ mod auth_tests {
             m.server_url(),
             "api-key".to_string(),
             1,
-            Duration::from_secs(1),
+            Duration::from_millis(20),
         );
 
         // action

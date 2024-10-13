@@ -2021,9 +2021,11 @@ dependencies = [
 name = "supabase-mock"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "jwt-simple",
  "mockito",
  "simd-json",
+ "thiserror",
  "url",
 ]
 
