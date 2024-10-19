@@ -4,45 +4,162 @@ use std::task::Poll;
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
 use futures::{future, pin_mut, FutureExt, SinkExt, Stream, StreamExt};
-use supabase_auth::AuthResponse;
+use supabase_auth::{AuthResponse, LoginCredentials};
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::timeout;
 use tokio_stream::wrappers::IntervalStream;
 
 use crate::connection::WsSupabaseConnection;
-use crate::message::ProtocolMessage;
+use crate::error::SupabaseRealtimeError;
+use crate::message::access_token::AccessToken;
+use crate::message::{phx_join, ProtocolMessage};
 use crate::{connection, error, message};
 
-pub struct RealtimeConnection {
-    url: url::Url,
+pub struct RealtimeConnectionClient {
+    tx: futures::channel::mpsc::UnboundedSender<phx_join::PhxJoin>,
 }
+
+impl RealtimeConnectionClient {
+    pub async fn subscribe_to_changes(
+        &mut self,
+        join: phx_join::PhxJoin,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        self.tx.send(join).await
+    }
+}
+pub struct RealtimeConnection {
+    config: supabase_auth::SupabaseAuthConfig,
+}
+
+type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
 
 impl RealtimeConnection {
     const HEARTBEAT_PERIOD: std::time::Duration = std::time::Duration::from_secs(20);
+    const DB_UPDATE_TOPIC: &str = "realtime:table-db-changes";
 
+    pub fn new(config: supabase_auth::SupabaseAuthConfig) -> Self {
+        Self { config }
+    }
+
+    #[tracing::instrument(skip_all, err)]
+    pub async fn connect(
+        self,
+        login_info: LoginCredentials,
+    ) -> Result<
+        (
+            impl Stream<Item = RealtimeStreamType>,
+            RealtimeConnectionClient,
+        ),
+        SupabaseRealtimeError,
+    > {
+        let supabase_annon_key = &self.config.api_key;
+        let realtime_url = self.config.url.join(
+            format!("realtime/v1/websocket?apikey={supabase_annon_key}&vsn=1.0.0").as_str(),
+        )?;
+
+        let mut auth_stream =
+            supabase_auth::SupabaseAuth::new(self.config.clone()).sign_in(login_info)?;
+        let mut latest_access_token = loop {
+            match auth_stream.next().await {
+                Some(Ok(new_latest_access_token)) => {
+                    break new_latest_access_token.access_token;
+                }
+                Some(Err(err)) => {
+                    tracing::error!(?err, "initial jwt fetch err");
+                }
+                None => return Err(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly),
+            }
+        };
+
+        let mut ref_counter = 0_u64;
+        let mut join_ref_counter = 0;
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        let input_stream = rx
+            .map(move |item| {
+                ref_counter += 1;
+                join_ref_counter += 1;
+                message::ProtocolMessage {
+                    topic: Self::DB_UPDATE_TOPIC.to_string(),
+                    payload: message::ProtocolPayload::PhxJoin(item),
+                    ref_field: Some(ref_counter.to_string()),
+                    join_ref: Some(join_ref_counter.to_string()),
+                }
+            })
+            .map(Ok)
+            .boxed();
+
+        let heartbeat_stream = {
+            let mut interval = tokio::time::interval(Self::HEARTBEAT_PERIOD);
+            interval.reset();
+            let interval_stream = IntervalStream::new(interval).fuse();
+            interval_stream
+                .map(move |_s| message::ProtocolMessage {
+                    topic: "phoenix".to_string(),
+                    payload: message::ProtocolPayload::Heartbeat(message::heartbeat::Heartbeat),
+                    ref_field: None,
+                    join_ref: None,
+                })
+                .map(Ok)
+                .boxed()
+        };
+
+        let access_token_stream = {
+            auth_stream
+                .map(|item| {
+                    item.map(|item| message::ProtocolMessage {
+                        topic: Self::DB_UPDATE_TOPIC.to_string(),
+                        payload: message::ProtocolPayload::AccessToken(AccessToken {
+                            access_token: item.access_token,
+                        }),
+                        ref_field: None,
+                        join_ref: None,
+                    })
+                    .map_err(SupabaseRealtimeError::from)
+                })
+                .boxed()
+        };
+        let input_stream =
+            futures::stream::select_all([input_stream, heartbeat_stream, access_token_stream])
+                .map(move |mut item| {
+                    if let Ok(item) = &mut item {
+                        if let message::ProtocolPayload::AccessToken(at) = &mut item.payload {
+                            latest_access_token = at.access_token.clone();
+                        }
+                        item.set_access_token(&latest_access_token);
+                    }
+                    item
+                })
+                .map(move |mut item| {
+                    ref_counter += 1;
+                    if let Ok(item) = &mut item {
+                        item.ref_field = Some(ref_counter.to_string());
+                    }
+                    item
+                });
+
+        let client = RealtimeConnectionClient { tx };
+        let output_stream = RealtimeBaseConnection::new(realtime_url)
+            .connect(input_stream)
+            .await?;
+        Ok((output_stream, client))
+    }
+}
+
+pub struct RealtimeBaseConnection {
+    url: url::Url,
+}
+
+impl RealtimeBaseConnection {
     pub fn new(url: url::Url) -> Self {
         Self { url }
     }
-    pub async fn connect<'a, S: Stream<Item = message::ProtocolMessage> + Unpin>(
+    pub async fn connect<S: Stream<Item = RealtimeStreamType> + Unpin>(
         self,
-        mut jwt_stream: supabase_auth::RefreshStream,
         mut input_stream: S,
-    ) -> Result<
-        impl Stream<Item = Result<message::ProtocolMessage, error::SupabaseRealtimeError>>,
-        error::SupabaseRealtimeError,
-    > {
-        tracing::info!("Starting RealtimeConnection::connect");
-        let supabase_annon_key = &jwt_stream.api_key;
-        let url = self.url.join(
-            format!("realtime/v1/websocket?apikey={supabase_annon_key}&vsn=1.0.0").as_str(),
-        )?;
-        tracing::debug!(?url, "WebSocket URL constructed");
+    ) -> Result<impl Stream<Item = RealtimeStreamType>, error::SupabaseRealtimeError> {
+        tracing::info!(url =? self.url.as_str(), "Starting RealtimeConnection::connect");
 
-        let mut interval = tokio::time::interval(Self::HEARTBEAT_PERIOD);
-        interval.reset();
-        let mut interval_stream = IntervalStream::new(interval).fuse();
-
-        let con = Rc::new(Mutex::new(connection::connect(&url).await?));
+        let con = Rc::new(Mutex::new(connection::connect(&self.url).await?));
         tracing::info!("WebSocket connection established");
 
         let mut write_futures = FuturesUnordered::new();
@@ -54,68 +171,19 @@ impl RealtimeConnection {
         };
         reat_future.push(read_task);
 
-        let mut latest_access_token = loop {
-            match jwt_stream.next().await {
-                Some(Ok(new_latest_access_token)) => {
-                    break new_latest_access_token.access_token;
-                }
-                Some(Err(err)) => {
-                    tracing::error!(?err, "initial jwt fetch err");
-                }
-                None => return Err(error::SupabaseRealtimeError::JwtStreamClosedUnexpectedly),
-            }
-        };
-
         let stream_to_return = futures::stream::poll_fn(move |cx| {
-            match jwt_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok(new_auth_resp))) => {
-                    latest_access_token = new_auth_resp.access_token;
-                    let msg = message::ProtocolMessage::AccessToken(message::PhoenixMessage {
-                        topic: "realtime:table-db-changes".to_string(),
-                        payload: message::access_token::AccessToken {
-                            access_token: latest_access_token.clone(),
-                        },
-                        ref_field: None,
-                        join_ref: None,
-                    });
-                    let con = Rc::clone(&con);
-                    write_futures.push(send(msg, con));
-                    tracing::debug!("Received new access token");
-                }
-                Poll::Ready(Some(Err(jwt_error))) => {
-                    tracing::error!(?jwt_error, "JWT stream error");
-                    cx.waker().wake_by_ref();
-                    return Poll::Ready(Some(Err(
-                        error::SupabaseRealtimeError::RefreshStreamError(jwt_error),
-                    )));
-                }
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => {}
-            };
-            match interval_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(_instant)) => {
-                    tracing::debug!("Sending heartbeat message");
-                    let mut hb_msg = message::ProtocolMessage::Heartbeat(message::PhoenixMessage {
-                        topic: "phoenix".to_string(),
-                        payload: message::heartbeat::Heartbeat,
-                        ref_field: None,
-                        join_ref: None,
-                    });
-                    let con = Rc::clone(&con);
-                    hb_msg.set_access_token(&latest_access_token);
-                    write_futures.push(send(hb_msg, con));
-                }
-                Poll::Ready(None) => {
-                    return Poll::Ready(None);
-                }
-                Poll::Pending => {}
-            }
-
             match input_stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(mut message_to_send)) => {
-                    message_to_send.set_access_token(&latest_access_token);
+                Poll::Ready(Some(message_to_send)) => {
                     let con = Rc::clone(&con);
-                    write_futures.push(send(message_to_send, con));
+                    match message_to_send {
+                        Ok(message) => {
+                            write_futures.push(send(message, con));
+                        }
+                        Err(err) => {
+                            cx.waker().wake_by_ref();
+                            return Poll::Ready(Some(Err(err)));
+                        }
+                    }
                 }
                 Poll::Ready(None) => return Poll::Ready(None),
                 Poll::Pending => {}

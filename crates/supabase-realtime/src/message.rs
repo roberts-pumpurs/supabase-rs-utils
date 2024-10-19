@@ -3,65 +3,50 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "event")]
-#[serde(rename_all = "snake_case")]
-pub enum ProtocolMessage {
+pub struct ProtocolMessage {
+    pub topic: String,
+    #[serde(flatten)]
+    pub payload: ProtocolPayload,
+    #[serde(rename = "ref")]
+    pub ref_field: Option<String>,
+    pub join_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "event", content = "payload", rename_all = "snake_case")]
+pub enum ProtocolPayload {
     #[serde(rename = "heartbeat")]
-    Heartbeat(PhoenixMessage<heartbeat::Heartbeat>),
+    Heartbeat(heartbeat::Heartbeat),
     #[serde(rename = "access_token")]
-    AccessToken(PhoenixMessage<access_token::AccessToken>),
+    AccessToken(access_token::AccessToken),
     #[serde(rename = "phx_join")]
-    PhxJoin(PhoenixMessage<phx_join::PhxJoin>),
+    PhxJoin(phx_join::PhxJoin),
     #[serde(rename = "phx_close")]
-    PhxClose(PhoenixMessage<phx_close::PhxClose>),
+    PhxClose(phx_close::PhxClose),
     #[serde(rename = "phx_reply")]
-    PhxReply(PhoenixMessage<phx_reply::PhxReply>),
+    PhxReply(phx_reply::PhxReply),
     #[serde(rename = "presence_state")]
-    PresenceState(PhoenixMessage<presence_state::PresenceState>),
+    PresenceState(presence_state::PresenceState),
     #[serde(rename = "system")]
-    System(PhoenixMessage<system::System>),
+    System(system::System),
     #[serde(rename = "phx_error")]
-    PhxError(PhoenixMessage<phx_error::PhxError>),
+    PhxError(phx_error::PhxError),
     #[serde(rename = "postgres_changes")]
-    PostgresChanges(PhoenixMessage<postgres_changes::PostgresChangesPayload>),
+    PostgresChanges(postgres_changes::PostgresChangesPayload),
 }
 
 impl ProtocolMessage {
     pub fn set_access_token(&mut self, new_access_token: &str) {
-        match self {
-            ProtocolMessage::PhxJoin(PhoenixMessage {
-                payload: phx_join::PhxJoin { access_token, .. },
-                ..
-            }) => {
+        match &mut self.payload {
+            ProtocolPayload::PhxJoin(phx_join::PhxJoin { access_token, .. }) => {
                 access_token.replace(new_access_token.to_owned());
             }
-            ProtocolMessage::PhxReply(_) => {
-                // no op
-            }
-            ProtocolMessage::PresenceState(_) => {}
-            ProtocolMessage::System(_) => {}
-            ProtocolMessage::PhxError(_) => {}
-            ProtocolMessage::PostgresChanges(_) => {}
-            ProtocolMessage::Heartbeat(_) => {}
-            ProtocolMessage::AccessToken(PhoenixMessage {
-                payload: access_token::AccessToken { access_token },
-                ..
-            }) => {
+            ProtocolPayload::AccessToken(access_token::AccessToken { access_token }) => {
                 *access_token = new_access_token.to_owned();
             }
-            ProtocolMessage::PhxClose(_) => {}
+            _ => {}
         }
     }
-}
-
-// Main struct generic over the event type and payload
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PhoenixMessage<T> {
-    pub topic: String,
-    pub payload: T,
-    #[serde(rename = "ref")]
-    pub ref_field: Option<String>,
-    pub join_ref: Option<String>,
 }
 
 pub mod phx_reply {

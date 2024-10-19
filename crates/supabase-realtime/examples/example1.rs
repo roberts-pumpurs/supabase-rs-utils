@@ -4,7 +4,7 @@ use std::time::Duration;
 use clap::Parser;
 use futures::StreamExt;
 use supabase_auth::redact::Secret;
-use supabase_realtime::message::{phx_join, PhoenixMessage, ProtocolMessage};
+use supabase_realtime::message::{phx_join, ProtocolMessage};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing_subscriber::EnvFilter;
 
@@ -35,8 +35,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    use supabase_auth::SupabaseAuth;
-
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -47,51 +45,44 @@ async fn main() {
                 .add_directive(format!("example1=info").parse().unwrap()),
         )
         .init();
+    color_eyre::install().unwrap();
 
     let args = Args::parse();
 
-    let supabase_auth = SupabaseAuth::new(
-        args.supabase_api_url.clone(),
-        args.annon_key,
-        5,
-        Duration::from_secs(3),
-    );
-    let token_refresh = supabase_auth
-        .sign_in(supabase_auth::TokenBody {
-            email: args.email,
-            password: args.pass,
-        })
-        .unwrap();
-    let (tx, rx) = tokio::sync::mpsc::channel(5);
-    let mut realtime = supabase_realtime::realtime::RealtimeConnection::new(args.supabase_api_url)
-        .connect(token_refresh, ReceiverStream::new(rx))
+    let config = supabase_auth::SupabaseAuthConfig {
+        api_key: args.annon_key,
+        max_reconnect_attempts: 5,
+        reconnect_interval: Duration::from_secs(3),
+        url: args.supabase_api_url.clone(),
+    };
+    let login_info = supabase_auth::LoginCredentials {
+        email: args.email,
+        password: args.pass,
+    };
+    let (mut realtime, mut client) = supabase_realtime::realtime::RealtimeConnection::new(config)
+        .connect(login_info)
         .await
         .unwrap();
 
-    let message_to_send = ProtocolMessage::PhxJoin(PhoenixMessage {
-        topic: "realtime:table-db-changes".to_string(),
-        payload: phx_join::PhxJoin {
-            config: phx_join::JoinConfig {
-                broadcast: phx_join::BroadcastConfig {
-                    self_item: false,
-                    ack: false,
-                },
-                presence: phx_join::PresenceConfig {
-                    key: "".to_string(),
-                },
-                postgres_changes: vec![phx_join::PostgrsChanges {
-                    event: phx_join::PostgresChangetEvent::All,
-                    schema: "public".to_string(),
-                    table: args.table,
-                    filter: args.filter,
-                }],
+    let payload = phx_join::PhxJoin {
+        config: phx_join::JoinConfig {
+            broadcast: phx_join::BroadcastConfig {
+                self_item: false,
+                ack: false,
             },
-            access_token: None,
+            presence: phx_join::PresenceConfig {
+                key: "".to_string(),
+            },
+            postgres_changes: vec![phx_join::PostgrsChanges {
+                event: phx_join::PostgresChangetEvent::All,
+                schema: "public".to_string(),
+                table: args.table,
+                filter: args.filter,
+            }],
         },
-        ref_field: Some("1".to_string()),
-        join_ref: Some("1".to_string()),
-    });
-    tx.send(message_to_send).await.unwrap();
+        access_token: None,
+    };
+    client.subscribe_to_changes(payload).await.unwrap();
     tracing::debug!("pooling realtime connection");
     while let Some(msg) = realtime.next().await {
         tracing::info!(?msg, "reading protocol message");

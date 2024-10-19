@@ -32,4 +32,6 @@ pub enum SupabaseRealtimeError {
     JwtStreamClosedUnexpectedly,
     #[error("Refresh stream error")]
     RefreshStreamError(#[from] supabase_auth::RefreshStreamError),
+    #[error("Auth sign in error")]
+    AuthSignInError(#[from] supabase_auth::SignInError),
 }

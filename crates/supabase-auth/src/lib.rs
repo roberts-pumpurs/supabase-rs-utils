@@ -16,27 +16,22 @@ pub use {futures, redact, url};
 
 pub const SUPABASE_KEY: &str = "apikey";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SupabaseAuthConfig {
+    pub api_key: String,
+    pub max_reconnect_attempts: u8,
+    pub reconnect_interval: std::time::Duration,
+    pub url: url::Url,
+}
+
 pub struct SupabaseAuth {
-    url: url::Url,
-    api_key: String,
-    max_reconnect_attempts: u8,
-    reconnect_interval: std::time::Duration,
+    config: SupabaseAuthConfig,
 }
 
 impl SupabaseAuth {
     /// Creates a new [`SupabaseAuth`].
-    pub fn new(
-        url: url::Url,
-        api_key: String,
-        max_reconnect_attempts: u8,
-        reconnect_interval: std::time::Duration,
-    ) -> Self {
-        Self {
-            url,
-            api_key,
-            max_reconnect_attempts,
-            reconnect_interval,
-        }
+    pub fn new(config: SupabaseAuthConfig) -> Self {
+        Self { config }
     }
 
     /// Creates a Stream that will attempt to log in to supabase and periodically refresh the JWT
@@ -46,31 +41,33 @@ impl SupabaseAuth {
     /// This function will return an error if the provided supabase url cannot be joined with the
     /// expected suffix.
     #[tracing::instrument(skip_all, err)]
-    pub fn sign_in(&self, params: TokenBody) -> Result<RefreshStream, SignInError> {
+    pub fn sign_in(&self, params: LoginCredentials) -> Result<RefreshStream, SignInError> {
         let mut default_headers = HeaderMap::new();
-        default_headers.insert(SUPABASE_KEY, self.api_key.parse()?);
+        default_headers.insert(SUPABASE_KEY, self.config.api_key.parse()?);
         let client = Client::builder().default_headers(default_headers).build()?;
         Ok(RefreshStream {
             password_url: self
+                .config
                 .url
                 .clone()
                 .join("/auth/v1/token?grant_type=password")?,
             refresh_url: self
+                .config
                 .url
                 .clone()
                 .join("/auth/v1/token?grant_type=refresh_token")?,
-            api_key: self.api_key.clone(),
+            api_key: self.config.api_key.clone(),
             client,
             token_body: params,
-            max_reconnect_attempts: self.max_reconnect_attempts,
+            max_reconnect_attempts: self.config.max_reconnect_attempts,
             current_reconnect_attempts: 0,
             background_tasks: JoinSet::new(),
-            reconnect_interval: self.reconnect_interval,
+            reconnect_interval: self.config.reconnect_interval,
         })
     }
 }
 
-pub struct TokenBody {
+pub struct LoginCredentials {
     pub email: String,
     pub password: String,
 }
@@ -80,7 +77,7 @@ pub struct RefreshStream {
     refresh_url: url::Url,
     pub api_key: String,
     client: Client,
-    token_body: TokenBody,
+    token_body: LoginCredentials,
     max_reconnect_attempts: u8,
     current_reconnect_attempts: u8,
     reconnect_interval: std::time::Duration,
@@ -290,7 +287,7 @@ mod auth_tests {
             1,
             Duration::from_secs(1),
         );
-        let token_body = TokenBody {
+        let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
         };
@@ -328,7 +325,7 @@ mod auth_tests {
             2,
             Duration::from_secs(1),
         );
-        let token_body = TokenBody {
+        let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
         };
@@ -360,7 +357,7 @@ mod auth_tests {
             1,
             Duration::from_secs(1),
         );
-        let token_body = TokenBody {
+        let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
         };
@@ -391,7 +388,7 @@ mod auth_tests {
             2,
             Duration::from_millis(20),
         );
-        let token_body = TokenBody {
+        let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
         };
@@ -432,7 +429,7 @@ mod auth_tests {
         );
 
         // action
-        let token_body = TokenBody {
+        let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
         };

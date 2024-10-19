@@ -53,7 +53,7 @@ async fn main() {
         Duration::from_secs(3),
     );
     let mut token_refresh = supabase_auth
-        .sign_in(supabase_auth::TokenBody {
+        .sign_in(supabase_auth::LoginCredentials {
             email: args.email,
             password: args.pass,
         })
