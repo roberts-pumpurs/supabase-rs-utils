@@ -46,7 +46,7 @@ impl SupabaseAuth {
     /// This function will return an error if the provided supabase url cannot be joined with the
     /// expected suffix.
     #[tracing::instrument(skip_all, err)]
-    pub fn sign_in<'a>(&self, params: TokenBody<'a>) -> Result<RefreshStream<'a>, SignInError> {
+    pub fn sign_in(&self, params: TokenBody) -> Result<RefreshStream, SignInError> {
         let mut default_headers = HeaderMap::new();
         default_headers.insert(SUPABASE_KEY, self.api_key.parse()?);
         let client = Client::builder().default_headers(default_headers).build()?;
@@ -70,24 +70,24 @@ impl SupabaseAuth {
     }
 }
 
-pub struct TokenBody<'a> {
-    pub email: &'a str,
-    pub password: &'a str,
+pub struct TokenBody {
+    pub email: String,
+    pub password: String,
 }
 
-pub struct RefreshStream<'a> {
+pub struct RefreshStream {
     password_url: url::Url,
     refresh_url: url::Url,
     pub api_key: String,
     client: Client,
-    token_body: TokenBody<'a>,
+    token_body: TokenBody,
     max_reconnect_attempts: u8,
     current_reconnect_attempts: u8,
     reconnect_interval: std::time::Duration,
     background_tasks: JoinSet<Result<AuthResponse, RefreshStreamError>>,
 }
 
-impl<'a> RefreshStream<'a> {
+impl RefreshStream {
     fn login_request(&self) -> Result<reqwest::Request, reqwest::Error> {
         self.client
             .post(self.password_url.clone())
@@ -140,7 +140,7 @@ impl<'a> RefreshStream<'a> {
     }
 }
 
-impl<'a> Stream for RefreshStream<'a> {
+impl Stream for RefreshStream {
     type Item = Result<AuthResponse, RefreshStreamError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -178,6 +178,7 @@ impl<'a> Stream for RefreshStream<'a> {
             }
             Poll::Ready(Some(Err(join_error))) => {
                 tracing::error!(?join_error, "Task panicked; terminating stream");
+                cx.waker().wake_by_ref();
                 return Poll::Ready(None);
             }
             Poll::Ready(None) => {
@@ -217,23 +218,8 @@ async fn auth_request(
     Err(RefreshStreamError::SupabaseApiError(error))
 }
 
-fn calculate_refresh_sleep_duration(expires_at_ts: u64) -> Duration {
-    // Get the current time as Unix timestamp
-    let current_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs();
-
-    // Calculate the duration until expiration
-    let refresh_in = if expires_at_ts > current_ts {
-        // and divide by `2/3` just to be on the safe side
-        Duration::from_secs(expires_at_ts - current_ts)
-            .mul(3)
-            .div(2)
-    } else {
-        Duration::from_secs(1)
-    };
-    refresh_in
+fn calculate_refresh_sleep_duration(expires_in: u64) -> Duration {
+    Duration::from_secs(expires_in).div(2)
 }
 
 #[derive(Debug, Error)]
@@ -242,7 +228,7 @@ pub enum RefreshStreamError {
     Reqwest(#[from] reqwest::Error),
     #[error("JSON parse error: {0}")]
     JsonParse(#[from] simd_json::Error),
-    #[error("Supabase API erorr: {0}")]
+    #[error("Supabase API error: {0}")]
     SupabaseApiError(String),
 }
 
@@ -305,8 +291,8 @@ mod auth_tests {
             Duration::from_secs(1),
         );
         let token_body = TokenBody {
-            email: "user@example.com",
-            password: "password",
+            email: "user@example.com".to_owned(),
+            password: "password".to_owned(),
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -343,8 +329,8 @@ mod auth_tests {
             Duration::from_secs(1),
         );
         let token_body = TokenBody {
-            email: ("user@example.com"),
-            password: "password",
+            email: "user@example.com".to_owned(),
+            password: "password".to_owned(),
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -375,8 +361,8 @@ mod auth_tests {
             Duration::from_secs(1),
         );
         let token_body = TokenBody {
-            email: ("user@example.com"),
-            password: "password",
+            email: "user@example.com".to_owned(),
+            password: "password".to_owned(),
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -406,8 +392,8 @@ mod auth_tests {
             Duration::from_millis(20),
         );
         let token_body = TokenBody {
-            email: "user@example.com",
-            password: "password",
+            email: "user@example.com".to_owned(),
+            password: "password".to_owned(),
         };
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
@@ -447,8 +433,8 @@ mod auth_tests {
 
         // action
         let token_body = TokenBody {
-            email: "user@example.com",
-            password: "password",
+            email: "user@example.com".to_owned(),
+            password: "password".to_owned(),
         };
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 

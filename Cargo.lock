@@ -1997,6 +1997,7 @@ name = "supabase-auth"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "clap",
  "futures",
  "futures-timer",
  "jwt-simple",
@@ -2042,6 +2043,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "pin-project",
+ "pretty_assertions",
  "rstest",
  "rustls",
  "rustls-native-certs",

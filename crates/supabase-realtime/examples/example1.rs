@@ -42,8 +42,9 @@ async fn main() {
             EnvFilter::builder()
                 .from_env()
                 .unwrap()
+                .add_directive(format!("supabase_auth=info").parse().unwrap())
                 .add_directive(format!("supabase_realtime=trace").parse().unwrap())
-                .add_directive(format!("example1=debug").parse().unwrap()),
+                .add_directive(format!("example1=info").parse().unwrap()),
         )
         .init();
 
@@ -57,18 +58,18 @@ async fn main() {
     );
     let token_refresh = supabase_auth
         .sign_in(supabase_auth::TokenBody {
-            email: args.email.as_str(),
-            password: args.pass.as_str(),
+            email: args.email,
+            password: args.pass,
         })
         .unwrap();
     let (tx, rx) = tokio::sync::mpsc::channel(5);
-    let mut realtime = supabase_realtime::RealtimeConnection::new(args.supabase_api_url)
+    let mut realtime = supabase_realtime::realtime::RealtimeConnection::new(args.supabase_api_url)
         .connect(token_refresh, ReceiverStream::new(rx))
         .await
         .unwrap();
 
     let message_to_send = ProtocolMessage::PhxJoin(PhoenixMessage {
-        topic: "realtime:db".to_string(),
+        topic: "realtime:table-db-changes".to_string(),
         payload: phx_join::PhxJoin {
             config: phx_join::JoinConfig {
                 broadcast: phx_join::BroadcastConfig {
@@ -93,7 +94,7 @@ async fn main() {
     tx.send(message_to_send).await.unwrap();
     tracing::debug!("pooling realtime connection");
     while let Some(msg) = realtime.next().await {
-        tracing::debug!(?msg, "reading protocol message");
+        tracing::info!(?msg, "reading protocol message");
     }
     tracing::error!("realtime connection exited");
 }

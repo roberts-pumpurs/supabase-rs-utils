@@ -79,6 +79,7 @@ pub mod phx_reply {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct PhxReplyQuery {
+        #[serde(default)]
         #[serde(rename = "postgres_changes")]
         pub postgres_changes: Vec<PostgresChanges>,
     }
@@ -232,11 +233,53 @@ pub mod phx_reply {
             assert_eq!(deserialized_struct, expected_struct);
         }
     }
+
+    #[test]
+    fn test_ok_empty_response_serialisation() {
+        let json_data = r#"
+    {
+        "ref": null,
+        "event": "phx_reply",
+        "payload": {
+            "status": "ok",
+            "response": {}
+        },
+        "topic": "phoenix"
+    }"#;
+
+        let expected_struct = ProtocolMessage::PhxReply(PhoenixMessage {
+            topic: "phoenix".to_string(),
+            payload: PhxReply::Ok(PhxReplyQuery {
+                postgres_changes: Vec::new(),
+            }),
+            ref_field: None,
+            join_ref: None,
+        });
+
+        let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
+        dbg!(serialized);
+
+        let deserialized_struct: ProtocolMessage =
+            simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
+
+        assert_eq!(deserialized_struct, expected_struct);
+    }
 }
 
 pub mod phx_join {
     use super::*;
 
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum PostgresChangetEvent {
+        #[serde(rename = "*")]
+        All,
+        #[serde(rename = "INSERT")]
+        Insert,
+        #[serde(rename = "UPDATE")]
+        Update,
+        #[serde(rename = "DELETE")]
+        Delete,
+    }
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct PhxJoin {
         #[serde(rename = "config")]
@@ -274,18 +317,6 @@ pub mod phx_join {
         pub schema: String,
         pub table: String,
         pub filter: Option<String>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub enum PostgresChangetEvent {
-        #[serde(rename = "*")]
-        All,
-        #[serde(rename = "INSERT")]
-        Insert,
-        #[serde(rename = "UPDATE")]
-        Update,
-        #[serde(rename = "DELETE")]
-        Delete,
     }
 
     #[cfg(test)]
@@ -718,19 +749,42 @@ pub mod postgres_changes {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum PostgresDataChangeEvent {
+        #[serde(rename = "*")]
+        All,
+        #[serde(rename = "INSERT")]
+        Insert,
+        #[serde(rename = "UPDATE")]
+        Update,
+        #[serde(rename = "DELETE")]
+        Delete,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct Data {
         pub columns: Vec<Column>,
         #[serde(rename = "commit_timestamp")]
         pub commit_timestamp: String,
+        #[serde(default)]
         pub errors: Option<String>,
-        #[serde(rename = "old_record")]
-        pub old_record: Option<Record>,
-        pub record: Record,
+        #[serde(
+            default,
+            rename = "old_record",
+            deserialize_with = "deserialize_raw",
+            serialize_with = "serialize_raw"
+        )]
+        pub old_record: Option<Vec<u8>>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_raw",
+            serialize_with = "serialize_raw"
+        )]
+        pub record: Option<Vec<u8>>,
         pub schema: String,
         pub table: String,
         #[serde(rename = "type")]
-        pub type_: String,
+        pub type_: PostgresDataChangeEvent,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -741,53 +795,109 @@ pub mod postgres_changes {
         pub type_: String,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    pub struct Record {
-        #[serde(rename = "id")]
-        pub id: String,
-        #[serde(rename = "updated_at")]
-        pub updated_at: Option<String>,
-        #[serde(rename = "url")]
-        pub url: Option<String>,
+    use std::fmt;
+
+    use serde::de::{self, Deserializer, Visitor};
+    use serde::ser::Serializer;
+
+    fn deserialize_raw<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RawBytesVisitor;
+
+        impl<'de> Visitor<'de> for RawBytesVisitor {
+            type Value = Option<Vec<u8>>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a JSON value")
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(None)
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = simd_json::OwnedValue::deserialize(deserializer)?;
+                let buf = simd_json::to_vec(&value).map_err(de::Error::custom)?;
+                Ok(Some(buf))
+            }
+        }
+
+        deserializer.deserialize_option(RawBytesVisitor)
+    }
+
+    fn serialize_raw<S>(value: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(bytes) => {
+                let mut bytes_copy = bytes.clone();
+                let json_value: simd_json::OwnedValue = simd_json::to_owned_value(&mut bytes_copy)
+                    .map_err(serde::ser::Error::custom)?;
+                json_value.serialize(serializer)
+            }
+            None => serializer.serialize_none(),
+        }
     }
 
     #[cfg(test)]
     mod tests {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
         fn test_postgres_changes_serialization() {
             let json_data = r#"
-            {
-                "event": "postgres_changes",
-                "payload": {
-                    "data": {
-                        "columns": [
-                            {"name": "id", "type": "uuid"},
-                            {"name": "updated_at", "type": "timestamptz"},
-                            {"name": "url", "type": "text"}
-                        ],
-                        "commit_timestamp": "2024-08-25T17:00:19.009Z",
-                        "errors": null,
-                        "old_record": {
-                            "id": "96236356-5ac3-4403-b3ce-c660973330d9"
-                        },
-                        "record": {
-                            "id": "96236356-5ac3-4403-b3ce-c660973330d9",
-                            "updated_at": "2024-08-25T17:00:19.005328+00:00",
-                            "url": "https://0.0.0.0:3334"
-                        },
-                        "schema": "public",
-                        "table": "profiles",
-                        "type": "UPDATE"
+        {
+            "event": "postgres_changes",
+            "payload": {
+                "data": {
+                    "columns": [
+                        {"name": "id", "type": "uuid"},
+                        {"name": "updated_at", "type": "timestamptz"},
+                        {"name": "url", "type": "text"}
+                    ],
+                    "commit_timestamp": "2024-08-25T17:00:19.009Z",
+                    "errors": null,
+                    "old_record": {
+                        "id": "96236356-5ac3-4403-b3ce-c660973330d9"
                     },
-                    "ids": [38606455]
+                    "record": {
+                        "id": "96236356-5ac3-4403-b3ce-c660973330d9",
+                        "updated_at": "2024-08-25T17:00:19.005328+00:00",
+                        "url": "https://0.0.0.0:3334"
+                    },
+                    "schema": "public",
+                    "table": "profiles",
+                    "type": "UPDATE"
                 },
-                "ref": null,
-                "topic": "realtime:db"
-            }
-            "#;
+                "ids": [38606455]
+            },
+            "ref": null,
+            "topic": "realtime:db"
+        }
+        "#;
+
+            // Parse json_data to extract raw bytes for record and old_record using simd_json
+            let mut json_data_bytes = json_data.to_string().into_bytes();
+            let json_value: simd_json::OwnedValue =
+                simd_json::from_slice(&mut json_data_bytes).unwrap();
+            let data = &json_value["payload"]["data"];
+            let record_value = &data["record"];
+            let old_record_value = &data["old_record"];
+
+            // Serialize record_value and old_record_value to bytes
+            let record_bytes = simd_json::to_vec(record_value).unwrap();
+            let old_record_bytes = simd_json::to_vec(old_record_value).unwrap();
 
             let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
                 topic: "realtime:db".to_string(),
@@ -809,21 +919,230 @@ pub mod postgres_changes {
                         ],
                         commit_timestamp: "2024-08-25T17:00:19.009Z".to_string(),
                         errors: None,
-                        old_record: Some(Record {
-                            id: "96236356-5ac3-4403-b3ce-c660973330d9".to_string(),
-                            updated_at: None,
-                            url: None,
-                        }),
-                        record: Record {
-                            id: "96236356-5ac3-4403-b3ce-c660973330d9".to_string(),
-                            updated_at: Some("2024-08-25T17:00:19.005328+00:00".to_string()),
-                            url: Some("https://0.0.0.0:3334".to_string()),
-                        },
+                        old_record: Some(old_record_bytes.clone()),
+                        record: Some(record_bytes.clone()),
                         schema: "public".to_string(),
                         table: "profiles".to_string(),
-                        type_: "UPDATE".to_string(),
+                        type_: PostgresDataChangeEvent::Update,
                     },
                     ids: vec![38606455],
+                },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            // Deserialize json_data using simd_json
+            let mut deserialized_bytes = json_data.to_string().into_bytes();
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(&mut deserialized_bytes).unwrap();
+
+            // Assert equality
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[test]
+        fn complex_data_insert() {
+            let json_data = r#"
+         {
+             "ref": null,
+             "event": "postgres_changes",
+             "payload": {
+                 "data": {
+                     "table": "rooms",
+                     "type": "INSERT",
+                     "record": {
+                         "created_at": "2024-10-19T07:55:12.92041+00:00",
+                         "id": "cb099344-62b7-4ee0-a3ab-ec178486b685",
+                         "name": "dddddddd",
+                         "owner_id": "c791e9bf-4d77-4ac9-adb7-d351927c4416",
+                         "server_id": "eb7619f1-be42-4904-bee1-01e0bb11e795"
+                     },
+                     "columns": [
+                         {
+                             "name": "id",
+                             "type": "uuid"
+                         },
+                         {
+                             "name": "created_at",
+                             "type": "timestamptz"
+                         },
+                         {
+                             "name": "name",
+                             "type": "text"
+                         },
+                         {
+                             "name": "owner_id",
+                             "type": "uuid"
+                         },
+                         {
+                             "name": "server_id",
+                             "type": "uuid"
+                         }
+                     ],
+                     "errors": null,
+                     "commit_timestamp": "2024-10-19T07:55:12.926Z",
+                     "schema": "public"
+                 },
+                 "ids": [
+                     60402389
+                 ]
+             },
+             "topic": "realtime:table-db-changes"
+         }
+         "#;
+
+            // Parse json_data to extract raw bytes for record and old_record using simd_json
+            let mut json_data_bytes = json_data.to_string().into_bytes();
+            let json_value: simd_json::OwnedValue =
+                simd_json::from_slice(&mut json_data_bytes).unwrap();
+            let data = &json_value["payload"]["data"];
+            let record_value = &data["record"];
+
+            // Serialize record_value and old_record_value to bytes
+            let record_bytes = simd_json::to_vec(record_value).unwrap();
+
+            let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
+                topic: "realtime:table-db-changes".to_string(),
+                payload: PostgresChangesPayload {
+                    data: Data {
+                        table: "rooms".to_string(),
+                        type_: PostgresDataChangeEvent::Insert,
+                        record: Some(record_bytes),
+                        old_record: None,
+                        columns: vec![
+                            Column {
+                                name: "id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                            Column {
+                                name: "created_at".to_string(),
+                                type_: "timestamptz".to_string(),
+                            },
+                            Column {
+                                name: "name".to_string(),
+                                type_: "text".to_string(),
+                            },
+                            Column {
+                                name: "owner_id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                            Column {
+                                name: "server_id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                        ],
+                        commit_timestamp: "2024-10-19T07:55:12.926Z".to_string(),
+                        errors: None,
+                        schema: "public".to_string(),
+                    },
+                    ids: vec![60402389],
+                },
+                ref_field: None,
+                join_ref: None,
+            });
+
+            let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialized);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_string().into_bytes().as_mut_slice()).unwrap();
+            dbg!(&deserialized_struct);
+
+            pretty_assertions::assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[test]
+        fn complex_data_delete() {
+            let json_data = r#"
+         {
+             "ref": null,
+             "event": "postgres_changes",
+             "payload": {
+                 "data": {
+                     "table": "rooms",
+                     "type": "DELETE",
+                     "columns": [
+                         {
+                             "name": "id",
+                             "type": "uuid"
+                         },
+                         {
+                             "name": "created_at",
+                             "type": "timestamptz"
+                         },
+                         {
+                             "name": "name",
+                             "type": "text"
+                         },
+                         {
+                             "name": "owner_id",
+                             "type": "uuid"
+                         },
+                         {
+                             "name": "server_id",
+                             "type": "uuid"
+                         }
+                     ],
+                     "errors": null,
+                     "commit_timestamp": "2024-10-19T07:54:05.101Z",
+                     "schema": "public",
+                     "old_record": {
+                         "id": "c722fce5-a3cf-4af2-b261-609612b884c1"
+                     }
+                 },
+                 "ids": [
+                     38377940
+                 ]
+             },
+             "topic": "realtime:table-db-changes"
+         }
+         "#;
+
+            // Parse json_data to extract raw bytes for record and old_record using simd_json
+            let mut json_data_bytes = json_data.to_string().into_bytes();
+            let json_value: simd_json::OwnedValue =
+                simd_json::from_slice(&mut json_data_bytes).unwrap();
+            let data = &json_value["payload"]["data"];
+            let old_record_value = &data["old_record"];
+
+            // Serialize record_value and old_record_value to bytes
+            let old_record_bytes = simd_json::to_vec(old_record_value).unwrap();
+
+            let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
+                topic: "realtime:table-db-changes".to_string(),
+                payload: PostgresChangesPayload {
+                    data: Data {
+                        table: "rooms".to_string(),
+                        type_: PostgresDataChangeEvent::Delete,
+                        record: None,
+                        old_record: Some(old_record_bytes),
+                        columns: vec![
+                            Column {
+                                name: "id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                            Column {
+                                name: "created_at".to_string(),
+                                type_: "timestamptz".to_string(),
+                            },
+                            Column {
+                                name: "name".to_string(),
+                                type_: "text".to_string(),
+                            },
+                            Column {
+                                name: "owner_id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                            Column {
+                                name: "server_id".to_string(),
+                                type_: "uuid".to_string(),
+                            },
+                        ],
+                        commit_timestamp: "2024-10-19T07:54:05.101Z".to_string(),
+                        errors: None,
+                        schema: "public".to_string(),
+                    },
+                    ids: vec![38377940],
                 },
                 ref_field: None,
                 join_ref: None,
