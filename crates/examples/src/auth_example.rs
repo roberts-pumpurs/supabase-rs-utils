@@ -1,7 +1,8 @@
-use std::time::Duration;
+use core::time::Duration;
 
 use clap::Parser;
-use futures::StreamExt;
+use supabase_auth::futures::StreamExt as _;
+use supabase_auth::url;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -38,8 +39,8 @@ async fn main() {
             EnvFilter::builder()
                 .from_env()
                 .unwrap()
-                .add_directive(format!("supabase_auth=debug").parse().unwrap())
-                .add_directive(format!("auth_example=debug").parse().unwrap()),
+                .add_directive("supabase_auth=debug".to_owned().parse().unwrap())
+                .add_directive("auth_example=debug".to_owned().parse().unwrap()),
         )
         .init();
 

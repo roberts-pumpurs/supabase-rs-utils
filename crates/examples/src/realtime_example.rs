@@ -1,11 +1,9 @@
-use std::borrow::Cow;
-use std::time::Duration;
+use core::time::Duration;
 
 use clap::Parser;
-use futures::StreamExt;
-use supabase_auth::redact::Secret;
-use supabase_realtime::message::{phx_join, ProtocolMessage};
-use tokio_stream::wrappers::ReceiverStream;
+use supabase_auth::url;
+use supabase_realtime::futures::StreamExt as _;
+use supabase_realtime::message::phx_join;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -40,9 +38,9 @@ async fn main() {
             EnvFilter::builder()
                 .from_env()
                 .unwrap()
-                .add_directive(format!("supabase_auth=info").parse().unwrap())
-                .add_directive(format!("supabase_realtime=info").parse().unwrap())
-                .add_directive(format!("example1=info").parse().unwrap()),
+                .add_directive("supabase_auth=info".to_owned().parse().unwrap())
+                .add_directive("supabase_realtime=info".to_owned().parse().unwrap())
+                .add_directive("example1=info".to_owned().parse().unwrap()),
         )
         .init();
     color_eyre::install().unwrap();
@@ -70,12 +68,10 @@ async fn main() {
                 self_item: false,
                 ack: false,
             },
-            presence: phx_join::PresenceConfig {
-                key: "".to_string(),
-            },
+            presence: phx_join::PresenceConfig { key: String::new() },
             postgres_changes: vec![phx_join::PostgrsChanges {
                 event: phx_join::PostgresChangetEvent::All,
-                schema: "public".to_string(),
+                schema: "public".to_owned(),
                 table: args.table,
                 filter: args.filter,
             }],

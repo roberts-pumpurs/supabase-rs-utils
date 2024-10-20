@@ -1,5 +1,5 @@
-use std::future::Future;
-use std::sync::Arc;
+use alloc::sync::Arc;
+use core::future::Future;
 
 use bytes::Bytes;
 use fastwebsockets::FragmentCollector;

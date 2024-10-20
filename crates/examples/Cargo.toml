@@ -1,0 +1,25 @@
+[package]
+name = "examples"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap.workspace = true
+color-eyre.workspace = true
+supabase-realtime.workspace = true
+supabase-auth.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+simd-json.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "realtime-example"
+path = "src/realtime_example.rs"
+
+[[bin]]
+name = "auth_example"
+path = "src/auth_example.rs"

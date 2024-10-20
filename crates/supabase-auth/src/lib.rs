@@ -13,7 +13,6 @@ use simd_json::json;
 use thiserror::Error;
 use tokio::task::JoinSet;
 pub use {futures, redact, url};
-
 pub const SUPABASE_KEY: &str = "apikey";
 
 #[derive(Clone, Debug, PartialEq, Eq)]

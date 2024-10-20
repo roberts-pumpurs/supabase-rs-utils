@@ -1,9 +1,9 @@
-use std::rc::Rc;
-use std::task::Poll;
+use alloc::rc::Rc;
+use core::task::Poll;
 
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, SinkExt, Stream, StreamExt};
+use futures::{SinkExt as _, Stream, StreamExt as _};
 use supabase_auth::LoginCredentials;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -35,10 +35,11 @@ pub struct RealtimeConnection {
 type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
 
 impl RealtimeConnection {
-    const HEARTBEAT_PERIOD: std::time::Duration = std::time::Duration::from_secs(20);
+    const HEARTBEAT_PERIOD: core::time::Duration = core::time::Duration::from_secs(20);
     const DB_UPDATE_TOPIC: &str = "realtime:table-db-changes";
 
-    pub fn new(config: supabase_auth::SupabaseAuthConfig) -> Self {
+    #[must_use]
+    pub const fn new(config: supabase_auth::SupabaseAuthConfig) -> Self {
         Self { config }
     }
 
@@ -80,7 +81,7 @@ impl RealtimeConnection {
                 ref_counter += 1;
                 join_ref_counter += 1;
                 message::ProtocolMessage {
-                    topic: Self::DB_UPDATE_TOPIC.to_string(),
+                    topic: Self::DB_UPDATE_TOPIC.to_owned(),
                     payload: message::ProtocolPayload::PhxJoin(item),
                     ref_field: Some(ref_counter.to_string()),
                     join_ref: Some(join_ref_counter.to_string()),
@@ -95,7 +96,7 @@ impl RealtimeConnection {
             let interval_stream = IntervalStream::new(interval).fuse();
             interval_stream
                 .map(move |_s| message::ProtocolMessage {
-                    topic: "phoenix".to_string(),
+                    topic: "phoenix".to_owned(),
                     payload: message::ProtocolPayload::Heartbeat(message::heartbeat::Heartbeat),
                     ref_field: None,
                     join_ref: None,
@@ -108,7 +109,7 @@ impl RealtimeConnection {
             auth_stream
                 .map(|item| {
                     item.map(|item| message::ProtocolMessage {
-                        topic: Self::DB_UPDATE_TOPIC.to_string(),
+                        topic: Self::DB_UPDATE_TOPIC.to_owned(),
                         payload: message::ProtocolPayload::AccessToken(AccessToken {
                             access_token: item.access_token,
                         }),
@@ -151,7 +152,8 @@ pub struct RealtimeBaseConnection {
 }
 
 impl RealtimeBaseConnection {
-    pub fn new(url: url::Url) -> Self {
+    #[must_use]
+    pub const fn new(url: url::Url) -> Self {
         Self { url }
     }
     pub async fn connect<S: Stream<Item = RealtimeStreamType> + Unpin>(
@@ -200,7 +202,7 @@ impl RealtimeBaseConnection {
 
             match write_futures.poll_next_unpin(cx) {
                 Poll::Ready(Some(res)) => match res {
-                    Ok(_) => {
+                    Ok(()) => {
                         tracing::debug!("Message sent successfully");
                     }
                     Err(err) => {
@@ -217,10 +219,10 @@ impl RealtimeBaseConnection {
                 Poll::Ready(Some(item)) => {
                     tracing::debug!(?item, "Received item");
                     cx.waker().wake_by_ref();
-                    return Poll::Ready(Some(Ok(item)));
+                    Poll::Ready(Some(Ok(item)))
                 }
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
             }
         });
         Ok(stream_to_return)
@@ -232,7 +234,7 @@ async fn read_from_ws(
     mut tx: futures::channel::mpsc::UnboundedSender<ProtocolMessage>,
 ) {
     tracing::info!("Starting read_from_ws task");
-    let duration = std::time::Duration::from_millis(100);
+    let duration = core::time::Duration::from_millis(100);
     loop {
         let mut con = con.lock().await;
         let Ok(frame) = timeout(duration, con.read_frame()).await else {

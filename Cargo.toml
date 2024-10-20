@@ -41,6 +41,7 @@ mod_module_files = "allow"
 supabase-mock = { path = "crates/supabase-mock" }
 supabase-auth = { path = "crates/supabase-auth" }
 postgrest-error = { path = "crates/postgrest-error" }
+supabase-realtime = { path = "crates/supabase-realtime" }
 
 # Async
 futures-concurrency = "7.4"
