@@ -40,7 +40,8 @@ async fn main() {
                 .unwrap()
                 .add_directive("supabase_auth=info".to_owned().parse().unwrap())
                 .add_directive("supabase_realtime=info".to_owned().parse().unwrap())
-                .add_directive("example1=info".to_owned().parse().unwrap()),
+                .add_directive("examples=info".to_owned().parse().unwrap())
+                .add_directive("realtime_example=info".to_owned().parse().unwrap()),
         )
         .init();
     color_eyre::install().unwrap();
@@ -79,7 +80,7 @@ async fn main() {
         access_token: None,
     };
     client.subscribe_to_changes(payload).await.unwrap();
-    tracing::debug!("pooling realtime connection");
+    tracing::info!("pooling realtime connection");
     while let Some(msg) = realtime.next().await {
         match msg {
             Ok(msg) => {

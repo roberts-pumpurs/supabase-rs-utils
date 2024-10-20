@@ -27,8 +27,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    
-
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()

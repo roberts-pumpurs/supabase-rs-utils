@@ -49,7 +49,8 @@ pub enum SupabaseClientError {
 }
 
 impl<T> PostgerstResponse<T> {
-    #[must_use] pub const fn new(response: reqwest::Response) -> Self {
+    #[must_use]
+    pub const fn new(response: reqwest::Response) -> Self {
         Self {
             response,
             result: PhantomData,
