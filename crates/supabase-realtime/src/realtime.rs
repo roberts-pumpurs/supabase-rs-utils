@@ -3,9 +3,9 @@ use std::task::Poll;
 
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
-use futures::{future, pin_mut, FutureExt, SinkExt, Stream, StreamExt};
-use supabase_auth::{AuthResponse, LoginCredentials};
-use tokio::sync::{Mutex, RwLock};
+use futures::{FutureExt, SinkExt, Stream, StreamExt};
+use supabase_auth::LoginCredentials;
+use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tokio_stream::wrappers::IntervalStream;
 
@@ -27,6 +27,7 @@ impl RealtimeConnectionClient {
         self.tx.send(join).await
     }
 }
+
 pub struct RealtimeConnection {
     config: supabase_auth::SupabaseAuthConfig,
 }

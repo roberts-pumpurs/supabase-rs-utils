@@ -1,9 +1,9 @@
 #![feature(result_flattening)]
 
-use std::ops::{Div, Mul};
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use core::ops::Div as _;
+use core::pin::Pin;
+use core::task::{Context, Poll};
+use core::time::Duration;
 
 use futures::Stream;
 use reqwest::header::{HeaderMap, InvalidHeaderValue};
@@ -20,7 +20,7 @@ pub const SUPABASE_KEY: &str = "apikey";
 pub struct SupabaseAuthConfig {
     pub api_key: String,
     pub max_reconnect_attempts: u8,
-    pub reconnect_interval: std::time::Duration,
+    pub reconnect_interval: core::time::Duration,
     pub url: url::Url,
 }
 
@@ -30,7 +30,8 @@ pub struct SupabaseAuth {
 
 impl SupabaseAuth {
     /// Creates a new [`SupabaseAuth`].
-    pub fn new(config: SupabaseAuthConfig) -> Self {
+    #[must_use]
+    pub const fn new(config: SupabaseAuthConfig) -> Self {
         Self { config }
     }
 
@@ -80,7 +81,7 @@ pub struct RefreshStream {
     token_body: LoginCredentials,
     max_reconnect_attempts: u8,
     current_reconnect_attempts: u8,
-    reconnect_interval: std::time::Duration,
+    reconnect_interval: core::time::Duration,
     background_tasks: JoinSet<Result<AuthResponse, RefreshStreamError>>,
 }
 
@@ -95,7 +96,7 @@ impl RefreshStream {
             .build()
     }
 
-    fn spawn_login_task(&mut self, delay: Option<std::time::Duration>) {
+    fn spawn_login_task(&mut self, delay: Option<core::time::Duration>) {
         let request = match self.login_request() {
             Ok(req) => req,
             Err(e) => {
@@ -171,12 +172,12 @@ impl Stream for RefreshStream {
                         cx.waker().wake_by_ref();
                     }
                 }
-                return Poll::Ready(Some(item));
+                Poll::Ready(Some(item))
             }
             Poll::Ready(Some(Err(join_error))) => {
                 tracing::error!(?join_error, "Task panicked; terminating stream");
                 cx.waker().wake_by_ref();
-                return Poll::Ready(None);
+                Poll::Ready(None)
             }
             Poll::Ready(None) => {
                 // No tasks left; start the initial login attempt
@@ -189,9 +190,9 @@ impl Stream for RefreshStream {
                 self.spawn_login_task(None);
                 // Yield control to allow the task to start
                 cx.waker().wake_by_ref();
-                return Poll::Pending;
+                Poll::Pending
             }
-            Poll::Pending => return Poll::Pending,
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -205,8 +206,8 @@ async fn auth_request(
         let mut vec = result.bytes().await?.to_vec();
         {
             let response = String::from_utf8_lossy(&vec);
-            tracing::debug!(?response, "auth response");
-        }
+            tracing::debug!(?response, "auth response")
+        };
         let result = simd_json::from_slice::<AuthResponse>(&mut vec)?;
         return Ok(result)
     }
@@ -258,9 +259,9 @@ pub struct User {
 
 #[cfg(test)]
 mod auth_tests {
-    use std::time::Duration;
+    use core::time::Duration;
 
-    use futures::StreamExt;
+    use futures::StreamExt as _;
     use mockito::Matcher;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
@@ -281,12 +282,13 @@ mod auth_tests {
         let access_token = make_jwt(Duration::from_secs(3600));
         let mut m = SupabaseMockServer::new().await;
         let m = m.register_jwt_password(&access_token);
-        let supabase_auth = SupabaseAuth::new(
-            m.server_url(),
-            "api-key".to_string(),
-            1,
-            Duration::from_secs(1),
-        );
+        let config = SupabaseAuthConfig {
+            url: m.server_url(),
+            api_key: "api-key".to_owned(),
+            max_reconnect_attempts: 1,
+            reconnect_interval: Duration::from_secs(1),
+        };
+        let supabase_auth = SupabaseAuth::new(config);
         let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
@@ -315,16 +317,17 @@ mod auth_tests {
         let _m1 = m
             .mockito_server
             .mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .match_query(Matcher::Regex("grant_type=password".to_owned()))
             .with_status(400)
             .create();
 
-        let supabase_auth = SupabaseAuth::new(
-            m.server_url(),
-            "api-key".to_string(),
-            2,
-            Duration::from_secs(1),
-        );
+        let config = SupabaseAuthConfig {
+            url: m.server_url(),
+            api_key: "api-key".to_owned(),
+            max_reconnect_attempts: 2,
+            reconnect_interval: Duration::from_secs(1),
+        };
+        let supabase_auth = SupabaseAuth::new(config);
         let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
@@ -337,7 +340,7 @@ mod auth_tests {
             .unwrap()
             .unwrap();
 
-        assert!(response.is_err());
+        response.unwrap_err();
     }
     #[rstest]
     #[test(tokio::test)]
@@ -347,16 +350,17 @@ mod auth_tests {
         let _m1 = m
             .mockito_server
             .mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .match_query(Matcher::Regex("grant_type=password".to_owned()))
             .with_status(400)
             .create();
 
-        let supabase_auth = SupabaseAuth::new(
-            m.server_url(),
-            "api-key".to_string(),
-            1,
-            Duration::from_secs(1),
-        );
+        let config = SupabaseAuthConfig {
+            url: m.server_url(),
+            api_key: "api-key".to_owned(),
+            max_reconnect_attempts: 1,
+            reconnect_interval: Duration::from_secs(1),
+        };
+        let supabase_auth = SupabaseAuth::new(config);
         let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
@@ -379,15 +383,16 @@ mod auth_tests {
         let _m1 = m
             .mockito_server
             .mock("POST", "/auth/v1/token")
-            .match_query(Matcher::Regex("grant_type=password".to_string()))
+            .match_query(Matcher::Regex("grant_type=password".to_owned()))
             .with_status(500)
             .create();
-        let supabase_auth = SupabaseAuth::new(
-            m.server_url(),
-            "api-key".to_string(),
-            2,
-            Duration::from_millis(20),
-        );
+        let config = SupabaseAuthConfig {
+            url: m.server_url(),
+            api_key: "api-key".to_owned(),
+            max_reconnect_attempts: 2,
+            reconnect_interval: Duration::from_millis(20),
+        };
+        let supabase_auth = SupabaseAuth::new(config);
         let token_body = LoginCredentials {
             email: "user@example.com".to_owned(),
             password: "password".to_owned(),
@@ -396,7 +401,7 @@ mod auth_tests {
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         let response = stream.next().await.unwrap();
-        assert!(response.is_err());
+        response.unwrap_err();
         m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
         let response = timeout(Duration::from_secs(10), stream.next())
             .await
@@ -421,12 +426,13 @@ mod auth_tests {
 
         let new_access_token = make_jwt(Duration::from_secs(3600));
         m.register_jwt_refresh(&new_access_token);
-        let supabase_auth = SupabaseAuth::new(
-            m.server_url(),
-            "api-key".to_string(),
-            1,
-            Duration::from_millis(20),
-        );
+        let config = SupabaseAuthConfig {
+            url: m.server_url(),
+            api_key: "api-key".to_owned(),
+            max_reconnect_attempts: 1,
+            reconnect_interval: Duration::from_millis(20),
+        };
+        let supabase_auth = SupabaseAuth::new(config);
 
         // action
         let token_body = LoginCredentials {

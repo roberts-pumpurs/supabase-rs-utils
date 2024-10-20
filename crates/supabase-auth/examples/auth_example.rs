@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::time::Duration;
 
 use clap::Parser;
@@ -46,12 +45,13 @@ async fn main() {
 
     let args = Args::parse();
 
-    let supabase_auth = SupabaseAuth::new(
-        args.supabase_api_url.clone(),
-        args.annon_key,
-        5,
-        Duration::from_secs(3),
-    );
+    let config = supabase_auth::SupabaseAuthConfig {
+        api_key: args.annon_key,
+        max_reconnect_attempts: 5,
+        reconnect_interval: Duration::from_secs(3),
+        url: args.supabase_api_url.clone(),
+    };
+    let supabase_auth = SupabaseAuth::new(config);
     let mut token_refresh = supabase_auth
         .sign_in(supabase_auth::LoginCredentials {
             email: args.email,

@@ -41,7 +41,7 @@ async fn main() {
                 .from_env()
                 .unwrap()
                 .add_directive(format!("supabase_auth=info").parse().unwrap())
-                .add_directive(format!("supabase_realtime=trace").parse().unwrap())
+                .add_directive(format!("supabase_realtime=info").parse().unwrap())
                 .add_directive(format!("example1=info").parse().unwrap()),
         )
         .init();
@@ -85,7 +85,29 @@ async fn main() {
     client.subscribe_to_changes(payload).await.unwrap();
     tracing::debug!("pooling realtime connection");
     while let Some(msg) = realtime.next().await {
-        tracing::info!(?msg, "reading protocol message");
+        match msg {
+            Ok(msg) => {
+                use supabase_realtime::message::ProtocolPayload::*;
+                match msg.payload {
+                    PostgresChanges(postgres_changes_payload) => {
+                        let changes = postgres_changes_payload
+                            .data
+                            .parse_record::<simd_json::OwnedValue>()
+                            .unwrap()
+                            .parse_old_record::<simd_json::OwnedValue>()
+                            .unwrap();
+
+                        tracing::info!(?changes, "reading protocol message");
+                    }
+                    msg => {
+                        tracing::debug!(?msg, "reading protocol message");
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::warn!(?err, "realtime error");
+            }
+        }
     }
     tracing::error!("realtime connection exited");
 }

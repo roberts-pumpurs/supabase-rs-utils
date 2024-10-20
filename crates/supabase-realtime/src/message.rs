@@ -90,6 +90,7 @@ pub mod phx_reply {
 
     #[cfg(test)]
     mod tests {
+        use pretty_assertions::assert_eq;
 
         use super::*;
 
@@ -108,14 +109,14 @@ pub mod phx_reply {
                   "topic": "realtime:db"
                 }        "#;
 
-            let expected_struct = ProtocolMessage::PhxReply(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: PhxReply::Error(ErrorReply {
+                payload: ProtocolPayload::PhxReply(PhxReply::Error(ErrorReply {
                     reason: "Invalid JWT Token".to_string(),
-                }),
+                })),
                 ref_field: Some("1".to_string()),
                 join_ref: None,
-            });
+            };
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
@@ -148,9 +149,9 @@ pub mod phx_reply {
           "topic": "realtime:db"
         } "#;
 
-            let expected_struct: ProtocolMessage = ProtocolMessage::PhxReply(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: PhxReply::Ok(PhxReplyQuery {
+                payload: ProtocolPayload::PhxReply(PhxReply::Ok(PhxReplyQuery {
                     postgres_changes: vec![PostgresChanges {
                         schema: "public".to_string(),
                         table: "profiles".to_string(),
@@ -158,10 +159,10 @@ pub mod phx_reply {
                         filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string()),
                         event: PostgresChangetEvent::All,
                     }],
-                }),
+                })),
                 ref_field: Some("1".to_string()),
                 join_ref: None,
-            });
+            };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -195,9 +196,9 @@ pub mod phx_reply {
                 "topic":  "realtime:db"
             } "#;
 
-            let expected_struct: ProtocolMessage = ProtocolMessage::PhxReply(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: PhxReply::Ok(PhxReplyQuery {
+                payload: ProtocolPayload::PhxReply(PhxReply::Ok(PhxReplyQuery {
                     postgres_changes: vec![PostgresChanges {
                         schema: "public".to_string(),
                         table: "profiles".to_string(),
@@ -205,10 +206,10 @@ pub mod phx_reply {
                         filter: Some("".to_string()),
                         event: PostgresChangetEvent::All,
                     }],
-                }),
+                })),
                 ref_field: Some("1".to_string()),
                 join_ref: None,
-            });
+            };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -232,14 +233,14 @@ pub mod phx_reply {
         "topic": "phoenix"
     }"#;
 
-        let expected_struct = ProtocolMessage::PhxReply(PhoenixMessage {
+        let expected_struct = ProtocolMessage {
             topic: "phoenix".to_string(),
-            payload: PhxReply::Ok(PhxReplyQuery {
+            payload: ProtocolPayload::PhxReply(PhxReply::Ok(PhxReplyQuery {
                 postgres_changes: Vec::new(),
-            }),
+            })),
             ref_field: None,
             join_ref: None,
-        });
+        };
 
         let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
         dbg!(serialized);
@@ -333,38 +334,36 @@ pub mod phx_join {
                         }
                     ]
                 },
-                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ"
+                "access_token": "your_access_token"
             },
             "ref": "1",
             "join_ref": "1"
         }
         "#;
 
-            let expected_struct = ProtocolMessage::PhxJoin(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: phx_join::PhxJoin {
-                    config: phx_join::JoinConfig {
-                    broadcast: phx_join::BroadcastConfig {
-                        self_item: false,
-                        ack: false
+                payload: ProtocolPayload::PhxJoin(PhxJoin {
+                    config: JoinConfig {
+                        broadcast: BroadcastConfig {
+                            self_item: false,
+                            ack: false,
+                        },
+                        presence: PresenceConfig {
+                            key: "".to_string(),
+                        },
+                        postgres_changes: vec![PostgrsChanges {
+                            event: PostgresChangetEvent::All,
+                            schema: "public".to_string(),
+                            table: "profiles".to_string(),
+                            filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string()),
+                        }],
                     },
-                    presence: phx_join::PresenceConfig {
-                        key: "".to_string()
-                    },
-                    postgres_changes: vec![
-                            PostgrsChanges {
-                                event: PostgresChangetEvent::All,
-                                schema: "public".to_string(),
-                                table: "profiles".to_string(),
-                                filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_string()),
-                            }
-                        ],
-                    },
-                    access_token: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTcyMDU0NzU4Nn1dLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwiYXVkIjoiYXV0aGVudGljYXRlZCIsImVtYWlsIjoic2NvdXRAc3dvb3BzY29yZS5jb20iLCJleHAiOjE3MjA2MzQ3NjMsImlhdCI6MTcyMDYzNDcwMywiaXNfYW5vbnltb3VzIjpmYWxzZSwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo1NDMyMS9hdXRoL3YxIiwicGhvbmUiOiIiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsInNlc3Npb25faWQiOiJiMGQ5ODY4Mi0zYTEwLTQxOTAtYWZjZC01NWE5Nzc2MGEzZTYiLCJzdWIiOiI4M2ExOWMxNi1mY2Q4LTQ1ZDAtOTcxMC1kN2IwNmNlNmYzMjkiLCJ1c2VyX21ldGFkYXRhIjp7fSwidXNlcl9yb2xlIjoic2NvdXQifQ.Smmu7aH808WzYT3Z82pQGxZQ2NmDsKZL64rG1uJ_wtQ".to_string()),
-                },
+                    access_token: Some("your_access_token".to_string()),
+                }),
                 ref_field: Some("1".to_string()),
                 join_ref: Some("1".to_string()),
-            });
+            };
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
 
@@ -398,12 +397,12 @@ pub mod presence_state {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::PresenceState(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: PresenceState {},
+                payload: ProtocolPayload::PresenceState(PresenceState),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -438,12 +437,12 @@ pub mod heartbeat {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::Heartbeat(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "phoenix".to_string(),
-                payload: Heartbeat,
+                payload: ProtocolPayload::Heartbeat(Heartbeat),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -470,7 +469,7 @@ pub mod access_token {
         use super::*;
 
         #[test]
-        fn test_presence_state_serialization() {
+        fn test_access_token() {
             let json_data = r#"
             {
                "event": "access_token",
@@ -482,14 +481,14 @@ pub mod access_token {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::AccessToken(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime::something::something".to_string(),
-                payload: AccessToken {
+                payload: ProtocolPayload::AccessToken(AccessToken {
                     access_token: "ssss".to_string(),
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -514,7 +513,7 @@ pub mod phx_close {
         use super::*;
 
         #[test]
-        fn test_presence_state_serialization() {
+        fn test_phx_close() {
             let json_data = r#"
             {
                "event": "phx_close",
@@ -524,12 +523,12 @@ pub mod phx_close {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::PhxClose(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime::something::something".to_string(),
-                payload: PhxClose {},
+                payload: ProtocolPayload::PhxClose(PhxClose {}),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialzed);
@@ -579,17 +578,17 @@ pub mod system {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::System(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: system::System {
+                payload: ProtocolPayload::System(System {
                     channel: "db".to_string(),
                     extension: "postgres_changes".to_string(),
-                    message:"{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}".to_string(),
+                    message: "{:error, \"Unable to subscribe to changes with given parameters. Please check Realtime is enabled for the given connect parameters: [event: *, filter: id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329, schema: public, table: profiles]\"}".to_string(),
                     status: "error".to_string(),
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             dbg!(&expected_struct);
 
@@ -618,17 +617,17 @@ pub mod system {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::System(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: system::System {
+                payload: ProtocolPayload::System(System {
                     channel: "db".to_string(),
                     extension: "postgres_changes".to_string(),
                     message: "{:error, \"Error parsing `filter` params: [\\\"\\\"]\"}".to_string(),
                     status: "error".to_string(),
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             dbg!(&expected_struct);
 
@@ -657,17 +656,17 @@ pub mod system {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::System(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: system::System {
+                payload: ProtocolPayload::System(System {
                     channel: "db".to_string(),
                     extension: "postgres_changes".to_string(),
                     message: "Subscribed to PostgreSQL".to_string(),
                     status: "ok".to_string(),
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             dbg!(&expected_struct);
 
@@ -704,12 +703,12 @@ pub mod phx_error {
             }
             "#;
 
-            let expected_struct = ProtocolMessage::PhxError(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: PhxError {},
+                payload: ProtocolPayload::PhxError(PhxError),
                 ref_field: Some("1".to_string()),
                 join_ref: None,
-            });
+            };
 
             let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
@@ -724,52 +723,18 @@ pub mod phx_error {
 }
 
 pub mod postgres_changes {
+    use std::fmt;
+
+    use serde::de::{self, DeserializeOwned};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct PostgresChangesPayload {
-        pub data: Data,
+        pub data: Data<Buffer, Buffer>,
         pub ids: Vec<i64>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub enum PostgresDataChangeEvent {
-        #[serde(rename = "*")]
-        All,
-        #[serde(rename = "INSERT")]
-        Insert,
-        #[serde(rename = "UPDATE")]
-        Update,
-        #[serde(rename = "DELETE")]
-        Delete,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    pub struct Data {
-        pub columns: Vec<Column>,
-        #[serde(rename = "commit_timestamp")]
-        pub commit_timestamp: String,
-        #[serde(default)]
-        pub errors: Option<String>,
-        #[serde(
-            default,
-            rename = "old_record",
-            deserialize_with = "deserialize_raw",
-            serialize_with = "serialize_raw"
-        )]
-        pub old_record: Option<Vec<u8>>,
-        #[serde(
-            default,
-            deserialize_with = "deserialize_raw",
-            serialize_with = "serialize_raw"
-        )]
-        pub record: Option<Vec<u8>>,
-        pub schema: String,
-        pub table: String,
-        #[serde(rename = "type")]
-        pub type_: PostgresDataChangeEvent,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -780,56 +745,165 @@ pub mod postgres_changes {
         pub type_: String,
     }
 
-    use std::fmt;
-
-    use serde::de::{self, Deserializer, Visitor};
-    use serde::ser::Serializer;
-
-    fn deserialize_raw<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct RawBytesVisitor;
-
-        impl<'de> Visitor<'de> for RawBytesVisitor {
-            type Value = Option<Vec<u8>>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a JSON value")
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(None)
-            }
-
-            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                let value = simd_json::OwnedValue::deserialize(deserializer)?;
-                let buf = simd_json::to_vec(&value).map_err(de::Error::custom)?;
-                Ok(Some(buf))
-            }
-        }
-
-        deserializer.deserialize_option(RawBytesVisitor)
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum PostgresDataChangeEvent {
+        #[serde(rename = "INSERT")]
+        Insert,
+        #[serde(rename = "UPDATE")]
+        Update,
+        #[serde(rename = "DELETE")]
+        Delete,
     }
 
-    fn serialize_raw<S>(value: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match value {
-            Some(bytes) => {
-                let mut bytes_copy = bytes.clone();
-                let json_value: simd_json::OwnedValue = simd_json::to_owned_value(&mut bytes_copy)
-                    .map_err(serde::ser::Error::custom)?;
-                json_value.serialize(serializer)
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Data<R = Buffer, O = Buffer> {
+        pub columns: Vec<Column>,
+        #[serde(rename = "commit_timestamp")]
+        pub commit_timestamp: String,
+        #[serde(default)]
+        pub errors: Option<String>,
+        #[serde(default, rename = "old_record")]
+        pub old_record: Option<O>,
+        #[serde(default)]
+        pub record: Option<R>,
+        pub schema: String,
+        pub table: String,
+        #[serde(rename = "type")]
+        pub type_: PostgresDataChangeEvent,
+    }
+
+    impl<O> Data<Buffer, O> {
+        /// Parses the `record` field and returns a new `Data` instance with the parsed type.
+        pub fn parse_record<T: DeserializeOwned>(self) -> Result<Data<T, O>, simd_json::Error> {
+            let record = match self.record {
+                Some(buffer) => {
+                    let mut data = buffer.into_inner();
+                    let parsed: T = simd_json::from_slice(&mut data)?;
+                    Some(parsed)
+                }
+                None => None,
+            };
+
+            Ok(Data {
+                record,
+                old_record: self.old_record,
+                columns: self.columns,
+                commit_timestamp: self.commit_timestamp,
+                errors: self.errors,
+                schema: self.schema,
+                table: self.table,
+                type_: self.type_,
+            })
+        }
+    }
+    impl<R> Data<R, Buffer> {
+        /// Parses the `old_record` field and returns a new `Data` instance with the parsed type.
+        pub fn parse_old_record<K: DeserializeOwned>(self) -> Result<Data<R, K>, simd_json::Error> {
+            let old_record = match self.old_record {
+                Some(buffer) => {
+                    let mut data = buffer.into_inner();
+                    let parsed: K = simd_json::from_slice(&mut data)?;
+                    Some(parsed)
+                }
+                None => None,
+            };
+
+            Ok(Data {
+                record: self.record,
+                old_record,
+                columns: self.columns,
+                commit_timestamp: self.commit_timestamp,
+                errors: self.errors,
+                schema: self.schema,
+                table: self.table,
+                type_: self.type_,
+            })
+        }
+    }
+
+    #[derive(Debug, Default, Clone, PartialEq, Eq)]
+    pub struct Buffer(pub Vec<u8>);
+
+    impl Buffer {
+        pub fn into_inner(self) -> Vec<u8> {
+            self.0
+        }
+    }
+
+    // Implement Serialize for Buffer
+    impl Serialize for Buffer {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut bytes_copy = self.0.clone();
+            let json_value: simd_json::OwnedValue =
+                simd_json::to_owned_value(&mut bytes_copy).map_err(serde::ser::Error::custom)?;
+            json_value.serialize(serializer)
+        }
+    }
+
+    // Implement Deserialize for Buffer
+    impl<'de> Deserialize<'de> for Buffer {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct RawBytesVisitor;
+
+            impl<'de> de::Visitor<'de> for RawBytesVisitor {
+                type Value = Buffer;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("a JSON value")
+                }
+
+                fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+                where
+                    D: Deserializer<'de>,
+                {
+                    let value = simd_json::BorrowedValue::deserialize(deserializer)?;
+                    let buf = simd_json::to_vec(&value).map_err(de::Error::custom)?;
+                    Ok(Buffer(buf))
+                }
+
+                fn visit_none<E>(self) -> Result<Self::Value, E>
+                where
+                    E: de::Error,
+                {
+                    Ok(Buffer(Vec::new()))
+                }
+
+                fn visit_unit<E>(self) -> Result<Self::Value, E>
+                where
+                    E: de::Error,
+                {
+                    self.visit_none()
+                }
+
+                fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+                where
+                    A: de::SeqAccess<'de>,
+                {
+                    let value = serde::de::value::SeqAccessDeserializer::new(seq);
+                    let value = simd_json::BorrowedValue::deserialize(value)?;
+                    let buf = simd_json::to_vec(&value).map_err(de::Error::custom)?;
+                    Ok(Buffer(buf))
+                }
+
+                fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+                where
+                    A: de::MapAccess<'de>,
+                {
+                    let value = serde::de::value::MapAccessDeserializer::new(map);
+                    let value = simd_json::BorrowedValue::deserialize(value)?;
+                    let buf = simd_json::to_vec(&value).map_err(de::Error::custom)?;
+                    Ok(Buffer(buf))
+                }
             }
-            None => serializer.serialize_none(),
+
+            deserializer.deserialize_any(RawBytesVisitor)
         }
     }
 
@@ -884,9 +958,9 @@ pub mod postgres_changes {
             let record_bytes = simd_json::to_vec(record_value).unwrap();
             let old_record_bytes = simd_json::to_vec(old_record_value).unwrap();
 
-            let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:db".to_string(),
-                payload: PostgresChangesPayload {
+                payload: ProtocolPayload::PostgresChanges(PostgresChangesPayload {
                     data: Data {
                         columns: vec![
                             Column {
@@ -904,17 +978,17 @@ pub mod postgres_changes {
                         ],
                         commit_timestamp: "2024-08-25T17:00:19.009Z".to_string(),
                         errors: None,
-                        old_record: Some(old_record_bytes.clone()),
-                        record: Some(record_bytes.clone()),
+                        old_record: Some(Buffer(old_record_bytes.clone())),
+                        record: Some(Buffer(record_bytes.clone())),
                         schema: "public".to_string(),
                         table: "profiles".to_string(),
                         type_: PostgresDataChangeEvent::Update,
                     },
                     ids: vec![38606455],
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             // Deserialize json_data using simd_json
             let mut deserialized_bytes = json_data.to_string().into_bytes();
@@ -986,13 +1060,13 @@ pub mod postgres_changes {
             // Serialize record_value and old_record_value to bytes
             let record_bytes = simd_json::to_vec(record_value).unwrap();
 
-            let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:table-db-changes".to_string(),
-                payload: PostgresChangesPayload {
+                payload: ProtocolPayload::PostgresChanges(PostgresChangesPayload {
                     data: Data {
                         table: "rooms".to_string(),
                         type_: PostgresDataChangeEvent::Insert,
-                        record: Some(record_bytes),
+                        record: Some(Buffer(record_bytes)),
                         old_record: None,
                         columns: vec![
                             Column {
@@ -1021,10 +1095,10 @@ pub mod postgres_changes {
                         schema: "public".to_string(),
                     },
                     ids: vec![60402389],
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
@@ -1093,14 +1167,14 @@ pub mod postgres_changes {
             // Serialize record_value and old_record_value to bytes
             let old_record_bytes = simd_json::to_vec(old_record_value).unwrap();
 
-            let expected_struct = ProtocolMessage::PostgresChanges(PhoenixMessage {
+            let expected_struct = ProtocolMessage {
                 topic: "realtime:table-db-changes".to_string(),
-                payload: PostgresChangesPayload {
+                payload: ProtocolPayload::PostgresChanges(PostgresChangesPayload {
                     data: Data {
                         table: "rooms".to_string(),
                         type_: PostgresDataChangeEvent::Delete,
                         record: None,
-                        old_record: Some(old_record_bytes),
+                        old_record: Some(Buffer(old_record_bytes)),
                         columns: vec![
                             Column {
                                 name: "id".to_string(),
@@ -1128,10 +1202,10 @@ pub mod postgres_changes {
                         schema: "public".to_string(),
                     },
                     ids: vec![38377940],
-                },
+                }),
                 ref_field: None,
                 join_ref: None,
-            });
+            };
 
             let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
             dbg!(serialized);
