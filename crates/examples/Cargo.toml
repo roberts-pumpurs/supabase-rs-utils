@@ -12,6 +12,7 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 simd-json.workspace = true
+supabase-client.workspace = true
 
 [lints]
 workspace = true
@@ -21,5 +22,9 @@ name = "realtime-example"
 path = "src/realtime_example.rs"
 
 [[bin]]
-name = "auth_example"
+name = "client-example"
+path = "src/client_example.rs"
+
+[[bin]]
+name = "auth-example"
 path = "src/auth_example.rs"

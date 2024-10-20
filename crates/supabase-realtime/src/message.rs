@@ -349,9 +349,7 @@ pub mod phx_join {
                             self_item: false,
                             ack: false,
                         },
-                        presence: PresenceConfig {
-                            key: String::new(),
-                        },
+                        presence: PresenceConfig { key: String::new() },
                         postgres_changes: vec![PostgrsChanges {
                             event: PostgresChangetEvent::All,
                             schema: "public".to_owned(),
