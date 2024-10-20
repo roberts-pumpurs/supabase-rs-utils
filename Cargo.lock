@@ -2010,13 +2010,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "supabase-auth"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
- "clap",
  "futures",
- "futures-timer",
- "jwt-simple",
  "mockito",
- "pin-project",
  "pretty_assertions",
  "redact",
  "reqwest",
@@ -2049,15 +2044,11 @@ name = "supabase-realtime"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "clap",
- "color-eyre",
- "eyre",
  "fastwebsockets",
  "futures",
  "http-body-util",
  "hyper",
  "hyper-util",
- "pin-project",
  "pretty_assertions",
  "rstest",
  "rustls",
