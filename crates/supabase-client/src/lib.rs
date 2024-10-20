@@ -4,7 +4,7 @@ use futures::{Stream, StreamExt as _};
 use postgrest::{reqwest, Postgrest};
 use supabase_auth::url;
 use tracing::instrument;
-pub use {postgrest, supabase_auth};
+pub use {postgrest, postgrest_error, supabase_auth};
 
 pub struct PostgerstResponse<T> {
     response: reqwest::Response,
