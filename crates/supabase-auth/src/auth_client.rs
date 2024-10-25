@@ -1,7 +1,7 @@
 pub mod requests;
 use core::marker::PhantomData;
 
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt as _};
 use requests::AuthModuleRequest;
 use reqwest::header;
 use tracing::instrument;
@@ -43,9 +43,9 @@ pub fn new_authenticated_stream(
                     None
                 })
                 .transpose();
-            return res;
+            res
         })
-        .filter_map(|x| futures::future::ready(x));
+        .filter_map(futures::future::ready);
 
     Ok(client_stream)
 }
@@ -214,7 +214,7 @@ fn authenticated_client(api_key: &str, token: &str) -> Result<reqwest::Client, A
     let mut headers = base_headers(api_key)?;
     headers.insert(
         "Authorization",
-        header::HeaderValue::from_str(&format!("Bearer {}", token))?,
+        header::HeaderValue::from_str(&format!("Bearer {token}"))?,
     );
 
     let temp_client = reqwest::Client::builder()

@@ -1,13 +1,10 @@
+use core::ops::Div as _;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use core::time::Duration;
-use std::ops::Div;
 
 use futures::Stream;
-use reqwest::header::{HeaderMap, InvalidHeaderValue};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use simd_json::json;
+use reqwest::header::InvalidHeaderValue;
 use thiserror::Error;
 use tokio::task::JoinSet;
 
@@ -15,7 +12,6 @@ use crate::auth_client::requests::{GrantType, TokenRequest};
 use crate::auth_client::{ApiClient, Request};
 use crate::error::AuthError;
 use crate::types::{AccessTokenResponseSchema, ErrorSchema, LoginCredentials, TokenRequestBody};
-use crate::SUPABASE_KEY;
 
 #[derive(Clone, Debug, PartialEq, Eq, typed_builder::TypedBuilder)]
 pub struct SupabaseAuthConfig {
@@ -274,10 +270,10 @@ mod auth_tests {
             reconnect_interval: Duration::from_secs(1),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials {
-            email: "user@example.com".to_owned(),
-            password: "password".to_owned(),
-        };
+        let token_body = LoginCredentials::builder()
+            .email("user@example.com".to_owned())
+            .password("password".to_owned())
+            .build();
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -289,9 +285,12 @@ mod auth_tests {
         dbg!(&response);
         assert!(response.is_ok());
         let auth_response = response.unwrap();
-        assert_eq!(auth_response.access_token, access_token);
-        assert_eq!(auth_response.refresh_token, "some-refresh-token");
-        assert_eq!(auth_response.user.email, "user@example.com");
+        assert_eq!(auth_response.access_token.unwrap(), access_token);
+        assert_eq!(auth_response.refresh_token.unwrap(), "some-refresh-token");
+        assert_eq!(
+            auth_response.user.unwrap().email.unwrap(),
+            "user@example.com"
+        );
     }
 
     #[rstest]
@@ -313,10 +312,10 @@ mod auth_tests {
             reconnect_interval: Duration::from_secs(1),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials {
-            email: "user@example.com".to_owned(),
-            password: "password".to_owned(),
-        };
+        let token_body = LoginCredentials::builder()
+            .email("user@example.com".to_owned())
+            .password("password".to_owned())
+            .build();
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -346,10 +345,10 @@ mod auth_tests {
             reconnect_interval: Duration::from_secs(1),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials {
-            email: "user@example.com".to_owned(),
-            password: "password".to_owned(),
-        };
+        let token_body = LoginCredentials::builder()
+            .email("user@example.com".to_owned())
+            .password("password".to_owned())
+            .build();
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -378,10 +377,10 @@ mod auth_tests {
             reconnect_interval: Duration::from_millis(20),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials {
-            email: "user@example.com".to_owned(),
-            password: "password".to_owned(),
-        };
+        let token_body = LoginCredentials::builder()
+            .email("user@example.com".to_owned())
+            .password("password".to_owned())
+            .build();
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -396,8 +395,11 @@ mod auth_tests {
         dbg!(&response);
         assert!(response.is_ok());
         let auth_response = response.unwrap();
-        assert_eq!(auth_response.refresh_token, "some-refresh-token");
-        assert_eq!(auth_response.user.email, "user@example.com");
+        assert_eq!(auth_response.refresh_token.unwrap(), "some-refresh-token");
+        assert_eq!(
+            auth_response.user.unwrap().email.unwrap(),
+            "user@example.com"
+        );
     }
 
     #[rstest]
@@ -420,10 +422,10 @@ mod auth_tests {
         let supabase_auth = JwtStream::new(config);
 
         // action
-        let token_body = LoginCredentials {
-            email: "user@example.com".to_owned(),
-            password: "password".to_owned(),
-        };
+        let token_body = LoginCredentials::builder()
+            .email("user@example.com".to_owned())
+            .password("password".to_owned())
+            .build();
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         // Get the initial token
@@ -434,8 +436,11 @@ mod auth_tests {
         dbg!(&response1);
         assert!(response1.is_ok());
         let auth_response1 = response1.unwrap();
-        assert_eq!(auth_response1.access_token, first_access_token);
-        assert_eq!(auth_response1.user.email, "user@example.com");
+        assert_eq!(auth_response1.access_token.unwrap(), first_access_token);
+        assert_eq!(
+            auth_response1.user.unwrap().email.unwrap(),
+            "user@example.com"
+        );
 
         // Wait for token to expire and refresh
         let response2 = timeout(Duration::from_secs(5), stream.next())
@@ -445,7 +450,10 @@ mod auth_tests {
         dbg!(&response2);
         assert!(response2.is_ok());
         let auth_response2 = response2.unwrap();
-        assert_eq!(auth_response2.access_token, new_access_token);
-        assert_eq!(auth_response2.user.email, "user@example.com");
+        assert_eq!(auth_response2.access_token.unwrap(), new_access_token);
+        assert_eq!(
+            auth_response2.user.unwrap().email.unwrap(),
+            "user@example.com"
+        );
     }
 }

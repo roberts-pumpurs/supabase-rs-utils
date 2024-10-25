@@ -1,7 +1,5 @@
 use reqwest::header::InvalidHeaderValue;
 
-use crate::jwt_stream::RefreshStreamError;
-
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
     #[error("Reqwest error {0}")]

@@ -72,7 +72,7 @@ impl AuthModuleRequest for TokenRequest {
             GrantType::IdToken => "id_token",
             GrantType::Pkce => "pkce",
         };
-        url.query_pairs_mut().append_pair("grant_type", &grant_type);
+        url.query_pairs_mut().append_pair("grant_type", grant_type);
         Ok(url)
     }
 

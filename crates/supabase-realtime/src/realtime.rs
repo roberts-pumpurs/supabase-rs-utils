@@ -3,7 +3,7 @@ use core::task::Poll;
 
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
-use futures::{SinkExt as _, Stream, StreamExt};
+use futures::{SinkExt as _, Stream, StreamExt as _};
 use supabase_auth::types::LoginCredentials;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -112,23 +112,21 @@ impl RealtimeConnection {
         let access_token_stream = {
             auth_stream
                 .filter_map(|item| async move {
-                    let res = item
-                        .map(|item| {
-                            if let Some(access_token) = item.access_token {
-                                return Some(message::ProtocolMessage {
-                                    topic: Self::DB_UPDATE_TOPIC.to_owned(),
-                                    payload: message::ProtocolPayload::AccessToken(AccessToken {
-                                        access_token,
-                                    }),
-                                    ref_field: None,
-                                    join_ref: None,
-                                })
-                            }
-                            return None
-                        })
-                        .map_err(SupabaseRealtimeError::from)
-                        .transpose();
-                    return res;
+                    item.map(|item| {
+                        if let Some(access_token) = item.access_token {
+                            return Some(message::ProtocolMessage {
+                                topic: Self::DB_UPDATE_TOPIC.to_owned(),
+                                payload: message::ProtocolPayload::AccessToken(AccessToken {
+                                    access_token,
+                                }),
+                                ref_field: None,
+                                join_ref: None,
+                            })
+                        }
+                        None
+                    })
+                    .map_err(SupabaseRealtimeError::from)
+                    .transpose()
                 })
                 .boxed()
         };

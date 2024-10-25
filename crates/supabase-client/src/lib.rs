@@ -28,7 +28,7 @@ pub fn new_authenticated(
         item.map(|item| {
             let mut client = base.clone();
             if let Some(access_token) = item.access_token.as_ref() {
-                client = client.auth(&access_token)
+                client = client.auth(access_token);
             }
             (client, item)
         })
