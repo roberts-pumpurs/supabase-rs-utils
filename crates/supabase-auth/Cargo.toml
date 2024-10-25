@@ -16,6 +16,8 @@ serde.workspace = true
 simd-json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+typed-builder.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

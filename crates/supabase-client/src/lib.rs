@@ -2,6 +2,8 @@ use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
 use postgrest::{reqwest, Postgrest};
+use supabase_auth::jwt_stream::SupabaseAuthConfig;
+use supabase_auth::types::{AccessTokenResponseSchema, LoginCredentials};
 use supabase_auth::url;
 use tracing::instrument;
 pub use {postgrest, postgrest_error, supabase_auth};
@@ -14,17 +16,23 @@ pub struct PostgerstResponse<T> {
 pub const SUPABASE_KEY: &str = "apikey";
 
 pub fn new_authenticated(
-    config: supabase_auth::SupabaseAuthConfig,
-    login_info: supabase_auth::LoginCredentials,
+    config: SupabaseAuthConfig,
+    login_info: LoginCredentials,
 ) -> Result<
-    impl Stream<Item = Result<postgrest::Postgrest, SupabaseClientError>>,
+    impl Stream<Item = Result<(postgrest::Postgrest, AccessTokenResponseSchema), SupabaseClientError>>,
     SupabaseClientError,
 > {
     let base = anonymous_client(config.api_key.clone(), config.url.clone())?;
-    let auth_stream = supabase_auth::SupabaseAuth::new(config).sign_in(login_info)?;
+    let auth_stream = supabase_auth::jwt_stream::JwtStream::new(config).sign_in(login_info)?;
     let client_stream = auth_stream.map(move |item| {
-        item.map(|item| base.clone().auth(item.access_token))
-            .map_err(SupabaseClientError::from)
+        item.map(|item| {
+            let mut client = base.clone();
+            if let Some(access_token) = item.access_token.as_ref() {
+                client = client.auth(&access_token)
+            }
+            (client, item)
+        })
+        .map_err(SupabaseClientError::from)
     });
 
     Ok(client_stream)
@@ -41,9 +49,9 @@ pub enum SupabaseClientError {
     #[error("Jwt Stream closed unexpectedly")]
     JwtStreamClosedUnexpectedly,
     #[error("Refresh stream error")]
-    RefreshStreamError(#[from] supabase_auth::RefreshStreamError),
+    RefreshStreamError(#[from] supabase_auth::jwt_stream::RefreshStreamError),
     #[error("Auth sign in error")]
-    AuthSignInError(#[from] supabase_auth::SignInError),
+    AuthSignInError(#[from] supabase_auth::jwt_stream::SignInError),
     #[error("Url parse error {0}")]
     UrlParseError(#[from] url::ParseError),
 }

@@ -51,7 +51,7 @@ postgrest = { git = "https://github.com/roberts-pumpurs/postgrest-rs.git", branc
 futures-concurrency = "7.4"
 futures-util = "0.3"
 futures = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls", "stream", "http2"] }
 tokio = { version = "1", features = ["full"] } # todo: remove "full"
 pin-project = "1"
 futures-timer = "3"

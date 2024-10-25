@@ -3,8 +3,8 @@ use core::task::Poll;
 
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
-use futures::{SinkExt as _, Stream, StreamExt as _};
-use supabase_auth::LoginCredentials;
+use futures::{SinkExt as _, Stream, StreamExt};
+use supabase_auth::types::LoginCredentials;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tokio_stream::wrappers::IntervalStream;
@@ -29,7 +29,7 @@ impl RealtimeConnectionClient {
 }
 
 pub struct RealtimeConnection {
-    config: supabase_auth::SupabaseAuthConfig,
+    config: supabase_auth::jwt_stream::SupabaseAuthConfig,
 }
 
 type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
@@ -39,7 +39,7 @@ impl RealtimeConnection {
     const DB_UPDATE_TOPIC: &str = "realtime:table-db-changes";
 
     #[must_use]
-    pub const fn new(config: supabase_auth::SupabaseAuthConfig) -> Self {
+    pub const fn new(config: supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
         Self { config }
     }
 
@@ -60,11 +60,15 @@ impl RealtimeConnection {
         )?;
 
         let mut auth_stream =
-            supabase_auth::SupabaseAuth::new(self.config.clone()).sign_in(login_info)?;
+            supabase_auth::jwt_stream::JwtStream::new(self.config.clone()).sign_in(login_info)?;
         let mut latest_access_token = loop {
             match auth_stream.next().await {
                 Some(Ok(new_latest_access_token)) => {
-                    break new_latest_access_token.access_token;
+                    let Some(access_token) = new_latest_access_token.access_token else {
+                        tracing::error!("access token was not present!");
+                        continue;
+                    };
+                    break access_token;
                 }
                 Some(Err(err)) => {
                     tracing::error!(?err, "initial jwt fetch err");
@@ -107,16 +111,24 @@ impl RealtimeConnection {
 
         let access_token_stream = {
             auth_stream
-                .map(|item| {
-                    item.map(|item| message::ProtocolMessage {
-                        topic: Self::DB_UPDATE_TOPIC.to_owned(),
-                        payload: message::ProtocolPayload::AccessToken(AccessToken {
-                            access_token: item.access_token,
-                        }),
-                        ref_field: None,
-                        join_ref: None,
-                    })
-                    .map_err(SupabaseRealtimeError::from)
+                .filter_map(|item| async move {
+                    let res = item
+                        .map(|item| {
+                            if let Some(access_token) = item.access_token {
+                                return Some(message::ProtocolMessage {
+                                    topic: Self::DB_UPDATE_TOPIC.to_owned(),
+                                    payload: message::ProtocolPayload::AccessToken(AccessToken {
+                                        access_token,
+                                    }),
+                                    ref_field: None,
+                                    join_ref: None,
+                                })
+                            }
+                            return None
+                        })
+                        .map_err(SupabaseRealtimeError::from)
+                        .transpose();
+                    return res;
                 })
                 .boxed()
         };

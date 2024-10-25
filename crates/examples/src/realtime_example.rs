@@ -1,6 +1,8 @@
 use core::time::Duration;
 
 use clap::Parser;
+use supabase_auth::jwt_stream::SupabaseAuthConfig;
+use supabase_auth::types::LoginCredentials;
 use supabase_auth::url;
 use supabase_realtime::futures::StreamExt as _;
 use supabase_realtime::message::phx_join;
@@ -48,18 +50,18 @@ async fn main() {
 
     let args = Args::parse();
 
-    let config = supabase_auth::SupabaseAuthConfig {
+    let config = SupabaseAuthConfig {
         api_key: args.annon_key,
         max_reconnect_attempts: 5,
         reconnect_interval: Duration::from_secs(3),
         url: args.supabase_api_url.clone(),
     };
-    let login_info = supabase_auth::LoginCredentials {
-        email: args.email,
-        password: args.pass,
-    };
+    let login_credentials = LoginCredentials::builder()
+        .email(args.email)
+        .password(args.pass)
+        .build();
     let (mut realtime, mut client) = supabase_realtime::realtime::RealtimeConnection::new(config)
-        .connect(login_info)
+        .connect(login_credentials)
         .await
         .unwrap();
 

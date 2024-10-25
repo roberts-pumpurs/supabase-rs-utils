@@ -3,7 +3,7 @@ use core::time::Duration;
 use clap::Parser;
 use supabase_auth::futures::StreamExt as _;
 use supabase_auth::jwt_stream::{JwtStream, SupabaseAuthConfig};
-use supabase_auth::types::{LoginCredentials, SAMLConfiguration};
+use supabase_auth::types::LoginCredentials;
 use supabase_auth::url;
 use tracing_subscriber::EnvFilter;
 
@@ -21,6 +21,15 @@ struct Args {
 
     #[arg(short, long)]
     pass: String,
+
+    /// The supabase table to subscribe to
+    #[arg(short, long)]
+    table: String,
+
+    /// The filter to apply on the table
+    /// e.g. "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329"
+    #[arg(short, long)]
+    filter: Option<String>,
 }
 
 #[tokio::main]
@@ -43,28 +52,18 @@ async fn main() {
         reconnect_interval: Duration::from_secs(3),
         url: args.supabase_api_url.clone(),
     };
-    let login_credentials = LoginCredentials::builder()
-        .email(args.email)
-        .password(args.pass)
-        .build();
+    let supabase_auth = JwtStream::new(config);
+    let mut token_refresh = supabase_auth
+        .sign_in(
+            LoginCredentials::builder()
+                .email(args.email)
+                .password(args.pass)
+                .build(),
+        )
+        .unwrap();
 
-    let mut auth_client_stream =
-        supabase_auth::auth_client::new_authenticated_stream(config, login_credentials).unwrap();
-    while let Some(item) = auth_client_stream.next().await {
-        tracing::debug!(?item, "new client?");
-        let Ok(Ok(client)) = item else {
-            continue;
-        };
-        let result = client
-            .build_request(&supabase_auth::auth_client::requests::UserGetRequest)
-            .unwrap()
-            .execute()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-        tracing::info!(data =? result, "user info");
+    while let Some(msg) = token_refresh.next().await {
+        tracing::debug!(?msg, "reading protocol message");
     }
     tracing::error!("realtime connection exited");
 }

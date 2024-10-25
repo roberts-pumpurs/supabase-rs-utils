@@ -26,5 +26,9 @@ name = "client-example"
 path = "src/client_example.rs"
 
 [[bin]]
+name = "jwt-stream-example"
+path = "src/jwt_stream_example.rs"
+
+[[bin]]
 name = "auth-example"
 path = "src/auth_example.rs"
