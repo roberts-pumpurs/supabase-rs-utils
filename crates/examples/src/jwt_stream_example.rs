@@ -1,10 +1,10 @@
 use core::time::Duration;
 
 use clap::Parser;
-use supabase_auth::futures::StreamExt as _;
-use supabase_auth::jwt_stream::{JwtStream, SupabaseAuthConfig};
-use supabase_auth::types::LoginCredentials;
-use supabase_auth::url;
+use rp_supabase_auth::futures::StreamExt as _;
+use rp_supabase_auth::jwt_stream::{JwtStream, SupabaseAuthConfig};
+use rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_auth::url;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]

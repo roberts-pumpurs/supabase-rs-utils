@@ -1,17 +1,21 @@
 [package]
-name = "supabase-client"
-version = "0.1.0"
-edition = "2021"
+name = "rp-supabase-client"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
 
 [dependencies]
 postgrest.workspace = true
 tracing.workspace = true
-postgrest-error.workspace = true
+rp-postgrest-error.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 simd-json.workspace = true
 futures.workspace = true
-supabase-auth.workspace = true
+rp-supabase-auth.workspace = true
 
 [lints]
 workspace = true

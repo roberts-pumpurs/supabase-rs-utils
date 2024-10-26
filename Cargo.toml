@@ -1,7 +1,16 @@
 cargo-features = ["codegen-backend"]
+
 [workspace]
 resolver = "2"
 members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+authors = []
+repository = "https://github.com/roberts-pumpurs/supabase-rs-utils"
+homepage = "https://github.com/roberts-pumpurs/supabase-rs-utils"
+license = "MIT/Apache-2.0"
+edition = "2021"
 
 [workspace.lints.clippy]
 cargo = { priority = -1, level = "deny" }
@@ -38,11 +47,11 @@ mod_module_files = "allow"
 
 [workspace.dependencies]
 # our cretes
-supabase-mock = { path = "crates/supabase-mock" }
-supabase-auth = { path = "crates/supabase-auth" }
-supabase-client = { path = "crates/supabase-client" }
-postgrest-error = { path = "crates/postgrest-error" }
-supabase-realtime = { path = "crates/supabase-realtime" }
+rp-supabase-mock = { path = "crates/supabase-mock" }
+rp-supabase-auth = { path = "crates/supabase-auth" }
+rp-supabase-client = { path = "crates/supabase-client" }
+rp-postgrest-error = { path = "crates/postgrest-error" }
+rp-supabase-realtime = { path = "crates/supabase-realtime" }
 
 # fork of postgrest-rs
 postgrest = { git = "https://github.com/roberts-pumpurs/postgrest-rs.git", branch = "master" }

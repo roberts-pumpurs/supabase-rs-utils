@@ -1,10 +1,11 @@
 use core::time::Duration;
 
 use clap::Parser;
-use supabase_auth::futures::StreamExt as _;
-use supabase_auth::jwt_stream::SupabaseAuthConfig;
-use supabase_auth::types::LoginCredentials;
-use supabase_auth::url;
+use rp_supabase_auth::auth_client::{new_authenticated_stream, requests};
+use rp_supabase_auth::futures::StreamExt as _;
+use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+use rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_auth::url;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -48,15 +49,14 @@ async fn main() {
         .password(args.pass)
         .build();
 
-    let mut auth_client_stream =
-        supabase_auth::auth_client::new_authenticated_stream(config, login_credentials).unwrap();
+    let mut auth_client_stream = new_authenticated_stream(config, login_credentials).unwrap();
     while let Some(item) = auth_client_stream.next().await {
         tracing::debug!(?item, "new client?");
         let Ok(Ok(client)) = item else {
             continue;
         };
         let result = client
-            .build_request(&supabase_auth::auth_client::requests::UserGetRequest)
+            .build_request(&requests::UserGetRequest)
             .unwrap()
             .execute()
             .await

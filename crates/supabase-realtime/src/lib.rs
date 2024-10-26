@@ -5,4 +5,4 @@ mod error;
 pub mod message;
 pub mod realtime;
 
-pub use {futures, supabase_auth, url};
+pub use {futures, rp_supabase_auth, url};

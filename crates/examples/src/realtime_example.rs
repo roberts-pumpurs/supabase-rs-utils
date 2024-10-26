@@ -1,11 +1,12 @@
 use core::time::Duration;
 
 use clap::Parser;
-use supabase_auth::jwt_stream::SupabaseAuthConfig;
-use supabase_auth::types::LoginCredentials;
-use supabase_auth::url;
-use supabase_realtime::futures::StreamExt as _;
-use supabase_realtime::message::phx_join;
+use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+use rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_auth::url;
+use rp_supabase_realtime::futures::StreamExt as _;
+use rp_supabase_realtime::message::phx_join;
+use rp_supabase_realtime::realtime;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -60,7 +61,7 @@ async fn main() {
         .email(args.email)
         .password(args.pass)
         .build();
-    let (mut realtime, mut client) = supabase_realtime::realtime::RealtimeConnection::new(config)
+    let (mut realtime, mut client) = realtime::RealtimeConnection::new(config)
         .connect(login_credentials)
         .await
         .unwrap();
@@ -86,7 +87,7 @@ async fn main() {
     while let Some(msg) = realtime.next().await {
         match msg {
             Ok(msg) => {
-                use supabase_realtime::message::ProtocolPayload::*;
+                use rp_supabase_realtime::message::ProtocolPayload::*;
                 match msg.payload {
                     PostgresChanges(postgres_changes_payload) => {
                         let changes = postgres_changes_payload

@@ -245,8 +245,8 @@ mod auth_tests {
     use futures::StreamExt as _;
     use mockito::Matcher;
     use pretty_assertions::assert_eq;
+    use rp_supabase_mock::{make_jwt, SupabaseMockServer};
     use rstest::rstest;
-    use supabase_mock::{make_jwt, SupabaseMockServer};
     use test_log::test;
     use tokio::time::timeout;
 

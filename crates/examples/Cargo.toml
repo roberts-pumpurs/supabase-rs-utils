@@ -1,18 +1,23 @@
 [package]
 name = "examples"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
+publish = false
 
 [dependencies]
 clap.workspace = true
 color-eyre.workspace = true
-supabase-realtime.workspace = true
-supabase-auth.workspace = true
+rp-supabase-realtime.workspace = true
+rp-supabase-auth.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 simd-json.workspace = true
-supabase-client.workspace = true
+rp-supabase-client.workspace = true
 
 [lints]
 workspace = true

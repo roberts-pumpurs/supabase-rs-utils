@@ -538,10 +538,10 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "color-eyre",
+ "rp-supabase-auth",
+ "rp-supabase-client",
+ "rp-supabase-realtime",
  "simd-json",
- "supabase-auth",
- "supabase-client",
- "supabase-realtime",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1408,13 +1408,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "postgrest-error"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1701,6 +1694,89 @@ dependencies = [
  "spin",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rp-postgrest-error"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rp-supabase-auth"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "mockito",
+ "pretty_assertions",
+ "redact",
+ "reqwest",
+ "rp-supabase-mock",
+ "rstest",
+ "serde",
+ "simd-json",
+ "test-log",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "typed-builder",
+ "url",
+]
+
+[[package]]
+name = "rp-supabase-client"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "postgrest",
+ "rp-postgrest-error",
+ "rp-supabase-auth",
+ "serde",
+ "simd-json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "rp-supabase-mock"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "jwt-simple",
+ "mockito",
+ "simd-json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "rp-supabase-realtime"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "fastwebsockets",
+ "futures",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "pretty_assertions",
+ "rp-supabase-auth",
+ "rstest",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "simd-json",
+ "test-log",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -2071,82 +2147,6 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
-
-[[package]]
-name = "supabase-auth"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "futures",
- "mockito",
- "pretty_assertions",
- "redact",
- "reqwest",
- "rstest",
- "serde",
- "simd-json",
- "supabase-mock",
- "test-log",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "typed-builder",
- "url",
-]
-
-[[package]]
-name = "supabase-client"
-version = "0.1.0"
-dependencies = [
- "futures",
- "postgrest",
- "postgrest-error",
- "serde",
- "simd-json",
- "supabase-auth",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "supabase-mock"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "jwt-simple",
- "mockito",
- "simd-json",
- "thiserror",
- "url",
-]
-
-[[package]]
-name = "supabase-realtime"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "fastwebsockets",
- "futures",
- "http-body-util",
- "hyper",
- "hyper-util",
- "pretty_assertions",
- "rstest",
- "rustls",
- "rustls-native-certs",
- "serde",
- "simd-json",
- "supabase-auth",
- "test-log",
- "thiserror",
- "tokio",
- "tokio-rustls",
- "tokio-stream",
- "tracing",
- "tracing-subscriber",
- "url",
-]
 
 [[package]]
 name = "superboring"

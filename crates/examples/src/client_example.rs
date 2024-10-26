@@ -1,11 +1,11 @@
 use core::time::Duration;
 
 use clap::Parser;
-use supabase_auth::futures::StreamExt as _;
-use supabase_auth::jwt_stream::SupabaseAuthConfig;
-use supabase_auth::types::LoginCredentials;
-use supabase_auth::url;
-use supabase_client::{new_authenticated, PostgerstResponse};
+use rp_supabase_auth::futures::StreamExt as _;
+use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+use rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_auth::url;
+use rp_supabase_client::{new_authenticated, PostgerstResponse};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]

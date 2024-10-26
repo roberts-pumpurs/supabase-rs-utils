@@ -4,7 +4,7 @@ use core::task::Poll;
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
 use futures::{SinkExt as _, Stream, StreamExt as _};
-use supabase_auth::types::LoginCredentials;
+use rp_supabase_auth::types::LoginCredentials;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tokio_stream::wrappers::IntervalStream;
@@ -29,7 +29,7 @@ impl RealtimeConnectionClient {
 }
 
 pub struct RealtimeConnection {
-    config: supabase_auth::jwt_stream::SupabaseAuthConfig,
+    config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
 }
 
 type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
@@ -39,7 +39,7 @@ impl RealtimeConnection {
     const DB_UPDATE_TOPIC: &str = "realtime:table-db-changes";
 
     #[must_use]
-    pub const fn new(config: supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
+    pub const fn new(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
         Self { config }
     }
 
@@ -59,8 +59,8 @@ impl RealtimeConnection {
             format!("realtime/v1/websocket?apikey={supabase_annon_key}&vsn=1.0.0").as_str(),
         )?;
 
-        let mut auth_stream =
-            supabase_auth::jwt_stream::JwtStream::new(self.config.clone()).sign_in(login_info)?;
+        let mut auth_stream = rp_supabase_auth::jwt_stream::JwtStream::new(self.config.clone())
+            .sign_in(login_info)?;
         let mut latest_access_token = loop {
             match auth_stream.next().await {
                 Some(Ok(new_latest_access_token)) => {
