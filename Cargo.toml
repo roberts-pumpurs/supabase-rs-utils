@@ -19,7 +19,6 @@ repository = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 homepage = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 license = "MIT/Apache-2.0"
 edition = "2021"
-default-readme = "README.md"
 exclude = [
   "/.github/",
   "/xtask/",
@@ -61,11 +60,11 @@ mod_module_files = "allow"
 
 [workspace.dependencies]
 # our cretes
-rp-supabase-mock = { path = "crates/supabase-mock" }
-rp-supabase-auth = { path = "crates/supabase-auth" }
-rp-supabase-client = { path = "crates/supabase-client" }
-rp-postgrest-error = { path = "crates/postgrest-error" }
-rp-supabase-realtime = { path = "crates/supabase-realtime" }
+rp-supabase-mock = { path = "crates/supabase-mock", version = "0.1" }
+rp-supabase-auth = { path = "crates/supabase-auth", version = "0.1" }
+rp-supabase-client = { path = "crates/supabase-client", version = "0.1" }
+rp-postgrest-error = { path = "crates/postgrest-error", version = "0.1" }
+rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.1" }
 
 # fork of postgrest-rs
 rp-postgrest = { version = "1" }
