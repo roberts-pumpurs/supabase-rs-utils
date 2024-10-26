@@ -534,7 +534,7 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "examples"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "color-eyre",
@@ -1699,14 +1699,14 @@ dependencies = [
 
 [[package]]
 name = "rp-postgrest-error"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "rp-supabase-auth"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "futures",
@@ -1729,7 +1729,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-client"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures",
  "rp-postgrest",
@@ -1743,7 +1743,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-mock"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "jwt-simple",
@@ -1755,7 +1755,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-realtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "fastwebsockets",
@@ -2897,7 +2897,7 @@ checksum = "9d422e8e38ec76e2f06ee439ccc765e9c6a9638b9e7c9f2e8255e4d41e8bd852"
 
 [[package]]
 name = "xtask"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "color-eyre",
