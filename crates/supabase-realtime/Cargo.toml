@@ -1,5 +1,8 @@
 [package]
 name = "rp-supabase-realtime"
+description = """
+Supabase Realtime client with Auth and subscription capabilities
+"""
 version.workspace = true
 authors.workspace = true
 repository.workspace = true

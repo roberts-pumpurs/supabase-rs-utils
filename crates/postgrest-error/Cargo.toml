@@ -1,5 +1,8 @@
 [package]
 name = "rp-postgrest-error"
+description = """
+strongly typed errors for PostgREST
+"""
 version.workspace = true
 authors.workspace = true
 repository.workspace = true

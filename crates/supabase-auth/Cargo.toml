@@ -2,6 +2,9 @@
 name = "rp-supabase-auth"
 version.workspace = true
 authors.workspace = true
+description = """
+A Rust client library for interacting with Supabase’s Authentication API.
+"""
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true

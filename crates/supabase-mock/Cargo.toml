@@ -1,6 +1,9 @@
 [package]
 name = "rp-supabase-mock"
 version.workspace = true
+description = """
+Mock client for supabase auth module, useful for tests
+"""
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
