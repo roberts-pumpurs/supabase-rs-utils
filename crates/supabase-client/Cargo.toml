@@ -12,7 +12,7 @@ edition.workspace = true
 readme = "README.md"
 
 [dependencies]
-postgrest.workspace = true
+rp-postgrest.workspace = true
 tracing.workspace = true
 rp-postgrest-error.workspace = true
 thiserror.workspace = true

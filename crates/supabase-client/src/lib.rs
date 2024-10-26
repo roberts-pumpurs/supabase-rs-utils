@@ -1,12 +1,12 @@
 use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
-use postgrest::{reqwest, Postgrest};
+use rp_postgrest::{reqwest, Postgrest};
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::{AccessTokenResponseSchema, LoginCredentials};
 use rp_supabase_auth::url;
 use tracing::instrument;
-pub use {postgrest, rp_postgrest_error, rp_supabase_auth};
+pub use {rp_postgrest, rp_postgrest_error, rp_supabase_auth};
 
 pub struct PostgerstResponse<T> {
     response: reqwest::Response,
@@ -19,7 +19,9 @@ pub fn new_authenticated(
     config: SupabaseAuthConfig,
     login_info: LoginCredentials,
 ) -> Result<
-    impl Stream<Item = Result<(postgrest::Postgrest, AccessTokenResponseSchema), SupabaseClientError>>,
+    impl Stream<
+        Item = Result<(rp_postgrest::Postgrest, AccessTokenResponseSchema), SupabaseClientError>,
+    >,
     SupabaseClientError,
 > {
     let base = anonymous_client(config.api_key.clone(), config.url.clone())?;
@@ -40,7 +42,7 @@ pub fn new_authenticated(
 
 pub fn anonymous_client(api_key: String, url: url::Url) -> Result<Postgrest, SupabaseClientError> {
     let url = url.join("rest/v1/")?;
-    let postgrest = postgrest::Postgrest::new(url).insert_header(SUPABASE_KEY, api_key);
+    let postgrest = rp_postgrest::Postgrest::new(url).insert_header(SUPABASE_KEY, api_key);
     Ok(postgrest)
 }
 

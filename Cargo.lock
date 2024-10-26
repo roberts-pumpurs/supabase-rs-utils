@@ -1400,14 +1400,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "postgrest"
-version = "1.6.0"
-source = "git+https://github.com/roberts-pumpurs/postgrest-rs.git?branch=master#e0dbe4cafcc4530fe352c2accfb0a30812457553"
-dependencies = [
- "reqwest",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1697,6 +1689,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rp-postgrest"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22fa96f5562c244da8f6fff98a1428e896200cf6ecd796b8071c396b8685ffcd"
+dependencies = [
+ "reqwest",
+]
+
+[[package]]
 name = "rp-postgrest-error"
 version = "0.1.0"
 dependencies = [
@@ -1731,7 +1732,7 @@ name = "rp-supabase-client"
 version = "0.1.0"
 dependencies = [
  "futures",
- "postgrest",
+ "rp-postgrest",
  "rp-postgrest-error",
  "rp-supabase-auth",
  "serde",
