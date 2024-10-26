@@ -6,11 +6,25 @@ members = ["crates/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
-authors = []
+authors = [
+  "Roberts Pumpurs <roberts@pumpurlabs.com>",
+]
+description = """
+Utilities for interacting with Supabase form Rust
+"""
+keywords = ["auth", "supabase", "postgrest", "async", "jwt", "realtime", "websockets"]
+categories = ["database", "authentication", "asynchronous"]
+documentation = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 repository = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 homepage = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 license = "MIT/Apache-2.0"
 edition = "2021"
+default-readme = "README.md"
+exclude = [
+  "/.github/",
+  "/xtask/",
+  "/supabase/",
+]
 
 [workspace.lints.clippy]
 cargo = { priority = -1, level = "deny" }

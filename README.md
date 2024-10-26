@@ -1,15 +1,27 @@
 # Supabase Rust utilities
 
-Simple utilities for interacting with Supabase & their services from Rust.
-I'm adding methods on use-case basis of what I need, rather than with the goal of creating full featured-client for every API.
+A collection of Rust crates for interacting with Supabase APIs, including Authentication, Realtime, and PostgREST.
 
-## Supabase Auth
+## Overview
 
-Supported methods:
+This repository is a Cargo workspace containing multiple Rust crates that provide clients and utilities for working with Supabase services in Rust. The crates included are:
 
-- [POST /token](https://github.com/supabase/auth/blob/master/README.md#post-token)
+- [rp-supabase-auth](./crates/supabase-auth/README.md): A client library for Supabase’s Authentication API.
+- [rp-postgrest-error](./crates/postgrest-error/README.md): Error parsing and handling for PostgREST and PostgreSQL responses.
+- [rp-supabase-realtime](./crates/supabase-realtime/README.md): A client library for Supabase’s Realtime API.
+- [rp-supabase-client](./crates/supabase-client/README.md): A client for Supabase’s PostgREST API with authenticated requests.
 
-The client will also automatically fetch a new auth token using the refresh token.
+Getting Started
+
+To use any of these crates, add them as dependencies in your Cargo.toml file:
+
+```toml
+[dependencies]
+rp-supabase-auth = "0.1.0"
+rp-postgrest-error = "0.1.0"
+rp-supabase-realtime = "0.1.0"
+rp-supabase-client = "0.1.0"
+```
 
 ## Development guide
 
@@ -18,7 +30,7 @@ The client will also automatically fetch a new auth token using the refresh toke
 3. `cargo xtask fmt` -- format the code
 4. `cargo xtask test -- my_test_name` -- run specific tests
 
-
 ## Supabase instance for local development
+
 1. [Install Supabase CLI](https://supabase.com/docs/guides/cli/getting-started)
 2. Run `supabase start` to run local supabase instance
