@@ -1,6 +1,5 @@
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use core::task::Poll;
-use std::sync::Arc;
 
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
@@ -56,7 +55,7 @@ impl RealtimeConnection {
     pub fn new(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig, topic: &str) -> Self {
         let prefix = "realtime";
         let topic = [prefix, topic].join(":");
-        Self { config, topic }
+        Self { topic, config }
     }
 
     #[tracing::instrument(skip_all, err)]
@@ -203,7 +202,7 @@ impl RealtimeBaseConnection {
             let con = Arc::clone(&con);
             async move {
                 let con = Arc::clone(&con);
-                read_from_ws(&con, tx).await
+                read_from_ws(&con, tx).await;
             }
         };
         reat_future.push(read_task);

@@ -72,8 +72,8 @@ async fn main() {
     client.subscribe_to_changes(payload).await.unwrap();
     client
         .broadcast(Broadcast {
-            r#type: "broadcast".to_string(),
-            event: "update".to_string(),
+            r#type: "broadcast".to_owned(),
+            event: "update".to_owned(),
             payload: simd_json::json!({"aaa": "bbbb"}),
         })
         .await

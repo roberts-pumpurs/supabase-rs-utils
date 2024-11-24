@@ -1,9 +1,6 @@
 [net]
 git-fetch-with-cli = true
 
-[build]
-rustflags = ["-Z", "threads=8", "-Ctarget-cpu=native", "-Zthreads=10"]
-
 [alias]
 xtask = "run --package xtask --"
 
