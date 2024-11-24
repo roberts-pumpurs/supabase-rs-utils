@@ -60,11 +60,11 @@ mod_module_files = "allow"
 
 [workspace.dependencies]
 # our cretes
-rp-supabase-mock = { path = "crates/supabase-mock", version = "0.2" }
-rp-supabase-auth = { path = "crates/supabase-auth", version = "0.2" }
-rp-supabase-client = { path = "crates/supabase-client", version = "0.2" }
-rp-postgrest-error = { path = "crates/postgrest-error", version = "0.2" }
-rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.2" }
+rp-supabase-mock = { path = "crates/supabase-mock", version = "0" }
+rp-supabase-auth = { path = "crates/supabase-auth", version = "0" }
+rp-supabase-client = { path = "crates/supabase-client", version = "0" }
+rp-postgrest-error = { path = "crates/postgrest-error", version = "0" }
+rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0" }
 
 # fork of postgrest-rs
 rp-postgrest = { version = "1" }
