@@ -1,5 +1,6 @@
 use alloc::rc::Rc;
 use core::task::Poll;
+use std::sync::Arc;
 
 use fastwebsockets::Frame;
 use futures::stream::FuturesUnordered;
@@ -12,11 +13,11 @@ use tokio_stream::wrappers::IntervalStream;
 use crate::connection::WsSupabaseConnection;
 use crate::error::SupabaseRealtimeError;
 use crate::message::access_token::AccessToken;
-use crate::message::{phx_join, ProtocolMessage};
+use crate::message::{broadcast, phx_join, ProtocolMessage, ProtocolPayload};
 use crate::{connection, error, message};
 
 pub struct RealtimeConnectionClient {
-    tx: futures::channel::mpsc::UnboundedSender<phx_join::PhxJoin>,
+    tx: futures::channel::mpsc::UnboundedSender<ProtocolPayload>,
 }
 
 impl RealtimeConnectionClient {
@@ -24,11 +25,19 @@ impl RealtimeConnectionClient {
         &mut self,
         join: phx_join::PhxJoin,
     ) -> Result<(), futures::channel::mpsc::SendError> {
-        self.tx.send(join).await
+        self.tx.send(ProtocolPayload::PhxJoin(join)).await
+    }
+
+    pub async fn broadcast(
+        &mut self,
+        msg: broadcast::Broadcast,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        self.tx.send(ProtocolPayload::Broadcast(msg)).await
     }
 }
 
 pub struct RealtimeConnection {
+    topic: String,
     config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
 }
 
@@ -36,11 +45,18 @@ type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
 
 impl RealtimeConnection {
     const HEARTBEAT_PERIOD: core::time::Duration = core::time::Duration::from_secs(20);
-    const DB_UPDATE_TOPIC: &str = "realtime:table-db-changes";
 
     #[must_use]
-    pub const fn new(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
-        Self { config }
+    pub fn new_db_updates(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
+        const DB_UPDATE_TOPIC: &str = "table-db-changes";
+        Self::new(config, DB_UPDATE_TOPIC)
+    }
+
+    #[must_use]
+    pub fn new(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig, topic: &str) -> Self {
+        let prefix = "realtime";
+        let topic = [prefix, topic].join(":");
+        Self { config, topic }
     }
 
     #[tracing::instrument(skip_all, err)]
@@ -80,13 +96,14 @@ impl RealtimeConnection {
         let mut ref_counter = 0_u64;
         let mut join_ref_counter = 0;
         let (tx, rx) = futures::channel::mpsc::unbounded();
+        let topic = self.topic.clone();
         let input_stream = rx
             .map(move |item| {
                 ref_counter += 1;
                 join_ref_counter += 1;
                 message::ProtocolMessage {
-                    topic: Self::DB_UPDATE_TOPIC.to_owned(),
-                    payload: message::ProtocolPayload::PhxJoin(item),
+                    topic: topic.clone(),
+                    payload: item,
                     ref_field: Some(ref_counter.to_string()),
                     join_ref: Some(join_ref_counter.to_string()),
                 }
@@ -109,24 +126,28 @@ impl RealtimeConnection {
                 .boxed()
         };
 
+        let topic = self.topic.clone();
         let access_token_stream = {
             auth_stream
-                .filter_map(|item| async move {
-                    item.map(|item| {
-                        if let Some(access_token) = item.access_token {
-                            return Some(message::ProtocolMessage {
-                                topic: Self::DB_UPDATE_TOPIC.to_owned(),
-                                payload: message::ProtocolPayload::AccessToken(AccessToken {
-                                    access_token,
-                                }),
-                                ref_field: None,
-                                join_ref: None,
-                            })
-                        }
-                        None
-                    })
-                    .map_err(SupabaseRealtimeError::from)
-                    .transpose()
+                .filter_map(move |item| {
+                    let topic = topic.clone();
+                    async move {
+                        item.map(|item| {
+                            if let Some(access_token) = item.access_token {
+                                return Some(message::ProtocolMessage {
+                                    topic: topic.clone(),
+                                    payload: message::ProtocolPayload::AccessToken(AccessToken {
+                                        access_token,
+                                    }),
+                                    ref_field: None,
+                                    join_ref: None,
+                                })
+                            }
+                            None
+                        })
+                        .map_err(SupabaseRealtimeError::from)
+                        .transpose()
+                    }
                 })
                 .boxed()
         };
@@ -172,25 +193,31 @@ impl RealtimeBaseConnection {
     ) -> Result<impl Stream<Item = RealtimeStreamType>, error::SupabaseRealtimeError> {
         tracing::info!(url =? self.url.as_str(), "Starting RealtimeConnection::connect");
 
-        let con = Rc::new(Mutex::new(connection::connect(&self.url).await?));
+        let con = Arc::new(Mutex::new(connection::connect(&self.url).await?));
         tracing::info!("WebSocket connection established");
 
         let mut write_futures = FuturesUnordered::new();
         let mut reat_future = FuturesUnordered::new();
         let (tx, mut rx) = futures::channel::mpsc::unbounded();
         let read_task = {
-            let con = Rc::clone(&con);
-            read_from_ws(con, tx)
+            let con = Arc::clone(&con);
+            async move {
+                let con = Arc::clone(&con);
+                read_from_ws(&con, tx).await
+            }
         };
         reat_future.push(read_task);
 
         let stream_to_return = futures::stream::poll_fn(move |cx| {
             match input_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(message_to_send)) => {
-                    let con = Rc::clone(&con);
+                    let con = Arc::clone(&con);
                     match message_to_send {
                         Ok(message) => {
-                            write_futures.push(send(message, con));
+                            write_futures.push(async move {
+                                let con = Arc::clone(&con);
+                                send(message, &con).await
+                            });
                         }
                         Err(err) => {
                             cx.waker().wake_by_ref();
@@ -240,7 +267,7 @@ impl RealtimeBaseConnection {
 }
 
 async fn read_from_ws(
-    con: Rc<Mutex<WsSupabaseConnection>>,
+    con: &Mutex<WsSupabaseConnection>,
     mut tx: futures::channel::mpsc::UnboundedSender<ProtocolMessage>,
 ) {
     tracing::info!("Starting read_from_ws task");
@@ -277,7 +304,7 @@ async fn read_from_ws(
 
 async fn send(
     message_to_send: ProtocolMessage,
-    con: Rc<Mutex<WsSupabaseConnection>>,
+    con: &Mutex<WsSupabaseConnection>,
 ) -> Result<(), error::SupabaseRealtimeError> {
     tracing::debug!(?message_to_send, "Sending message");
     let message_bytes = simd_json::to_vec(&message_to_send)?;

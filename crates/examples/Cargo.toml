@@ -37,3 +37,7 @@ path = "src/jwt_stream_example.rs"
 [[bin]]
 name = "auth-example"
 path = "src/auth_example.rs"
+
+[[bin]]
+name = "broadcast-example"
+path = "src/broadcast_example.rs"

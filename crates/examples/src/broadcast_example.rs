@@ -5,6 +5,7 @@ use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
 use rp_supabase_auth::url;
 use rp_supabase_realtime::futures::StreamExt as _;
+use rp_supabase_realtime::message::broadcast::Broadcast;
 use rp_supabase_realtime::message::phx_join;
 use rp_supabase_realtime::realtime;
 use tracing_subscriber::EnvFilter;
@@ -23,15 +24,6 @@ struct Args {
 
     #[arg(short, long)]
     pass: String,
-
-    /// The supabase table to subscribe to
-    #[arg(short, long)]
-    table: String,
-
-    /// The filter to apply on the table
-    /// e.g. "id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329"
-    #[arg(short, long)]
-    filter: Option<String>,
 }
 
 #[tokio::main]
@@ -41,10 +33,10 @@ async fn main() {
             EnvFilter::builder()
                 .from_env()
                 .unwrap()
-                .add_directive("supabase_auth=info".to_owned().parse().unwrap())
-                .add_directive("supabase_realtime=info".to_owned().parse().unwrap())
+                .add_directive("rp_supabase_auth=info".to_owned().parse().unwrap())
+                .add_directive("rp_supabase_realtime=info".to_owned().parse().unwrap())
                 .add_directive("examples=info".to_owned().parse().unwrap())
-                .add_directive("realtime_example=info".to_owned().parse().unwrap()),
+                .add_directive("broadcast_example=info".to_owned().parse().unwrap()),
         )
         .init();
     color_eyre::install().unwrap();
@@ -61,7 +53,7 @@ async fn main() {
         .email(args.email)
         .password(args.pass)
         .build();
-    let (mut realtime, mut client) = realtime::RealtimeConnection::new_db_updates(config)
+    let (mut realtime, mut client) = realtime::RealtimeConnection::new(config, "af")
         .connect(login_credentials)
         .await
         .unwrap();
@@ -69,45 +61,26 @@ async fn main() {
     let payload = phx_join::PhxJoin {
         config: phx_join::JoinConfig {
             broadcast: phx_join::BroadcastConfig {
-                self_item: false,
-                ack: false,
+                self_item: true,
+                ack: true,
             },
             presence: phx_join::PresenceConfig { key: String::new() },
-            postgres_changes: vec![phx_join::PostgrsChanges {
-                event: phx_join::PostgresChangetEvent::All,
-                schema: "public".to_owned(),
-                table: args.table,
-                filter: args.filter,
-            }],
+            postgres_changes: vec![],
         },
         access_token: None,
     };
     client.subscribe_to_changes(payload).await.unwrap();
+    client
+        .broadcast(Broadcast {
+            r#type: "broadcast".to_string(),
+            event: "update".to_string(),
+            payload: simd_json::json!({"aaa": "bbbb"}),
+        })
+        .await
+        .unwrap();
     tracing::info!("pooling realtime connection");
     while let Some(msg) = realtime.next().await {
-        match msg {
-            Ok(msg) => {
-                use rp_supabase_realtime::message::ProtocolPayload::*;
-                match msg.payload {
-                    PostgresChanges(postgres_changes_payload) => {
-                        let changes = postgres_changes_payload
-                            .data
-                            .parse_record::<simd_json::OwnedValue>()
-                            .unwrap()
-                            .parse_old_record::<simd_json::OwnedValue>()
-                            .unwrap();
-
-                        tracing::info!(?changes, "reading protocol message");
-                    }
-                    msg => {
-                        tracing::debug!(?msg, "reading protocol message");
-                    }
-                }
-            }
-            Err(err) => {
-                tracing::warn!(?err, "realtime error");
-            }
-        }
+        tracing::info!(?msg, "message");
     }
     tracing::error!("realtime connection exited");
 }

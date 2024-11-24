@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProtocolMessage {
     pub topic: String,
     #[serde(flatten)]
@@ -12,7 +12,7 @@ pub struct ProtocolMessage {
     pub join_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload", rename_all = "snake_case")]
 pub enum ProtocolPayload {
     #[serde(rename = "heartbeat")]
@@ -27,6 +27,8 @@ pub enum ProtocolPayload {
     PhxReply(phx_reply::PhxReply),
     #[serde(rename = "presence_state")]
     PresenceState(presence_state::PresenceState),
+    #[serde(rename = "broadcast")]
+    Broadcast(broadcast::Broadcast),
     #[serde(rename = "system")]
     System(system::System),
     #[serde(rename = "phx_error")]
@@ -400,6 +402,103 @@ pub mod presence_state {
                 payload: ProtocolPayload::PresenceState(PresenceState),
                 ref_field: None,
                 join_ref: None,
+            };
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+pub mod broadcast {
+    use simd_json::OwnedValue;
+
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Broadcast {
+        #[serde(rename = "type")]
+        pub r#type: String,
+        pub event: String,
+        pub payload: OwnedValue,
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use pretty_assertions::assert_eq;
+        use simd_json::json;
+
+        use super::*;
+
+        #[test]
+        fn test_broadcast_deserialization() {
+            let json_data = r#"{
+                "ref": null,
+                "event": "broadcast",
+                "payload": {
+                    "event": "Test message",
+                    "payload": {
+                        "message": "Hello World"
+                    },
+                    "type": "broadcast"
+                },
+                "topic": "realtime:af"
+            }"#;
+
+            let expected_struct = ProtocolMessage {
+                topic: "realtime:af".to_owned(),
+                payload: ProtocolPayload::Broadcast(Broadcast {
+                    r#type: "broadcast".to_owned(),
+                    event: "Test message".to_owned(),
+                    payload: json!({
+                        "message": "Hello World"
+                    }),
+                }),
+                ref_field: None,
+                join_ref: None,
+            };
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[test]
+        fn test_broadcast_deserialization_second_example() {
+            let json_data = r#"{
+                "topic": "realtime:af",
+                "event": "broadcast",
+                "payload": {
+                    "type": "broadcast",
+                    "event": "message",
+                    "payload": {
+                        "content": "dddd"
+                    }
+                },
+                "ref": "3",
+                "join_ref": "1"
+            }"#;
+
+            let expected_struct = ProtocolMessage {
+                topic: "realtime:af".to_owned(),
+                payload: ProtocolPayload::Broadcast(Broadcast {
+                    r#type: "broadcast".to_owned(),
+                    event: "message".to_owned(),
+                    payload: json!({
+                        "content": "dddd"
+                    }),
+                }),
+                ref_field: Some("3".to_owned()),
+                join_ref: Some("1".to_owned()),
             };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
