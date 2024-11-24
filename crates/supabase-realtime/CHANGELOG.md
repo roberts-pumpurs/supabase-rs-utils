@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.1.2...rp-supabase-realtime-v0.2.0) - 2024-11-24
+
+### Added
+
+- presence typings
+- add broadcast
+
 ## [0.1.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.1.1...rp-supabase-realtime-v0.1.2) - 2024-10-26
 
 ### Other

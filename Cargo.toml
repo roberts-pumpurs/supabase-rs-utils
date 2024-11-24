@@ -5,7 +5,7 @@ resolver = "2"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.2.0"
 authors = [
   "Roberts Pumpurs <roberts@pumpurlabs.com>",
 ]
@@ -60,11 +60,11 @@ mod_module_files = "allow"
 
 [workspace.dependencies]
 # our cretes
-rp-supabase-mock = { path = "crates/supabase-mock", version = "0.1" }
-rp-supabase-auth = { path = "crates/supabase-auth", version = "0.1" }
-rp-supabase-client = { path = "crates/supabase-client", version = "0.1" }
-rp-postgrest-error = { path = "crates/postgrest-error", version = "0.1" }
-rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.1" }
+rp-supabase-mock = { path = "crates/supabase-mock", version = "0.2" }
+rp-supabase-auth = { path = "crates/supabase-auth", version = "0.2" }
+rp-supabase-client = { path = "crates/supabase-client", version = "0.2" }
+rp-postgrest-error = { path = "crates/postgrest-error", version = "0.2" }
+rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.2" }
 
 # fork of postgrest-rs
 rp-postgrest = { version = "1" }
