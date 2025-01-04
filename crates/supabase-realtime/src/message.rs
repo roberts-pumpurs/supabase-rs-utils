@@ -8,7 +8,11 @@ pub struct ProtocolMessage {
     #[serde(flatten)]
     pub payload: ProtocolPayload,
     #[serde(rename = "ref")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ref_field: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub join_ref: Option<String>,
 }
 
@@ -83,6 +87,8 @@ pub mod phx_reply {
         pub event: PostgresChangetEvent,
         pub schema: String,
         pub table: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         pub filter: Option<String>,
         pub id: i32,
     }
@@ -275,6 +281,8 @@ pub mod phx_join {
         #[serde(rename = "config")]
         pub config: JoinConfig,
         #[serde(rename = "access_token")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         pub access_token: Option<String>,
     }
 
@@ -306,6 +314,8 @@ pub mod phx_join {
         pub event: PostgresChangetEvent,
         pub schema: String,
         pub table: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         pub filter: Option<String>,
     }
 
@@ -984,6 +994,7 @@ pub mod postgres_changes {
         #[serde(rename = "commit_timestamp")]
         pub commit_timestamp: String,
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub errors: Option<String>,
         #[serde(default, rename = "old_record")]
         pub old_record: Option<O>,
