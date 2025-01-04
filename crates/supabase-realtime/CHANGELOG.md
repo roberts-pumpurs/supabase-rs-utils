@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.2.0...rp-supabase-realtime-v0.2.1) - 2025-01-04
+
+### Added
+
+- add extra null case handlings for realtime messages
+
 ## [0.2.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.1.2...rp-supabase-realtime-v0.2.0) - 2024-11-24
 
 ### Added
