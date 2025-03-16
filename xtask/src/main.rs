@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use xshell::{cmd, Shell};
+use xshell::{Shell, cmd};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -59,7 +59,7 @@ fn main() -> eyre::Result<()> {
                 cmd!(sh, "mkdir -p target/coverage").run()?;
                 cmd!(sh, "grcov . --binary-path ./target/debug/deps/ -s . -t html,cobertura --branch --ignore-not-existing --ignore '../*' --ignore \"/*\" -o target/coverage/").run()?;
 
-                // Open the generted file
+                // Open the generated file
                 if std::option_env!("CI").is_none() {
                     #[cfg(target_os = "macos")]
                     cmd!(sh, "open target/coverage/html/index.html").run()?;

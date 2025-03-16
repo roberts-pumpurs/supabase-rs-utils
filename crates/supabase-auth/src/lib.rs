@@ -1,5 +1,3 @@
-#![feature(result_flattening)]
-
 pub use {futures, redact, url};
 pub const SUPABASE_KEY: &str = "apikey";
 
