@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-auth-v0.2.1...rp-supabase-auth-v0.2.2) - 2025-03-16
+
+### Added
+
+- use stable rust
+
 ## [0.1.1](https://github.com/roberts-pumpurs/supabase-auth-rs/compare/rp-supabase-auth-v0.1.0...rp-supabase-auth-v0.1.1) - 2024-10-26
 
 ### Other
