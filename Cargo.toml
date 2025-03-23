@@ -84,11 +84,11 @@ color-eyre = "0.6"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
 serde = { version = "1", features = ["derive"] }
 redact = "0.1"
-simd-json = "0.14"
+simd-json = "0.15"
 url = "2"
 rand = { version = "0.8", features = ["small_rng"] }
-thiserror = "1"
-typed-builder = "0.18"
+thiserror = "2"
+typed-builder = "0.21"
 jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust"] }
 rust_decimal_macros = "1"
 rust_decimal = { version = "1", features = ["maths"] }
@@ -104,10 +104,10 @@ rustls-native-certs = "0.8"
 bytes = "1.7"
 clap = { version = "4.5", features = ["derive"] }
 hyper = { version = "1", features = ["http1", "client"] }
-fastwebsockets = { version = "0.8", features = ["upgrade"] }
+fastwebsockets = { version = "0.10", features = ["upgrade"] }
 
 # Tests
-rstest = "0.23"
+rstest = "0.25"
 test-log = { version = "0.2", features = ["trace"], default-features = false }
 pretty_assertions = "1"
 assert_matches = "1"
