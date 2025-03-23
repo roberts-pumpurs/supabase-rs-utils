@@ -364,9 +364,9 @@ impl PostgrestErrorCode {
     pub const fn http_status_code(&self) -> u16 {
         match self {
             // Group 0 - Connection
-            Self::CouldNotConnectDatabase |
-            Self::InternalConnectionError |
-            Self::CouldNotConnectSchemaCache => 503,
+            Self::CouldNotConnectDatabase
+            | Self::InternalConnectionError
+            | Self::CouldNotConnectSchemaCache => 503,
             Self::RequestTimedOut => 504,
 
             // Group 1 - API Request

@@ -4,9 +4,9 @@ use core::future::Future;
 use bytes::Bytes;
 use fastwebsockets::FragmentCollector;
 use http_body_util::Empty;
+use hyper::Request;
 use hyper::header::{CONNECTION, UPGRADE};
 use hyper::upgrade::Upgraded;
-use hyper::Request;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 

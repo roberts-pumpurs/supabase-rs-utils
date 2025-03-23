@@ -5,7 +5,7 @@ use rp_supabase_auth::futures::StreamExt as _;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
 use rp_supabase_auth::url;
-use rp_supabase_client::{new_authenticated, PostgerstResponse};
+use rp_supabase_client::{PostgerstResponse, new_authenticated};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]

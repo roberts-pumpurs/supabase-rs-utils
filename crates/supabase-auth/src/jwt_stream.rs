@@ -127,7 +127,7 @@ impl JwtRefreshStream {
         // Attempt to build the request
         let Ok(request) = self.client.build_request(&token_request) else {
             tracing::warn!("could not build refresh task request");
-            return
+            return;
         };
 
         // Create the asynchronous task
@@ -245,7 +245,7 @@ mod auth_tests {
     use futures::StreamExt as _;
     use mockito::Matcher;
     use pretty_assertions::assert_eq;
-    use rp_supabase_mock::{make_jwt, SupabaseMockServer};
+    use rp_supabase_mock::{SupabaseMockServer, make_jwt};
     use rstest::rstest;
     use test_log::test;
     use tokio::time::timeout;

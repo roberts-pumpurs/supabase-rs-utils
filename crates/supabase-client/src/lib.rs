@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
-use rp_postgrest::{reqwest, Postgrest};
+use rp_postgrest::{Postgrest, reqwest};
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::{AccessTokenResponseSchema, LoginCredentials};
 use rp_supabase_auth::url;

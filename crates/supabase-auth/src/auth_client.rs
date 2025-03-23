@@ -9,7 +9,7 @@ use tracing::instrument;
 use crate::error::AuthError;
 use crate::jwt_stream::{RefreshStreamError, SupabaseAuthConfig};
 use crate::types::LoginCredentials;
-use crate::{jwt_stream, SUPABASE_KEY};
+use crate::{SUPABASE_KEY, jwt_stream};
 
 #[derive(Clone, Debug)]
 pub struct ApiClient {
