@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::task::Poll;
 
-use fastwebsockets::Frame;
+use fastwebsockets::{Frame, WebSocketError};
 use futures::stream::FuturesUnordered;
 use futures::{SinkExt as _, Stream, StreamExt as _};
 use rp_supabase_auth::types::LoginCredentials;
@@ -12,7 +12,7 @@ use tokio_stream::wrappers::IntervalStream;
 use crate::connection::WsSupabaseConnection;
 use crate::error::SupabaseRealtimeError;
 use crate::message::access_token::AccessToken;
-use crate::message::{broadcast, phx_join, ProtocolMessage, ProtocolPayload};
+use crate::message::{ProtocolMessage, ProtocolPayload, broadcast, phx_join};
 use crate::{connection, error, message};
 
 pub struct RealtimeConnectionClient {
@@ -140,7 +140,7 @@ impl RealtimeConnection {
                                     }),
                                     ref_field: None,
                                     join_ref: None,
-                                })
+                                });
                             }
                             None
                         })
@@ -196,16 +196,16 @@ impl RealtimeBaseConnection {
         tracing::info!("WebSocket connection established");
 
         let mut write_futures = FuturesUnordered::new();
-        let mut reat_future = FuturesUnordered::new();
+        let mut read_futures = FuturesUnordered::new();
         let (tx, mut rx) = futures::channel::mpsc::unbounded();
         let read_task = {
             let con = Arc::clone(&con);
             async move {
                 let con = Arc::clone(&con);
-                read_from_ws(&con, tx).await;
+                read_from_ws(&con, tx).await
             }
         };
-        reat_future.push(read_task);
+        read_futures.push(read_task);
 
         let stream_to_return = futures::stream::poll_fn(move |cx| {
             match input_stream.poll_next_unpin(cx) {
@@ -228,9 +228,9 @@ impl RealtimeBaseConnection {
                 Poll::Pending => {}
             }
 
-            match reat_future.poll_next_unpin(cx) {
-                Poll::Ready(_) => {
-                    tracing::info!("Read task completed");
+            match read_futures.poll_next_unpin(cx) {
+                Poll::Ready(result) => {
+                    tracing::error!(?result, "Read task completed");
                     return Poll::Ready(None);
                 }
                 Poll::Pending => {}
@@ -242,7 +242,13 @@ impl RealtimeBaseConnection {
                         tracing::debug!("Message sent successfully");
                     }
                     Err(err) => {
-                        tracing::error!(?err, "Error sending message");
+                        tracing::warn!(?err, "Error sending message");
+                        if let SupabaseRealtimeError::WebsocketError(err) = &err {
+                            if let Err(err) = is_irrecoverable_ws_err(err) {
+                                tracing::error!(?err, "Irrecoverable error");
+                                return Poll::Ready(None);
+                            }
+                        }
                         cx.waker().wake_by_ref();
                         return Poll::Ready(Some(Err(err)));
                     }
@@ -268,7 +274,7 @@ impl RealtimeBaseConnection {
 async fn read_from_ws(
     con: &Mutex<WsSupabaseConnection>,
     mut tx: futures::channel::mpsc::UnboundedSender<ProtocolMessage>,
-) {
+) -> Result<(), WebSocketError> {
     tracing::info!("Starting read_from_ws task");
     let duration = core::time::Duration::from_millis(100);
     loop {
@@ -281,7 +287,9 @@ async fn read_from_ws(
         let mut frame = match frame {
             Ok(frame) => frame,
             Err(err) => {
-                tracing::error!(?err, "Error reading frame");
+                if is_irrecoverable_ws_err(&err).is_err() {
+                    return Err(err);
+                }
                 continue;
             }
         };
@@ -313,4 +321,52 @@ async fn send(
     con.write_frame(frame).await?;
     drop(con);
     Ok(())
+}
+
+#[tracing::instrument(skip_all, err)]
+fn is_irrecoverable_ws_err(err: &WebSocketError) -> Result<(), &WebSocketError> {
+    match err {
+        // Here we check for a transient IO error that might be recoverable.
+        // For example, WouldBlock or TimedOut could allow for a retry.
+        WebSocketError::IoError(io_err)
+            if io_err.kind() == std::io::ErrorKind::WouldBlock
+                || io_err.kind() == std::io::ErrorKind::TimedOut =>
+        {
+            // Log and attempt recovery (retry, backoff, etc.)
+            tracing::warn!(
+                "Transient IO error encountered: {}. Attempting recovery...",
+                io_err
+            );
+            Ok(())
+        }
+
+        // All the protocol-level or fatal errors are treated as irrecoverable.
+        WebSocketError::UnexpectedEOF
+        | WebSocketError::InvalidFragment
+        | WebSocketError::InvalidUTF8
+        | WebSocketError::InvalidContinuationFrame
+        | WebSocketError::InvalidStatusCode(_)
+        | WebSocketError::InvalidUpgradeHeader
+        | WebSocketError::InvalidConnectionHeader
+        | WebSocketError::ConnectionClosed
+        | WebSocketError::InvalidCloseFrame
+        | WebSocketError::InvalidCloseCode
+        | WebSocketError::ReservedBitsNotZero
+        | WebSocketError::ControlFrameFragmented
+        | WebSocketError::PingFrameTooLarge
+        | WebSocketError::FrameTooLarge
+        | WebSocketError::InvalidSecWebsocketVersion
+        | WebSocketError::InvalidValue
+        | WebSocketError::MissingSecWebSocketKey => {
+            // Propagate irrecoverable errors immediately.
+            Err(err)
+        }
+
+        // Optionally, if features are enabled:
+        WebSocketError::HTTPError(_) => Err(err),
+        WebSocketError::SendError(_) => Err(err),
+
+        // For any other errors, decide as needed.
+        _ => Err(err),
+    }
 }
