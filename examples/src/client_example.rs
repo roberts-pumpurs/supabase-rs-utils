@@ -1,57 +1,39 @@
 use core::time::Duration;
 
-use clap::Parser;
+use examples::get_supabase_credentials;
 use rp_supabase_auth::futures::StreamExt as _;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
-use rp_supabase_auth::url;
 use rp_supabase_client::{PostgerstResponse, new_authenticated};
 use tracing_subscriber::EnvFilter;
 
-#[derive(Parser, Debug)]
-#[command(version, about)]
-struct Args {
-    #[arg(short, long)]
-    supabase_api_url: url::Url,
-
-    #[arg(short, long)]
-    annon_key: String,
-
-    #[arg(short, long)]
-    email: String,
-
-    #[arg(short, long)]
-    pass: String,
-
-    #[arg(short, long)]
-    table: String,
-}
-
 #[tokio::main]
-async fn main() {
+async fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
-                .from_env()
-                .unwrap()
-                .add_directive("supabase_auth=info".to_owned().parse().unwrap())
-                .add_directive("client_example=debug".to_owned().parse().unwrap()),
+                .from_env()?
+                .add_directive("rp_supabase_auth=info".to_owned().parse()?)
+                .add_directive("client_example=debug".to_owned().parse()?),
         )
         .init();
 
-    let args = Args::parse();
+    color_eyre::install()?;
+
+    let credentials = get_supabase_credentials()?;
 
     let config = SupabaseAuthConfig {
-        api_key: args.annon_key,
+        api_key: credentials.anon_key,
         max_reconnect_attempts: 5,
         reconnect_interval: Duration::from_secs(3),
-        url: args.supabase_api_url.clone(),
+        url: credentials.supabase_api_url,
     };
     let login_credentials = LoginCredentials::builder()
-        .email(args.email)
-        .password(args.pass)
+        .email(credentials.email)
+        .password(credentials.password)
         .build();
-    let mut client_stream = new_authenticated(config, login_credentials).unwrap();
+
+    let mut client_stream = new_authenticated(config, login_credentials)?;
 
     while let Some(client) = client_stream.next().await {
         tracing::debug!(?client, "new client");
@@ -61,17 +43,18 @@ async fn main() {
         };
         tracing::info!(?token_response, "token response");
         let res = client
-            .from(args.table.clone())
+            .from("messages")
             .select("*")
             .build()
             .send()
             .await
-            .map(PostgerstResponse::<simd_json::OwnedValue>::new)
-            .unwrap()
+            .map(PostgerstResponse::<simd_json::OwnedValue>::new)?
             .json()
             .await;
 
         tracing::info!(?res, "postgrest response");
     }
     tracing::error!("realtime connection exited");
+
+    eyre::bail!("client stream exited")
 }

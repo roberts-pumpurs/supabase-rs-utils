@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "xtask"]
+members = ["crates/*", "xtask", "examples"]
 
 [workspace.package]
 version = "0.2.2"
@@ -34,7 +34,13 @@ restriction = { priority = -1, level = "deny" }
 style = { priority = -1, level = "deny" }
 suspicious = { priority = -1, level = "deny" }
 
+arbitrary_source_item_ordering = "allow"
+shadow_unrelated = "allow"
+iter_over_hash_type = "allow"
+module_name_repetitions = "allow"
+significant_drop_tightening = "allow"
 cargo_common_metadata = "allow"
+pattern_type_mismatch = "allow"
 missing_docs_in_private_items = "allow"
 blanket_clippy_restriction_lints = "allow"
 implicit_return = "allow"
@@ -88,6 +94,7 @@ simd-json = "0.15"
 url = "2"
 rand = { version = "0.8", features = ["small_rng"] }
 thiserror = "2"
+xshell = "0.2"
 typed-builder = "0.21"
 jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust"] }
 rust_decimal_macros = "1"

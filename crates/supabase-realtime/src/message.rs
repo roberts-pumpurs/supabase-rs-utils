@@ -34,8 +34,8 @@ pub enum ProtocolPayload {
     Broadcast(broadcast::Broadcast),
 
     // presence
-    #[serde(rename = "track")]
-    PresenceTrack(presence_track::PresenceTrack),
+    #[serde(rename = "presence")]
+    PresenceInner(presence_inner::PresenceInner),
     #[serde(rename = "presence_state")]
     PresenceState(presence_state::PresenceState),
     #[serde(rename = "presence_diff")]
@@ -105,6 +105,7 @@ pub mod phx_reply {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -326,6 +327,7 @@ pub mod phx_join {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
 
         use super::*;
@@ -396,7 +398,7 @@ pub mod phx_join {
 pub mod presence_state {
     use std::collections::HashMap;
 
-    use serde::{de::DeserializeOwned, Deserialize, Serialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct PresenceState(pub HashMap<String, Presence>);
@@ -409,12 +411,13 @@ pub mod presence_state {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct PresenceMeta {
         pub phx_ref: String,
-        pub name: String,
+        pub name: Option<String>,
         #[serde(flatten)]
         pub payload: simd_json::OwnedValue,
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -448,8 +451,8 @@ pub mod presence_state {
                 Presence {
                     metas: vec![PresenceMeta {
                         phx_ref: "GAsCC3FpEhdb4wgk".to_owned(),
-                        name: "service_role_75".to_owned(),
-                        payload: simd_json::json!({"t": 22866011.0 }),
+                        name: Some("service_role_75".to_owned()),
+                        payload: simd_json::json!({"t": 22_866_011_u64 }),
                     }],
                 },
             );
@@ -472,15 +475,26 @@ pub mod presence_state {
     }
 }
 
-pub mod presence_track {
-    use std::collections::HashMap;
+pub mod presence_inner {
 
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct PresenceTrack(pub simd_json::OwnedValue);
+    pub struct PresenceInner {
+        #[serde(rename = "type")]
+        pub r#type: String,
+        #[serde(flatten)]
+        pub payload: PresenceInnerPayload,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(tag = "event", content = "payload", rename_all = "snake_case")]
+    pub enum PresenceInnerPayload {
+        Track(simd_json::OwnedValue),
+    }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -488,7 +502,7 @@ pub mod presence_track {
         use crate::message::{ProtocolMessage, ProtocolPayload};
 
         #[test]
-        fn test_presence_state_deserialization() {
+        fn test_presence_track_deserialization() {
             let json_data = r#"
             {
                 "topic": "realtime:af",
@@ -507,11 +521,12 @@ pub mod presence_track {
 
             let expected_struct = ProtocolMessage {
                 topic: "realtime:af".to_owned(),
-                payload: ProtocolPayload::PresenceTrack(PresenceTrack(
-                    simd_json::json!({"message": "bbbbbbb"}),
-                )),
-                ref_field: Some("27".to_string()),
-                join_ref: Some("1".to_string()),
+                payload: ProtocolPayload::PresenceInner(PresenceInner {
+                    r#type: "presence".to_owned(),
+                    payload: PresenceInnerPayload::Track(simd_json::json!({"message": "bbbbbbb"})),
+                }),
+                ref_field: Some("27".to_owned()),
+                join_ref: Some("1".to_owned()),
             };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
@@ -539,6 +554,7 @@ pub mod broadcast {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use pretty_assertions::assert_eq;
         use simd_json::json;
@@ -633,11 +649,15 @@ pub mod presence_diff {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use pretty_assertions::assert_eq;
 
         use super::*;
-        use crate::message::{ProtocolMessage, ProtocolPayload};
+        use crate::message::{
+            ProtocolMessage, ProtocolPayload,
+            presence_state::{Presence, PresenceMeta},
+        };
 
         #[test]
         fn test_presence_diff_deserialization() {
@@ -652,7 +672,7 @@ pub mod presence_diff {
                                 {
                                     "phx_ref": "GAsBN9izrRlb40jh",
                                     "name": "service_role_47",
-                                    "t": 21957173.599999905
+                                    "t": 21957173
                                 }
                             ]
                         }
@@ -673,8 +693,8 @@ pub mod presence_diff {
                             Presence {
                                 metas: vec![PresenceMeta {
                                     phx_ref: "GAsBN9izrRlb40jh".to_owned(),
-                                    name: "service_role_47".to_owned(),
-                                    payload: simd_json::json!({"t": 21957173.599999905}),
+                                    name: Some("service_role_47".to_owned()),
+                                    payload: simd_json::json!({"t": 21_957_173_u64 }),
                                 }],
                             },
                         );
@@ -705,6 +725,7 @@ pub mod heartbeat {
     pub struct Heartbeat;
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use super::*;
 
@@ -747,6 +768,7 @@ pub mod access_token {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use super::*;
 
@@ -791,6 +813,7 @@ pub mod phx_close {
     pub struct PhxClose {}
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use super::*;
 
@@ -841,6 +864,7 @@ pub mod system {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use super::*;
 
@@ -971,6 +995,7 @@ pub mod phx_error {
     pub struct PhxError;
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use super::*;
 
@@ -1190,6 +1215,7 @@ pub mod postgres_changes {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used)]
     mod tests {
         use pretty_assertions::assert_eq;
 

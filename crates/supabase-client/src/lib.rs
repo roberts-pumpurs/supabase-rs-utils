@@ -15,6 +15,11 @@ pub struct PostgerstResponse<T> {
 
 pub const SUPABASE_KEY: &str = "apikey";
 
+/// Create a new authenticated supabase client stream
+///
+/// # Errors
+/// - the client cannot be constructed
+/// - the login url is invalid
 pub fn new_authenticated(
     config: SupabaseAuthConfig,
     login_info: LoginCredentials,
@@ -24,7 +29,7 @@ pub fn new_authenticated(
     >,
     SupabaseClientError,
 > {
-    let base = anonymous_client(config.api_key.clone(), config.url.clone())?;
+    let base = anonymous_client(config.api_key.clone(), &config.url)?;
     let auth_stream = rp_supabase_auth::jwt_stream::JwtStream::new(config).sign_in(login_info)?;
     let client_stream = auth_stream.map(move |item| {
         item.map(|item| {
@@ -40,7 +45,11 @@ pub fn new_authenticated(
     Ok(client_stream)
 }
 
-pub fn anonymous_client(api_key: String, url: url::Url) -> Result<Postgrest, SupabaseClientError> {
+/// Create a new anonymous supabase client
+///
+/// # Errors
+/// - the url is invalid
+pub fn anonymous_client(api_key: String, url: &url::Url) -> Result<Postgrest, SupabaseClientError> {
     let url = url.join("rest/v1/")?;
     let postgrest = rp_postgrest::Postgrest::new(url).insert_header(SUPABASE_KEY, api_key);
     Ok(postgrest)

@@ -239,6 +239,7 @@ pub enum SignInError {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "allow for tests")]
 mod auth_tests {
     use core::time::Duration;
 
@@ -261,10 +262,10 @@ mod auth_tests {
     #[timeout(ms(5_000))]
     async fn test_successful_password_login() {
         let access_token = make_jwt(Duration::from_secs(3600));
-        let mut m = SupabaseMockServer::new().await;
-        let m = m.register_jwt_password(&access_token);
+        let mut ms = SupabaseMockServer::new().await;
+        let ms = ms.register_jwt_password(&access_token);
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 1,
             reconnect_interval: Duration::from_secs(1),
@@ -297,8 +298,8 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(100))]
     async fn test_password_login_error() {
-        let mut m = SupabaseMockServer::new().await;
-        let _m1 = m
+        let mut ms = SupabaseMockServer::new().await;
+        let _m1 = ms
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_owned()))
@@ -306,7 +307,7 @@ mod auth_tests {
             .create();
 
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 2,
             reconnect_interval: Duration::from_secs(1),
@@ -330,8 +331,8 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(100))]
     async fn test_password_login_error_no_retries() {
-        let mut m = SupabaseMockServer::new().await;
-        let _m1 = m
+        let mut ms = SupabaseMockServer::new().await;
+        let _m1 = ms
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_owned()))
@@ -339,7 +340,7 @@ mod auth_tests {
             .create();
 
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 1,
             reconnect_interval: Duration::from_secs(1),
@@ -363,15 +364,15 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(100))]
     async fn test_retry_on_login_error() {
-        let mut m = SupabaseMockServer::new().await;
-        let _m1 = m
+        let mut ms = SupabaseMockServer::new().await;
+        let _m1 = ms
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_owned()))
             .with_status(500)
             .create();
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 2,
             reconnect_interval: Duration::from_millis(20),
@@ -386,7 +387,7 @@ mod auth_tests {
 
         let response = stream.next().await.unwrap();
         response.unwrap_err();
-        m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
+        ms.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
         let response = timeout(Duration::from_secs(10), stream.next())
             .await
             .unwrap()
@@ -407,14 +408,14 @@ mod auth_tests {
     #[timeout(ms(3_000))]
     async fn test_use_refresh_token_on_expiry() {
         // setup
-        let mut m = SupabaseMockServer::new().await;
+        let mut ms = SupabaseMockServer::new().await;
         let first_access_token = make_jwt(Duration::from_millis(5));
-        m.register_jwt_password(&first_access_token);
+        ms.register_jwt_password(&first_access_token);
 
         let new_access_token = make_jwt(Duration::from_secs(3600));
-        m.register_jwt_refresh(&new_access_token);
+        ms.register_jwt_refresh(&new_access_token);
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 1,
             reconnect_interval: Duration::from_millis(20),
