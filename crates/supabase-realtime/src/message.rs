@@ -29,12 +29,18 @@ pub enum ProtocolPayload {
     PhxClose(phx_close::PhxClose),
     #[serde(rename = "phx_reply")]
     PhxReply(phx_reply::PhxReply),
-    #[serde(rename = "presence_state")]
-    PresenceState(presence_state::PresenceState),
+
     #[serde(rename = "broadcast")]
     Broadcast(broadcast::Broadcast),
+
+    // presence
+    #[serde(rename = "track")]
+    PresenceTrack(presence_track::PresenceTrack),
+    #[serde(rename = "presence_state")]
+    PresenceState(presence_state::PresenceState),
     #[serde(rename = "presence_diff")]
     PresenceDiff(presence_diff::PresenceDiff),
+
     #[serde(rename = "system")]
     System(system::System),
     #[serde(rename = "phx_error")]
@@ -390,7 +396,7 @@ pub mod phx_join {
 pub mod presence_state {
     use std::collections::HashMap;
 
-    use serde::{Deserialize, Serialize};
+    use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct PresenceState(pub HashMap<String, Presence>);
@@ -404,7 +410,8 @@ pub mod presence_state {
     pub struct PresenceMeta {
         pub phx_ref: String,
         pub name: String,
-        pub t: f64,
+        #[serde(flatten)]
+        pub payload: simd_json::OwnedValue,
     }
 
     #[cfg(test)]
@@ -442,7 +449,7 @@ pub mod presence_state {
                     metas: vec![PresenceMeta {
                         phx_ref: "GAsCC3FpEhdb4wgk".to_owned(),
                         name: "service_role_75".to_owned(),
-                        t: 22866011.0,
+                        payload: simd_json::json!({"t": 22866011.0 }),
                     }],
                 },
             );
@@ -452,6 +459,59 @@ pub mod presence_state {
                 payload: ProtocolPayload::PresenceState(PresenceState(state_map)),
                 ref_field: None,
                 join_ref: None,
+            };
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+pub mod presence_track {
+    use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct PresenceTrack(pub simd_json::OwnedValue);
+
+    #[cfg(test)]
+    mod tests {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+        use crate::message::{ProtocolMessage, ProtocolPayload};
+
+        #[test]
+        fn test_presence_state_deserialization() {
+            let json_data = r#"
+            {
+                "topic": "realtime:af",
+                "event": "presence",
+                "payload": {
+                    "type": "presence",
+                    "event": "track",
+                    "payload": {
+                        "message": "bbbbbbb"
+                    }
+                },
+                "ref": "27",
+                "join_ref": "1"
+            }
+            "#;
+
+            let expected_struct = ProtocolMessage {
+                topic: "realtime:af".to_owned(),
+                payload: ProtocolPayload::PresenceTrack(PresenceTrack(
+                    simd_json::json!({"message": "bbbbbbb"}),
+                )),
+                ref_field: Some("27".to_string()),
+                join_ref: Some("1".to_string()),
             };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
@@ -568,20 +628,8 @@ pub mod presence_diff {
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct PresenceDiff {
-        pub joins: HashMap<String, Presence>,
-        pub leaves: HashMap<String, Presence>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct Presence {
-        pub metas: Vec<PresenceMeta>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct PresenceMeta {
-        pub phx_ref: String,
-        pub name: String,
-        pub t: f64,
+        pub joins: HashMap<String, super::presence_state::Presence>,
+        pub leaves: HashMap<String, super::presence_state::Presence>,
     }
 
     #[cfg(test)]
@@ -626,7 +674,7 @@ pub mod presence_diff {
                                 metas: vec![PresenceMeta {
                                     phx_ref: "GAsBN9izrRlb40jh".to_owned(),
                                     name: "service_role_47".to_owned(),
-                                    t: 21957173.599999905,
+                                    payload: simd_json::json!({"t": 21957173.599999905}),
                                 }],
                             },
                         );

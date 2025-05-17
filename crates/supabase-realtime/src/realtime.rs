@@ -1,5 +1,9 @@
 use alloc::sync::Arc;
+use futures::future::Either;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use core::task::Poll;
+use std::marker::PhantomData;
 
 use fastwebsockets::{Frame, WebSocketError};
 use futures::stream::FuturesUnordered;
@@ -12,18 +16,90 @@ use tokio_stream::wrappers::IntervalStream;
 use crate::connection::WsSupabaseConnection;
 use crate::error::SupabaseRealtimeError;
 use crate::message::access_token::AccessToken;
+use crate::message::phx_join::PostgrsChanges;
 use crate::message::{ProtocolMessage, ProtocolPayload, broadcast, phx_join};
 use crate::{connection, error, message};
 
-pub struct RealtimeConnectionClient {
+pub struct DbUpdates;
+pub struct Broadcast;
+pub struct Presence;
+
+pub struct RealtimeConnectionClient<T> {
     tx: futures::channel::mpsc::UnboundedSender<ProtocolPayload>,
+    _t: PhantomData<T>,
 }
 
-impl RealtimeConnectionClient {
+impl RealtimeConnectionClient<DbUpdates> {
     pub async fn subscribe_to_changes(
         &mut self,
-        join: phx_join::PhxJoin,
+        join: Vec<PostgrsChanges>,
     ) -> Result<(), futures::channel::mpsc::SendError> {
+        let join = phx_join::PhxJoin {
+            config: phx_join::JoinConfig {
+                broadcast: phx_join::BroadcastConfig {
+                    self_item: false,
+                    ack: false,
+                },
+                presence: phx_join::PresenceConfig { key: String::new() },
+                postgres_changes: join,
+            },
+            access_token: None,
+        };
+        self.tx.send(ProtocolPayload::PhxJoin(join)).await
+    }
+}
+
+impl RealtimeConnectionClient<Presence> {
+    pub async fn join(
+        &mut self,
+        unique_user_key: String,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        let join = phx_join::PhxJoin {
+            config: phx_join::JoinConfig {
+                broadcast: phx_join::BroadcastConfig {
+                    self_item: false,
+                    ack: false,
+                },
+                presence: phx_join::PresenceConfig {
+                    key: unique_user_key,
+                },
+                postgres_changes: Vec::new(),
+            },
+            access_token: None,
+        };
+        self.tx.send(ProtocolPayload::PhxJoin(join)).await
+    }
+
+    pub async fn track<T: serde::Serialize>(&mut self, item: T) -> Result<(), PresenceError> {
+        let mut item = simd_json::to_vec(&item)?;
+        let payload = simd_json::to_owned_value(&mut item)?;
+        let item = ProtocolPayload::PresenceTrack(message::presence_track::PresenceTrack(payload));
+        self.tx.send(item).await?;
+        Ok(())
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum PresenceError {
+    #[error("json serialization error")]
+    SimdError(#[from] simd_json::Error),
+    #[error("mpsc send error")]
+    MpscError(#[from] futures::channel::mpsc::SendError),
+}
+
+impl RealtimeConnectionClient<Broadcast> {
+    pub async fn join(
+        &mut self,
+        join: phx_join::BroadcastConfig,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        let join = phx_join::PhxJoin {
+            config: phx_join::JoinConfig {
+                broadcast: join,
+                presence: phx_join::PresenceConfig { key: String::new() },
+                postgres_changes: Vec::new(),
+            },
+            access_token: None,
+        };
         self.tx.send(ProtocolPayload::PhxJoin(join)).await
     }
 
@@ -35,27 +111,44 @@ impl RealtimeConnectionClient {
     }
 }
 
-pub struct RealtimeConnection {
+pub struct RealtimeConnection<T> {
     topic: String,
     config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
+    _t: PhantomData<T>,
 }
 
 type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
 
-impl RealtimeConnection {
+
+
+impl<T> RealtimeConnection<T> {
     const HEARTBEAT_PERIOD: core::time::Duration = core::time::Duration::from_secs(20);
 
     #[must_use]
-    pub fn new_db_updates(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
+    pub fn db_updates(
+        config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
+    ) -> RealtimeConnection<DbUpdates> {
         const DB_UPDATE_TOPIC: &str = "table-db-changes";
-        Self::new(config, DB_UPDATE_TOPIC)
+        let topic = ["realtime", DB_UPDATE_TOPIC].join(":");
+        RealtimeConnection {
+            topic,
+            config,
+            _t: PhantomData,
+        }
     }
 
     #[must_use]
-    pub fn new(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig, topic: &str) -> Self {
+    pub fn broadcast(
+        config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
+        topic: &str,
+    ) -> RealtimeConnection<Broadcast> {
         let prefix = "realtime";
         let topic = [prefix, topic].join(":");
-        Self { topic, config }
+        RealtimeConnection {
+            topic,
+            config,
+            _t: PhantomData,
+        }
     }
 
     #[tracing::instrument(skip_all, err)]
@@ -65,7 +158,7 @@ impl RealtimeConnection {
     ) -> Result<
         (
             impl Stream<Item = RealtimeStreamType>,
-            RealtimeConnectionClient,
+            RealtimeConnectionClient<T>,
         ),
         SupabaseRealtimeError,
     > {
@@ -169,7 +262,10 @@ impl RealtimeConnection {
                     item
                 });
 
-        let client = RealtimeConnectionClient { tx };
+        let client = RealtimeConnectionClient {
+            tx,
+            _t: PhantomData,
+        };
         let output_stream = RealtimeBaseConnection::new(realtime_url)
             .connect(input_stream)
             .await?;
@@ -177,6 +273,112 @@ impl RealtimeConnection {
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PresenceParsed<T> {
+    pub metas: Vec<PresenceMetaParsed<T>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PresenceMetaParsed<T> {
+    pub phx_ref: String,
+    pub name: String,
+    pub payload: T,
+}
+
+
+impl RealtimeConnection<Presence> {
+    #[tracing::instrument(skip_all, err)]
+    pub async fn connect_with_tracking<T: DeserializeOwned>(
+        self,
+        login_info: LoginCredentials,
+    ) -> Result<
+        (impl Stream<Item = Result<Either<PresenceParsed<T>, ProtocolMessage>, SupabaseRealtimeError>>, RealtimeConnectionClient<Presence>),
+        SupabaseRealtimeError,
+    > {
+        let (stream, realtime_client) = self.connect(login_info).await?;
+
+        let mut current_state = std::collections::HashMap::new();
+
+        let stream = stream.map(move |msg| {
+            match msg {
+                Ok(ProtocolMessage {
+                    payload: ProtocolPayload::PresenceState(state),
+                    ..
+                }) => {
+                    // Reset state with new presence state
+                    current_state = state.0;
+                    let parsed_state = current_state
+                        .iter()
+                        .map(|(key, presence)| {
+                            let metas = presence
+                                .metas
+                                .iter()
+                                .map(|meta| {
+                                    let mut payload_bytes = simd_json::to_vec(&meta.payload)?;
+                                    let payload = simd_json::from_slice(&mut payload_bytes)?;
+                                    Ok::<_, simd_json::Error>(PresenceMetaParsed {
+                                        phx_ref: meta.phx_ref.clone(),
+                                        name: meta.name.clone(),
+                                        payload,
+                                    })
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok::<_, simd_json::Error>((key.clone(), metas))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    Ok(Either::Left(PresenceParsed {
+                        metas: parsed_state.into_iter().flat_map(|(_, metas)| metas).collect(),
+                    }))
+                }
+                Ok(ProtocolMessage {
+                    payload: ProtocolPayload::PresenceDiff(diff),
+                    ..
+                }) => {
+                    // Handle joins
+                    for (key, presence) in diff.joins {
+                        current_state.insert(key, presence);
+                    }
+
+                    // Handle leaves
+                    for (key, _) in diff.leaves {
+                        current_state.remove(&key);
+                    }
+
+                    // Convert current state to parsed format
+                    let parsed_state = current_state
+                        .iter()
+                        .map(|(key, presence)| {
+                            let metas = presence
+                                .metas
+                                .iter()
+                                .map(|meta| {
+                                    let mut payload_bytes = simd_json::to_vec(&meta.payload)?;
+                                    let payload = simd_json::from_slice(&mut payload_bytes)?;
+                                    Ok::<_, simd_json::Error>(PresenceMetaParsed {
+                                        phx_ref: meta.phx_ref.clone(),
+                                        name: meta.name.clone(),
+                                        payload,
+                                    })
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok::<_, simd_json::Error>((key.clone(), metas))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    Ok(Either::Left(PresenceParsed {
+                        metas: parsed_state.into_iter().flat_map(|(_, metas)| metas).collect(),
+                    }))
+                }
+                Ok(msg) => Ok(Either::Right(msg)),
+                Err(err) => Err(err),
+            }
+        });
+
+        Ok((stream, realtime_client))
+    }
+}
 pub struct RealtimeBaseConnection {
     url: url::Url,
 }
