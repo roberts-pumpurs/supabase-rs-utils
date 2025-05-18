@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Buffer(pub Vec<u8>);
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProtocolMessage {
     pub topic: String,
@@ -29,12 +32,18 @@ pub enum ProtocolPayload {
     PhxClose(phx_close::PhxClose),
     #[serde(rename = "phx_reply")]
     PhxReply(phx_reply::PhxReply),
-    #[serde(rename = "presence_state")]
-    PresenceState(presence_state::PresenceState),
+
     #[serde(rename = "broadcast")]
     Broadcast(broadcast::Broadcast),
+
+    // presence
+    #[serde(rename = "presence")]
+    PresenceInner(presence_inner::PresenceInner),
+    #[serde(rename = "presence_state")]
+    PresenceState(presence_state::PresenceState),
     #[serde(rename = "presence_diff")]
     PresenceDiff(presence_diff::PresenceDiff),
+
     #[serde(rename = "system")]
     System(system::System),
     #[serde(rename = "phx_error")]
@@ -50,9 +59,18 @@ impl ProtocolMessage {
                 access_token.replace(new_access_token.to_owned());
             }
             ProtocolPayload::AccessToken(access_token::AccessToken { access_token }) => {
-                *access_token = new_access_token.to_owned();
+                new_access_token.clone_into(access_token);
             }
-            _ => {}
+            ProtocolPayload::Heartbeat(_)
+            | ProtocolPayload::PhxClose(_)
+            | ProtocolPayload::PhxReply(_)
+            | ProtocolPayload::Broadcast(_)
+            | ProtocolPayload::PresenceInner(_)
+            | ProtocolPayload::PresenceState(_)
+            | ProtocolPayload::PresenceDiff(_)
+            | ProtocolPayload::System(_)
+            | ProtocolPayload::PhxError(_)
+            | ProtocolPayload::PostgresChanges(_) => {}
         }
     }
 }
@@ -99,6 +117,7 @@ pub mod phx_reply {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -165,7 +184,7 @@ pub mod phx_reply {
                     postgres_changes: vec![PostgresChanges {
                         schema: "public".to_owned(),
                         table: "profiles".to_owned(),
-                        id: 31339675,
+                        id: 31_339_675,
                         filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_owned()),
                         event: PostgresChangetEvent::All,
                     }],
@@ -212,7 +231,7 @@ pub mod phx_reply {
                     postgres_changes: vec![PostgresChanges {
                         schema: "public".to_owned(),
                         table: "profiles".to_owned(),
-                        id: 30636876,
+                        id: 30_636_876,
                         filter: Some(String::new()),
                         event: PostgresChangetEvent::All,
                     }],
@@ -230,35 +249,40 @@ pub mod phx_reply {
         }
     }
 
-    #[test]
-    fn test_ok_empty_response_serialisation() {
-        let json_data = r#"
-    {
-        "ref": null,
-        "event": "phx_reply",
-        "payload": {
-            "status": "ok",
-            "response": {}
-        },
-        "topic": "phoenix"
-    }"#;
+    #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
+    mod test_ok_empty_response_serialisation_mod {
+        use super::*;
+        #[test]
+        fn test_ok_empty_response_serialisation() {
+            let json_data = r#"
+        {
+            "ref": null,
+            "event": "phx_reply",
+            "payload": {
+                "status": "ok",
+                "response": {}
+            },
+            "topic": "phoenix"
+        }"#;
 
-        let expected_struct = ProtocolMessage {
-            topic: "phoenix".to_owned(),
-            payload: ProtocolPayload::PhxReply(PhxReply::Ok(PhxReplyQuery {
-                postgres_changes: Vec::new(),
-            })),
-            ref_field: None,
-            join_ref: None,
-        };
+            let expected_struct = ProtocolMessage {
+                topic: "phoenix".to_owned(),
+                payload: ProtocolPayload::PhxReply(PhxReply::Ok(PhxReplyQuery {
+                    postgres_changes: Vec::new(),
+                })),
+                ref_field: None,
+                join_ref: None,
+            };
 
-        let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
-        dbg!(serialized);
+            let serialized = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialized);
 
-        let deserialized_struct: ProtocolMessage =
-            simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
 
-        assert_eq!(deserialized_struct, expected_struct);
+            assert_eq!(deserialized_struct, expected_struct);
+        }
     }
 }
 
@@ -320,6 +344,7 @@ pub mod phx_join {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
 
         use super::*;
@@ -403,11 +428,13 @@ pub mod presence_state {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct PresenceMeta {
         pub phx_ref: String,
-        pub name: String,
-        pub t: f64,
+        pub name: Option<String>,
+        #[serde(flatten)]
+        pub payload: simd_json::OwnedValue,
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -441,8 +468,8 @@ pub mod presence_state {
                 Presence {
                     metas: vec![PresenceMeta {
                         phx_ref: "GAsCC3FpEhdb4wgk".to_owned(),
-                        name: "service_role_75".to_owned(),
-                        t: 22866011.0,
+                        name: Some("service_role_75".to_owned()),
+                        payload: simd_json::json!({"t": 22_866_011_u64 }),
                     }],
                 },
             );
@@ -452,6 +479,71 @@ pub mod presence_state {
                 payload: ProtocolPayload::PresenceState(PresenceState(state_map)),
                 ref_field: None,
                 join_ref: None,
+            };
+
+            let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
+            dbg!(serialzed);
+
+            let deserialized_struct: ProtocolMessage =
+                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+
+            assert_eq!(deserialized_struct, expected_struct);
+        }
+    }
+}
+
+pub mod presence_inner {
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct PresenceInner {
+        #[serde(rename = "type")]
+        pub r#type: String,
+        #[serde(flatten)]
+        pub payload: PresenceInnerPayload,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(tag = "event", content = "payload", rename_all = "snake_case")]
+    pub enum PresenceInnerPayload {
+        Track(simd_json::OwnedValue),
+    }
+
+    #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
+    mod tests {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+        use crate::message::{ProtocolMessage, ProtocolPayload};
+
+        #[test]
+        fn test_presence_track_deserialization() {
+            let json_data = r#"
+            {
+                "topic": "realtime:af",
+                "event": "presence",
+                "payload": {
+                    "type": "presence",
+                    "event": "track",
+                    "payload": {
+                        "message": "bbbbbbb"
+                    }
+                },
+                "ref": "27",
+                "join_ref": "1"
+            }
+            "#;
+
+            let expected_struct = ProtocolMessage {
+                topic: "realtime:af".to_owned(),
+                payload: ProtocolPayload::PresenceInner(PresenceInner {
+                    r#type: "presence".to_owned(),
+                    payload: PresenceInnerPayload::Track(simd_json::json!({"message": "bbbbbbb"})),
+                }),
+                ref_field: Some("27".to_owned()),
+                join_ref: Some("1".to_owned()),
             };
 
             let serialzed = simd_json::to_string_pretty(&expected_struct).unwrap();
@@ -479,6 +571,7 @@ pub mod broadcast {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use pretty_assertions::assert_eq;
         use simd_json::json;
@@ -568,28 +661,20 @@ pub mod presence_diff {
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct PresenceDiff {
-        pub joins: HashMap<String, Presence>,
-        pub leaves: HashMap<String, Presence>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct Presence {
-        pub metas: Vec<PresenceMeta>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct PresenceMeta {
-        pub phx_ref: String,
-        pub name: String,
-        pub t: f64,
+        pub joins: HashMap<String, super::presence_state::Presence>,
+        pub leaves: HashMap<String, super::presence_state::Presence>,
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use pretty_assertions::assert_eq;
 
         use super::*;
-        use crate::message::{ProtocolMessage, ProtocolPayload};
+        use crate::message::{
+            ProtocolMessage, ProtocolPayload,
+            presence_state::{Presence, PresenceMeta},
+        };
 
         #[test]
         fn test_presence_diff_deserialization() {
@@ -604,7 +689,7 @@ pub mod presence_diff {
                                 {
                                     "phx_ref": "GAsBN9izrRlb40jh",
                                     "name": "service_role_47",
-                                    "t": 21957173.599999905
+                                    "t": 21957173
                                 }
                             ]
                         }
@@ -625,8 +710,8 @@ pub mod presence_diff {
                             Presence {
                                 metas: vec![PresenceMeta {
                                     phx_ref: "GAsBN9izrRlb40jh".to_owned(),
-                                    name: "service_role_47".to_owned(),
-                                    t: 21957173.599999905,
+                                    name: Some("service_role_47".to_owned()),
+                                    payload: simd_json::json!({"t": 21_957_173_u64 }),
                                 }],
                             },
                         );
@@ -657,6 +742,7 @@ pub mod heartbeat {
     pub struct Heartbeat;
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use super::*;
 
@@ -699,6 +785,7 @@ pub mod access_token {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use super::*;
 
@@ -740,9 +827,10 @@ pub mod phx_close {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
-    pub struct PhxClose {}
+    pub struct PhxClose;
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use super::*;
 
@@ -759,7 +847,7 @@ pub mod phx_close {
 
             let expected_struct = ProtocolMessage {
                 topic: "realtime::something::something".to_owned(),
-                payload: ProtocolPayload::PhxClose(PhxClose {}),
+                payload: ProtocolPayload::PhxClose(PhxClose),
                 ref_field: None,
                 join_ref: None,
             };
@@ -780,7 +868,6 @@ pub mod system {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
-
     pub struct System {
         #[serde(rename = "channel")]
         pub channel: String,
@@ -793,6 +880,7 @@ pub mod system {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use super::*;
 
@@ -923,6 +1011,7 @@ pub mod phx_error {
     pub struct PhxError;
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
     mod tests {
         use super::*;
 
@@ -957,10 +1046,9 @@ pub mod phx_error {
 }
 
 pub mod postgres_changes {
-    use alloc::fmt;
+    use core::fmt;
 
-    use serde::de::{self, DeserializeOwned};
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
@@ -1008,10 +1096,16 @@ pub mod postgres_changes {
 
     impl<O> Data<Buffer, O> {
         /// Parses the `record` field and returns a new `Data` instance with the parsed type.
-        pub fn parse_record<T: DeserializeOwned>(self) -> Result<Data<T, O>, simd_json::Error> {
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if deserialization of the record fails.
+        pub fn parse_record<T: serde::de::DeserializeOwned>(
+            self,
+        ) -> Result<Data<T, O>, simd_json::Error> {
             let record = match self.record {
                 Some(buffer) => {
-                    let mut data = buffer.into_inner();
+                    let mut data = buffer.0;
                     let parsed: T = simd_json::from_slice(&mut data)?;
                     Some(parsed)
                 }
@@ -1032,10 +1126,16 @@ pub mod postgres_changes {
     }
     impl<R> Data<R, Buffer> {
         /// Parses the `old_record` field and returns a new `Data` instance with the parsed type.
-        pub fn parse_old_record<K: DeserializeOwned>(self) -> Result<Data<R, K>, simd_json::Error> {
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if deserialization of the `old_record` fails.
+        pub fn parse_old_record<K: serde::de::DeserializeOwned>(
+            self,
+        ) -> Result<Data<R, K>, simd_json::Error> {
             let old_record = match self.old_record {
                 Some(buffer) => {
-                    let mut data = buffer.into_inner();
+                    let mut data = buffer.0;
                     let parsed: K = simd_json::from_slice(&mut data)?;
                     Some(parsed)
                 }
@@ -1142,6 +1242,7 @@ pub mod postgres_changes {
     }
 
     #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "allowed for tests")]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -1219,7 +1320,7 @@ pub mod postgres_changes {
                         table: "profiles".to_owned(),
                         type_: PostgresDataChangeEvent::Update,
                     },
-                    ids: vec![38606455],
+                    ids: vec![38_606_455],
                 }),
                 ref_field: None,
                 join_ref: None,
@@ -1329,7 +1430,7 @@ pub mod postgres_changes {
                         errors: None,
                         schema: "public".to_owned(),
                     },
-                    ids: vec![60402389],
+                    ids: vec![60_402_389],
                 }),
                 ref_field: None,
                 join_ref: None,
@@ -1436,7 +1537,7 @@ pub mod postgres_changes {
                         errors: None,
                         schema: "public".to_owned(),
                     },
-                    ids: vec![38377940],
+                    ids: vec![38_377_940],
                 }),
                 ref_field: None,
                 join_ref: None,

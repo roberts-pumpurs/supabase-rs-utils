@@ -1,4 +1,5 @@
 use fastwebsockets::WebSocketError;
+use rp_supabase_auth::error::AuthError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SupabaseRealtimeError {
@@ -33,5 +34,5 @@ pub enum SupabaseRealtimeError {
     #[error("Refresh stream error")]
     RefreshStreamError(#[from] rp_supabase_auth::jwt_stream::RefreshStreamError),
     #[error("Auth sign in error")]
-    AuthSignInError(#[from] rp_supabase_auth::jwt_stream::SignInError),
+    AuthSignInError(#[from] AuthError),
 }

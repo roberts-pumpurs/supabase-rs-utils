@@ -37,16 +37,16 @@ impl JwtStream {
     /// # Errors
     ///
     /// This function will return an error if the provided supabase url cannot be joined with the
-    /// expected suffix.
+    /// expected suffix or if the client cannot be created.
     #[tracing::instrument(skip_all, err)]
-    pub fn sign_in(&self, params: LoginCredentials) -> Result<JwtRefreshStream, SignInError> {
-        let client =
-            ApiClient::new_unauthenticated(self.config.url.clone(), &self.config.api_key).unwrap();
+    pub fn sign_in(&self, params: LoginCredentials) -> Result<JwtRefreshStream, AuthError> {
+        let client = ApiClient::new_unauthenticated(&self.config.url, &self.config.api_key)?;
+        let max_reconnect_attempts = usize::from(self.config.max_reconnect_attempts);
         Ok(JwtRefreshStream {
             api_key: self.config.api_key.clone(),
             client,
             token_body: params,
-            max_reconnect_attempts: self.config.max_reconnect_attempts,
+            max_reconnect_attempts,
             current_reconnect_attempts: 0,
             background_tasks: JoinSet::new(),
             reconnect_interval: self.config.reconnect_interval,
@@ -56,12 +56,12 @@ impl JwtStream {
 
 pub struct JwtRefreshStream {
     pub api_key: String,
-    client: ApiClient,
-    token_body: LoginCredentials,
-    max_reconnect_attempts: u8,
-    current_reconnect_attempts: u8,
-    reconnect_interval: core::time::Duration,
-    background_tasks: JoinSet<Result<AccessTokenResponseSchema, RefreshStreamError>>,
+    pub client: ApiClient,
+    pub token_body: LoginCredentials,
+    pub max_reconnect_attempts: usize,
+    pub current_reconnect_attempts: usize,
+    pub background_tasks: JoinSet<Result<AccessTokenResponseSchema, RefreshStreamError>>,
+    pub reconnect_interval: Duration,
 }
 
 impl JwtRefreshStream {
@@ -86,8 +86,8 @@ impl JwtRefreshStream {
     fn spawn_login_task(&mut self, delay: Option<core::time::Duration>) {
         let request = match self.login_request() {
             Ok(req) => req,
-            Err(e) => {
-                tracing::error!(?e, "Failed to build login request");
+            Err(err) => {
+                tracing::error!(?err, "Failed to build login request");
                 return;
             }
         };
@@ -132,7 +132,8 @@ impl JwtRefreshStream {
 
         // Create the asynchronous task
         let task = async move {
-            let refresh_in = calculate_refresh_sleep_duration(expires_in as u64);
+            let refresh_in =
+                calculate_refresh_sleep_duration(u64::try_from(expires_in).unwrap_or(0));
             tokio::time::sleep(refresh_in).await;
             auth_request(request).await
         };
@@ -169,7 +170,8 @@ impl Stream for JwtRefreshStream {
                             max_attempts = self.max_reconnect_attempts,
                             "Login failed; retrying"
                         );
-                        self.current_reconnect_attempts += 1;
+                        self.current_reconnect_attempts =
+                            self.current_reconnect_attempts.saturating_add(1);
                         // Spawn a login task with a delay
                         let duration = self.reconnect_interval;
                         self.spawn_login_task(Some(duration));
@@ -178,8 +180,8 @@ impl Stream for JwtRefreshStream {
                 }
                 Poll::Ready(Some(item))
             }
-            Poll::Ready(Some(Err(join_error))) => {
-                tracing::error!(?join_error, "Task panicked; terminating stream");
+            Poll::Ready(Some(Err(join_err))) => {
+                tracing::error!(?join_err, "Task panicked; terminating stream");
                 cx.waker().wake_by_ref();
                 Poll::Ready(None)
             }
@@ -190,7 +192,7 @@ impl Stream for JwtRefreshStream {
                     return Poll::Ready(None);
                 }
                 tracing::debug!("No tasks running; attempting initial login");
-                self.current_reconnect_attempts += 1;
+                self.current_reconnect_attempts = self.current_reconnect_attempts.saturating_add(1);
                 self.spawn_login_task(None);
                 // Yield control to allow the task to start
                 cx.waker().wake_by_ref();
@@ -239,6 +241,7 @@ pub enum SignInError {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "allow for tests")]
 mod auth_tests {
     use core::time::Duration;
 
@@ -260,11 +263,11 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(5_000))]
     async fn test_successful_password_login() {
-        let access_token = make_jwt(Duration::from_secs(3600));
-        let mut m = SupabaseMockServer::new().await;
-        let m = m.register_jwt_password(&access_token);
+        let access_token = make_jwt(Duration::from_secs(3600)).unwrap();
+        let mut ms = SupabaseMockServer::new().await;
+        ms.register_jwt_password(&access_token).unwrap();
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url().unwrap(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 1,
             reconnect_interval: Duration::from_secs(1),
@@ -297,8 +300,8 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(100))]
     async fn test_password_login_error() {
-        let mut m = SupabaseMockServer::new().await;
-        let _m1 = m
+        let mut ms = SupabaseMockServer::new().await;
+        let _m1 = ms
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_owned()))
@@ -306,7 +309,7 @@ mod auth_tests {
             .create();
 
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url().unwrap(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 2,
             reconnect_interval: Duration::from_secs(1),
@@ -330,8 +333,8 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(100))]
     async fn test_password_login_error_no_retries() {
-        let mut m = SupabaseMockServer::new().await;
-        let _m1 = m
+        let mut ms = SupabaseMockServer::new().await;
+        let _m1 = ms
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_owned()))
@@ -339,7 +342,7 @@ mod auth_tests {
             .create();
 
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url().unwrap(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 1,
             reconnect_interval: Duration::from_secs(1),
@@ -363,15 +366,15 @@ mod auth_tests {
     #[test(tokio::test)]
     #[timeout(ms(100))]
     async fn test_retry_on_login_error() {
-        let mut m = SupabaseMockServer::new().await;
-        let _m1 = m
+        let mut ms = SupabaseMockServer::new().await;
+        let _m1 = ms
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex("grant_type=password".to_owned()))
             .with_status(500)
             .create();
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url().unwrap(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 2,
             reconnect_interval: Duration::from_millis(20),
@@ -386,7 +389,8 @@ mod auth_tests {
 
         let response = stream.next().await.unwrap();
         response.unwrap_err();
-        m.register_jwt_password(&make_jwt(Duration::from_secs(3600)));
+        ms.register_jwt_password(&make_jwt(Duration::from_secs(3600)).unwrap())
+            .unwrap();
         let response = timeout(Duration::from_secs(10), stream.next())
             .await
             .unwrap()
@@ -407,14 +411,14 @@ mod auth_tests {
     #[timeout(ms(3_000))]
     async fn test_use_refresh_token_on_expiry() {
         // setup
-        let mut m = SupabaseMockServer::new().await;
-        let first_access_token = make_jwt(Duration::from_millis(5));
-        m.register_jwt_password(&first_access_token);
+        let mut ms = SupabaseMockServer::new().await;
+        let first_access_token = make_jwt(Duration::from_millis(5)).unwrap();
+        ms.register_jwt_password(&first_access_token).unwrap();
 
-        let new_access_token = make_jwt(Duration::from_secs(3600));
-        m.register_jwt_refresh(&new_access_token);
+        let new_access_token = make_jwt(Duration::from_secs(3600)).unwrap();
+        ms.register_jwt_refresh(&new_access_token).unwrap();
         let config = SupabaseAuthConfig {
-            url: m.server_url(),
+            url: ms.server_url().unwrap(),
             api_key: "api-key".to_owned(),
             max_reconnect_attempts: 1,
             reconnect_interval: Duration::from_millis(20),

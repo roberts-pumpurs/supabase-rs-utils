@@ -10,6 +10,6 @@ publish = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-xshell = "0.2"
+xshell.workspace = true
 eyre = "0.6"
 color-eyre = "0.6"

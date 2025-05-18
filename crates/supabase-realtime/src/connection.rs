@@ -33,7 +33,7 @@ pub async fn connect(url: &url::Url) -> Result<WsSupabaseConnection, error::Supa
     let con = match (domain, socket_addr) {
         (Some(domain), Some(socket_addr)) => {
             let tcp_stream = TcpStream::connect(&socket_addr).await?;
-            let tls_connector = tls_connector().unwrap();
+            let tls_connector = tls_connector()?;
             let domain =
                 rustls::pki_types::ServerName::try_from(domain.to_owned()).map_err(|err| {
                     tracing::error!(?err, "unable to convert domain to server name");
@@ -68,7 +68,11 @@ fn construct_http_ws_upgrade_req(
     let req = Request::builder()
         .method("GET")
         .uri(url.as_str()) //stream we want to subscribe to
-        .header("Host", url.host_str().unwrap())
+        .header(
+            "Host",
+            url.host_str()
+                .ok_or(error::SupabaseRealtimeError::HostStringNotPresent)?,
+        )
         .header(UPGRADE, "websocket")
         .header(CONNECTION, "upgrade")
         .header(

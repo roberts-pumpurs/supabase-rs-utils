@@ -17,22 +17,22 @@ pub struct ErrorResponse {
 
 /// Enum representing the different types of errors that can occur.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum Error {
-    PostgresError(PostgresError),
-    PostgrestError(PostgrestError),
-    CustomError(CustomError),
+pub enum PostgrestUtilError {
+    Postgres(PostgresError),
+    Postgrest(PostgrestError),
+    Custom(CustomError),
 }
 
-impl Error {
-    /// Creates an `Error` from an `ErrorResponse`.
+impl PostgrestUtilError {
+    /// Creates an error from an `ErrorResponse`.
     #[must_use]
     pub fn from_error_response(resp: ErrorResponse) -> Self {
         if resp.code.starts_with("PGRST") {
-            Self::PostgrestError(PostgrestError::from_response(resp))
+            Self::Postgrest(PostgrestError::from_response(resp))
         } else if resp.code.len() == 5 || resp.code.starts_with("XX") {
-            Self::PostgresError(PostgresError::from_response(resp))
+            Self::Postgres(PostgresError::from_response(resp))
         } else {
-            Self::CustomError(CustomError::from_response(resp))
+            Self::Custom(CustomError::from_response(resp))
         }
     }
 
@@ -40,28 +40,28 @@ impl Error {
     #[must_use]
     pub const fn http_status_code(&self, is_authenticated: bool) -> u16 {
         match self {
-            Self::PostgresError(err) => err.http_status_code(is_authenticated),
-            Self::PostgrestError(err) => err.http_status_code(),
-            Self::CustomError(_) => 400, // Default to 400 for custom errors
+            Self::Postgres(err) => err.http_status_code(is_authenticated),
+            Self::Postgrest(err) => err.http_status_code(),
+            Self::Custom(_) => 400, // Default to 400 for custom errors
         }
     }
 }
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for PostgrestUtilError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PostgresError(err) => {
-                write!(f, "PostgresError [{:?}]: {}", err.code, err.message)
+            Self::Postgres(err) => {
+                write!(fmt, "Postgres [{}]: {}", err.code, err.message)
             }
-            Self::PostgrestError(err) => {
-                write!(f, "PostgrestError [{:?}]: {}", err.code, err.message)
+            Self::Postgrest(err) => {
+                write!(fmt, "Postgrest [{}]: {}", err.code, err.message)
             }
-            Self::CustomError(err) => write!(f, "CustomError [{}]: {}", err.code, err.message),
+            Self::Custom(err) => write!(fmt, "Custom [{}]: {}", err.code, err.message),
         }
     }
 }
 
-impl core::error::Error for Error {}
+impl core::error::Error for PostgrestUtilError {}
 
 /// Represents an error returned by `PostgreSQL`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -196,37 +196,46 @@ impl PostgresErrorCode {
     #[must_use]
     pub const fn http_status_code(&self, is_authenticated: bool) -> u16 {
         match self {
-            // Patterns
-            Self::ConnectionException => 503,
-            Self::TriggeredActionException => 500,
-            Self::InvalidGrantor => 403,
-            Self::InvalidRoleSpecification => 403,
-            Self::InvalidTransactionState => 500,
-            Self::InvalidAuthorizationSpecification => 403,
-            Self::InvalidTransactionTermination => 500,
-            Self::ExternalRoutineException => 500,
-            Self::ExternalRoutineInvocationException => 500,
-            Self::SavepointException => 500,
-            Self::TransactionRollback => 500,
-            Self::InsufficientResources => 503,
-            Self::ProgramLimitExceeded => 500,
-            Self::ObjectNotInPrerequisiteState => 500,
-            Self::OperatorIntervention => 500,
-            Self::SystemError => 500,
-            Self::ConfigFileError => 500,
-            Self::FdwError => 500,
-            Self::PlpgsqlError => 500,
-            Self::InternalError => 500,
-            // Specific codes
-            Self::NotNullViolation => 400,
-            Self::ForeignKeyViolation => 409,
-            Self::UniqueViolation => 409,
+            // 500 status codes
+            Self::TriggeredActionException
+            | Self::InvalidTransactionState
+            | Self::InvalidTransactionTermination
+            | Self::ExternalRoutineException
+            | Self::ExternalRoutineInvocationException
+            | Self::SavepointException
+            | Self::TransactionRollback
+            | Self::ProgramLimitExceeded
+            | Self::ObjectNotInPrerequisiteState
+            | Self::OperatorIntervention
+            | Self::SystemError
+            | Self::ConfigFileError
+            | Self::FdwError
+            | Self::PlpgsqlError
+            | Self::InternalError
+            | Self::ConfigLimitExceeded
+            | Self::InfiniteRecursion => 500,
+
+            // 503 status codes
+            Self::ConnectionException | Self::InsufficientResources => 503,
+
+            // 403 status codes
+            Self::InvalidGrantor
+            | Self::InvalidRoleSpecification
+            | Self::InvalidAuthorizationSpecification => 403,
+
+            // 404 status codes
+            Self::UndefinedFunction | Self::UndefinedTable => 404,
+
+            // 400 status codes
+            Self::NotNullViolation | Self::RaiseException | Self::Other(_) => 400,
+
+            // 409 status codes
+            Self::ForeignKeyViolation | Self::UniqueViolation => 409,
+
+            // 405 status code
             Self::ReadOnlySqlTransaction => 405,
-            Self::ConfigLimitExceeded => 500,
-            Self::RaiseException => 400,
-            Self::UndefinedFunction => 404,
-            Self::UndefinedTable => 404,
-            Self::InfiniteRecursion => 500,
+
+            // Conditional status code
             Self::InsufficientPrivilege => {
                 if is_authenticated {
                     403
@@ -234,8 +243,44 @@ impl PostgresErrorCode {
                     401
                 }
             }
-            // Other errors default to 400
-            Self::Other(_) => 400,
+        }
+    }
+}
+
+impl core::fmt::Display for PostgresErrorCode {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotNullViolation => write!(fmt, "23502"),
+            Self::ForeignKeyViolation => write!(fmt, "23503"),
+            Self::UniqueViolation => write!(fmt, "23505"),
+            Self::ReadOnlySqlTransaction => write!(fmt, "25006"),
+            Self::UndefinedFunction => write!(fmt, "42883"),
+            Self::UndefinedTable => write!(fmt, "42P01"),
+            Self::InfiniteRecursion => write!(fmt, "42P17"),
+            Self::InsufficientPrivilege => write!(fmt, "42501"),
+            Self::ConfigLimitExceeded => write!(fmt, "53400"),
+            Self::RaiseException => write!(fmt, "P0001"),
+            Self::ConnectionException => write!(fmt, "08*"),
+            Self::TriggeredActionException => write!(fmt, "09*"),
+            Self::InvalidGrantor => write!(fmt, "0L*"),
+            Self::InvalidRoleSpecification => write!(fmt, "0P*"),
+            Self::InvalidTransactionState => write!(fmt, "25*"),
+            Self::InvalidAuthorizationSpecification => write!(fmt, "28*"),
+            Self::InvalidTransactionTermination => write!(fmt, "2D*"),
+            Self::ExternalRoutineException => write!(fmt, "38*"),
+            Self::ExternalRoutineInvocationException => write!(fmt, "39*"),
+            Self::SavepointException => write!(fmt, "3B*"),
+            Self::TransactionRollback => write!(fmt, "40*"),
+            Self::InsufficientResources => write!(fmt, "53*"),
+            Self::ProgramLimitExceeded => write!(fmt, "54*"),
+            Self::ObjectNotInPrerequisiteState => write!(fmt, "55*"),
+            Self::OperatorIntervention => write!(fmt, "57*"),
+            Self::SystemError => write!(fmt, "58*"),
+            Self::ConfigFileError => write!(fmt, "F0*"),
+            Self::FdwError => write!(fmt, "HV*"),
+            Self::PlpgsqlError => write!(fmt, "P0*"),
+            Self::InternalError => write!(fmt, "XX*"),
+            Self::Other(code) => write!(fmt, "{code}"),
         }
     }
 }
@@ -363,52 +408,91 @@ impl PostgrestErrorCode {
     #[must_use]
     pub const fn http_status_code(&self) -> u16 {
         match self {
-            // Group 0 - Connection
-            Self::CouldNotConnectDatabase
-            | Self::InternalConnectionError
-            | Self::CouldNotConnectSchemaCache => 503,
+            // 500 status codes
+            Self::InternalConnectionError
+            | Self::CouldNotConnectSchemaCache
+            | Self::InvalidResponseHeaders
+            | Self::InvalidStatusCode
+            | Self::InvalidRaiseErrorJson
+            | Self::JwtSecretMissing
+            | Self::InternalLibraryError
+            | Self::Other(_) => 500,
+            // 503
+            Self::CouldNotConnectDatabase => 503,
+            // 504
             Self::RequestTimedOut => 504,
-
-            // Group 1 - API Request
-            Self::ParsingErrorQueryParameter => 400,
-            Self::FunctionOnlySupportsGetOrPost => 405,
-            Self::InvalidRequestBody => 400,
+            // 400
+            Self::ParsingErrorQueryParameter
+            | Self::InvalidRequestBody
+            | Self::FilterOnMissingEmbeddedResource
+            | Self::LimitedUpdateDeleteWithoutOrdering
+            | Self::LimitedUpdateDeleteExceededMaxRows
+            | Self::UpsertPutWithLimitsOffsets
+            | Self::UpsertPutPrimaryKeyMismatch
+            | Self::CannotOrderByRelatedTable
+            | Self::CannotSpreadRelatedTable
+            | Self::InvalidEmbeddedResourceFilter
+            | Self::InvalidPreferHeader
+            | Self::RelationshipNotFound
+            | Self::ColumnNotFound => 400,
+            // 405
+            Self::FunctionOnlySupportsGetOrPost
+            | Self::InvalidPutRequest
+            | Self::UnsupportedHttpVerb => 405,
+            // 416
             Self::InvalidRange => 416,
-            Self::InvalidPutRequest => 405,
-            Self::SchemaNotInConfig => 406,
+            // 406
+            Self::SchemaNotInConfig | Self::InvalidSingularResponse => 406,
+            // 415
             Self::InvalidContentType => 415,
-            Self::FilterOnMissingEmbeddedResource => 400,
-            Self::LimitedUpdateDeleteWithoutOrdering => 400,
-            Self::LimitedUpdateDeleteExceededMaxRows => 400,
-            Self::InvalidResponseHeaders => 500,
-            Self::InvalidStatusCode => 500,
-            Self::UpsertPutWithLimitsOffsets => 400,
-            Self::UpsertPutPrimaryKeyMismatch => 400,
-            Self::InvalidSingularResponse => 406,
-            Self::UnsupportedHttpVerb => 405,
-            Self::CannotOrderByRelatedTable => 400,
-            Self::CannotSpreadRelatedTable => 400,
-            Self::InvalidEmbeddedResourceFilter => 400,
-            Self::InvalidRaiseErrorJson => 500,
-            Self::InvalidPreferHeader => 400,
-
-            // Group 2 - Schema Cache
-            Self::RelationshipNotFound => 400,
-            Self::AmbiguousEmbedding => 300,
+            // 300
+            Self::AmbiguousEmbedding | Self::OverloadedFunctionAmbiguous => 300,
+            // 404
             Self::FunctionNotFound => 404,
-            Self::OverloadedFunctionAmbiguous => 300,
-            Self::ColumnNotFound => 400,
+            // 401
+            Self::JwtInvalid | Self::AnonymousRoleDisabled => 401,
+        }
+    }
+}
 
-            // Group 3 - JWT
-            Self::JwtSecretMissing => 500,
-            Self::JwtInvalid => 401,
-            Self::AnonymousRoleDisabled => 401,
-
-            // Group X - Internal
-            Self::InternalLibraryError => 500,
-
-            // Other errors
-            Self::Other(_) => 500,
+impl core::fmt::Display for PostgrestErrorCode {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CouldNotConnectDatabase => write!(fmt, "PGRST000"),
+            Self::InternalConnectionError => write!(fmt, "PGRST001"),
+            Self::CouldNotConnectSchemaCache => write!(fmt, "PGRST002"),
+            Self::RequestTimedOut => write!(fmt, "PGRST003"),
+            Self::ParsingErrorQueryParameter => write!(fmt, "PGRST100"),
+            Self::FunctionOnlySupportsGetOrPost => write!(fmt, "PGRST101"),
+            Self::InvalidRequestBody => write!(fmt, "PGRST102"),
+            Self::InvalidRange => write!(fmt, "PGRST103"),
+            Self::InvalidPutRequest => write!(fmt, "PGRST105"),
+            Self::SchemaNotInConfig => write!(fmt, "PGRST106"),
+            Self::InvalidContentType => write!(fmt, "PGRST107"),
+            Self::FilterOnMissingEmbeddedResource => write!(fmt, "PGRST108"),
+            Self::LimitedUpdateDeleteWithoutOrdering => write!(fmt, "PGRST109"),
+            Self::LimitedUpdateDeleteExceededMaxRows => write!(fmt, "PGRST110"),
+            Self::InvalidResponseHeaders => write!(fmt, "PGRST111"),
+            Self::InvalidStatusCode => write!(fmt, "PGRST112"),
+            Self::UpsertPutWithLimitsOffsets => write!(fmt, "PGRST114"),
+            Self::UpsertPutPrimaryKeyMismatch => write!(fmt, "PGRST115"),
+            Self::InvalidSingularResponse => write!(fmt, "PGRST116"),
+            Self::UnsupportedHttpVerb => write!(fmt, "PGRST117"),
+            Self::CannotOrderByRelatedTable => write!(fmt, "PGRST118"),
+            Self::CannotSpreadRelatedTable => write!(fmt, "PGRST119"),
+            Self::InvalidEmbeddedResourceFilter => write!(fmt, "PGRST120"),
+            Self::InvalidRaiseErrorJson => write!(fmt, "PGRST121"),
+            Self::InvalidPreferHeader => write!(fmt, "PGRST122"),
+            Self::RelationshipNotFound => write!(fmt, "PGRST200"),
+            Self::AmbiguousEmbedding => write!(fmt, "PGRST201"),
+            Self::FunctionNotFound => write!(fmt, "PGRST202"),
+            Self::OverloadedFunctionAmbiguous => write!(fmt, "PGRST203"),
+            Self::ColumnNotFound => write!(fmt, "PGRST204"),
+            Self::JwtSecretMissing => write!(fmt, "PGRST300"),
+            Self::JwtInvalid => write!(fmt, "PGRST301"),
+            Self::AnonymousRoleDisabled => write!(fmt, "PGRST302"),
+            Self::InternalLibraryError => write!(fmt, "PGRSTX00"),
+            Self::Other(code) => write!(fmt, "{code}"),
         }
     }
 }
@@ -435,6 +519,11 @@ impl CustomError {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "Allowed in test code for simplicity")]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Allowed in test code for simplicity"
+)]
 mod tests {
     use super::*;
 
@@ -448,10 +537,10 @@ mod tests {
             hint: None,
         };
         let is_authenticated = true;
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgresError(pg_error) => {
+            PostgrestUtilError::Postgres(pg_error) => {
                 assert_eq!(pg_error.code, PostgresErrorCode::UniqueViolation);
                 assert_eq!(pg_error.http_status_code(is_authenticated), 409);
                 assert_eq!(
@@ -476,10 +565,10 @@ mod tests {
             details: None,
             hint: Some("Use limit to restrict the number of results.".to_owned()),
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgrestError(pgrst_error) => {
+            PostgrestUtilError::Postgrest(pgrst_error) => {
                 assert_eq!(
                     pgrst_error.code,
                     PostgrestErrorCode::InvalidSingularResponse
@@ -504,10 +593,10 @@ mod tests {
             details: Some("Some custom details.".to_owned()),
             hint: Some("Some custom hint.".to_owned()),
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::CustomError(custom_error) => {
+            PostgrestUtilError::Custom(custom_error) => {
                 assert_eq!(custom_error.code, "CUSTOM123");
                 assert_eq!(custom_error.message, "Custom error message");
                 assert_eq!(
@@ -530,10 +619,10 @@ mod tests {
             hint: None,
         };
         let is_authenticated = true;
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgresError(pg_error) => {
+            PostgrestUtilError::Postgres(pg_error) => {
                 assert_eq!(pg_error.code, PostgresErrorCode::InsufficientPrivilege);
                 assert_eq!(pg_error.http_status_code(is_authenticated), 403);
             }
@@ -551,10 +640,10 @@ mod tests {
             hint: None,
         };
         let is_authenticated = false;
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgresError(pg_error) => {
+            PostgrestUtilError::Postgres(pg_error) => {
                 assert_eq!(pg_error.code, PostgresErrorCode::InsufficientPrivilege);
                 assert_eq!(pg_error.http_status_code(is_authenticated), 401);
             }
@@ -572,10 +661,10 @@ mod tests {
             hint: None,
         };
         let is_authenticated = true;
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgresError(pg_error) => {
+            PostgrestUtilError::Postgres(pg_error) => {
                 assert_eq!(pg_error.code, PostgresErrorCode::ConnectionException);
                 assert_eq!(pg_error.http_status_code(is_authenticated), 503);
             }
@@ -592,10 +681,10 @@ mod tests {
             details: Some("An unexpected error occurred.".to_owned()),
             hint: None,
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgrestError(pgrst_error) => {
+            PostgrestUtilError::Postgrest(pgrst_error) => {
                 assert_eq!(pgrst_error.code, PostgrestErrorCode::InternalLibraryError);
                 assert_eq!(pgrst_error.http_status_code(), 500);
             }
@@ -613,10 +702,10 @@ mod tests {
             hint: None,
         };
         let is_authenticated = true;
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match &error {
-            Error::PostgresError(pg_error) => {
+            PostgrestUtilError::Postgres(pg_error) => {
                 match &pg_error.code {
                     PostgresErrorCode::Other(code) => assert_eq!(code, "99999"),
                     _ => panic!("Expected Other variant"),
@@ -636,10 +725,10 @@ mod tests {
             details: None,
             hint: None,
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match &error {
-            Error::PostgrestError(pgrst_error) => {
+            PostgrestUtilError::Postgrest(pgrst_error) => {
                 match &pgrst_error.code {
                     PostgrestErrorCode::Other(code) => assert_eq!(code, "PGRST999"),
                     _ => panic!("Expected Other variant"),
@@ -660,10 +749,10 @@ mod tests {
             hint: Some("There is nothing you can do.".to_owned()),
         };
         let is_authenticated = true;
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         match error {
-            Error::PostgresError(pg_error) => {
+            PostgrestUtilError::Postgres(pg_error) => {
                 assert_eq!(pg_error.code, PostgresErrorCode::RaiseException);
                 assert_eq!(pg_error.http_status_code(is_authenticated), 400);
                 assert_eq!(pg_error.message, "I refuse!");
@@ -686,10 +775,10 @@ mod tests {
             details: Some("Quota exceeded".to_owned()),
             hint: Some("Upgrade your plan".to_owned()),
         };
-        let error = Error::CustomError(CustomError::from_response(error_response));
+        let error = PostgrestUtilError::Custom(CustomError::from_response(error_response));
 
         match error {
-            Error::CustomError(custom_error) => {
+            PostgrestUtilError::Custom(custom_error) => {
                 assert_eq!(custom_error.code, "PT402");
                 assert_eq!(custom_error.message, "Payment Required");
                 assert_eq!(custom_error.details, Some("Quota exceeded".to_owned()));
@@ -708,12 +797,9 @@ mod tests {
             details: None,
             hint: None,
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
-        assert_eq!(
-            format!("{error}"),
-            "PostgresError [NotNullViolation]: Not null violation"
-        );
+        assert_eq!(format!("{error}"), "Postgres [23502]: Not null violation");
     }
 
     #[test]
@@ -725,13 +811,10 @@ mod tests {
             details: None,
             hint: None,
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
 
         let std_error: &dyn core::error::Error = &error;
-        assert_eq!(
-            std_error.to_string(),
-            "PostgresError [NotNullViolation]: Some error"
-        );
+        assert_eq!(std_error.to_string(), "Postgres [23502]: Some error");
     }
 
     #[test]
@@ -742,11 +825,11 @@ mod tests {
             details: None,
             hint: None,
         };
-        let error = Error::from_error_response(error_response);
+        let error = PostgrestUtilError::from_error_response(error_response);
         let std_error: &dyn core::error::Error = &error;
         assert_eq!(
             std_error.to_string(),
-            "CustomError []: no Route matched with those values"
+            "Custom []: no Route matched with those values"
         );
     }
 }

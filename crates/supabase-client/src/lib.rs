@@ -2,6 +2,7 @@ use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
 use rp_postgrest::{Postgrest, reqwest};
+use rp_supabase_auth::error::AuthError;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::{AccessTokenResponseSchema, LoginCredentials};
 use rp_supabase_auth::url;
@@ -15,6 +16,11 @@ pub struct PostgerstResponse<T> {
 
 pub const SUPABASE_KEY: &str = "apikey";
 
+/// Create a new authenticated supabase client stream
+///
+/// # Errors
+/// - the client cannot be constructed
+/// - the login url is invalid
 pub fn new_authenticated(
     config: SupabaseAuthConfig,
     login_info: LoginCredentials,
@@ -24,7 +30,7 @@ pub fn new_authenticated(
     >,
     SupabaseClientError,
 > {
-    let base = anonymous_client(config.api_key.clone(), config.url.clone())?;
+    let base = anonymous_client(config.api_key.clone(), &config.url)?;
     let auth_stream = rp_supabase_auth::jwt_stream::JwtStream::new(config).sign_in(login_info)?;
     let client_stream = auth_stream.map(move |item| {
         item.map(|item| {
@@ -40,7 +46,11 @@ pub fn new_authenticated(
     Ok(client_stream)
 }
 
-pub fn anonymous_client(api_key: String, url: url::Url) -> Result<Postgrest, SupabaseClientError> {
+/// Create a new anonymous supabase client
+///
+/// # Errors
+/// - the url is invalid
+pub fn anonymous_client(api_key: String, url: &url::Url) -> Result<Postgrest, SupabaseClientError> {
     let url = url.join("rest/v1/")?;
     let postgrest = rp_postgrest::Postgrest::new(url).insert_header(SUPABASE_KEY, api_key);
     Ok(postgrest)
@@ -56,6 +66,8 @@ pub enum SupabaseClientError {
     AuthSignInError(#[from] rp_supabase_auth::jwt_stream::SignInError),
     #[error("Url parse error {0}")]
     UrlParseError(#[from] url::ParseError),
+    #[error("Auth error {0}")]
+    AuthError(#[from] AuthError),
 }
 
 impl<T> PostgerstResponse<T> {
@@ -81,21 +93,25 @@ impl<T> PostgerstResponse<T> {
     ///
     /// Useful when you don't care about the actual response besides if it was an error.
     #[instrument(name = "parse_response_json_err", skip(self), err)]
-    pub async fn json_err(self) -> Result<Result<(), rp_postgrest_error::Error>, IntrenalError> {
+    pub async fn json_err(
+        self,
+    ) -> Result<Result<(), rp_postgrest_error::PostgrestUtilError>, IntrenalError> {
         let status = self.response.status();
         if status.is_success() {
             Ok(Ok(()))
         } else {
             let bytes = self.response.bytes().await?.to_vec();
             let error = parse_postgrest_error(bytes, status)?;
-            let error = rp_postgrest_error::Error::from_error_response(error);
+            let error = rp_postgrest_error::PostgrestUtilError::from_error_response(error);
             Ok(Err(error))
         }
     }
 
     /// Parse the response json
     #[instrument(name = "parse_response_json", skip(self), err)]
-    pub async fn json(self) -> Result<Result<T, rp_postgrest_error::Error>, IntrenalError>
+    pub async fn json(
+        self,
+    ) -> Result<Result<T, rp_postgrest_error::PostgrestUtilError>, IntrenalError>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -109,7 +125,7 @@ impl<T> PostgerstResponse<T> {
             Ok(Ok(result))
         } else {
             let error = parse_postgrest_error(bytes, status)?;
-            let error = rp_postgrest_error::Error::from_error_response(error);
+            let error = rp_postgrest_error::PostgrestUtilError::from_error_response(error);
             Ok(Err(error))
         }
     }
