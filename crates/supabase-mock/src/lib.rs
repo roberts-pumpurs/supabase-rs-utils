@@ -56,9 +56,7 @@ impl SupabaseMockServer {
         let parsed_jwt = parse_jwt(jwt)?;
         let current_ts = current_ts();
         let expires_at = parsed_jwt.exp;
-        let expires_in = expires_at.abs_diff(
-            u64::try_from(current_ts.as_secs()).map_err(|_err| JwtParseError::InvalidJwt)?,
-        );
+        let expires_in = expires_at.abs_diff(current_ts.as_secs());
         self.register_jwt_custom_grant_type(jwt, "password", Duration::from_millis(expires_in));
         Ok(self)
     }
@@ -72,9 +70,7 @@ impl SupabaseMockServer {
         let parsed_jwt = parse_jwt(jwt)?;
         let current_ts = current_ts();
         let expires_at = parsed_jwt.exp;
-        let expires_in = expires_at.abs_diff(
-            u64::try_from(current_ts.as_secs()).map_err(|_err| JwtParseError::InvalidJwt)?,
-        );
+        let expires_in = expires_at.abs_diff(current_ts.as_secs());
         self.register_jwt_custom_grant_type(
             jwt,
             "refresh_token",
@@ -135,7 +131,7 @@ pub fn make_jwt(expires_in: Duration) -> Result<String, JwtParseError> {
     header.kid = Some("secret".to_owned());
 
     encode(&header, &claims, &EncodingKey::from_secret(SECRET))
-        .map_err(|_| JwtParseError::InvalidJwt)
+        .map_err(|_err| JwtParseError::InvalidJwt)
 }
 
 /// Returns the current timestamp.
@@ -165,11 +161,11 @@ pub struct Claims {
 pub fn parse_jwt(token: &str) -> Result<Claims, JwtParseError> {
     // Accept only HS256 and require exp to be in the future.
     let mut validation = Validation::new(Algorithm::HS256);
-    validation.required_spec_claims = ["exp".to_string(), "iat".to_string()].into_iter().collect();
+    validation.required_spec_claims = ["exp".to_owned(), "iat".to_owned()].into_iter().collect();
 
     // Perform the decode + signature check
     let data = decode::<Claims>(token, &DecodingKey::from_secret(SECRET), &validation)
-        .map_err(|_| JwtParseError::InvalidJwt)?;
+        .map_err(|_err| JwtParseError::InvalidJwt)?;
 
     // Optional defense-in-depth: ensure the kid is what we expect.
     if data.header.kid.as_deref() != Some("secret") {
