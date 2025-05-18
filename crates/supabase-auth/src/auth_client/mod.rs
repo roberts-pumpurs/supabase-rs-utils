@@ -17,6 +17,11 @@ pub struct ApiClient {
     url: url::Url,
 }
 
+/// Creates a new authenticated stream.
+///
+/// # Errors
+///
+/// Returns an error if sign-in fails or the stream cannot be created.
 pub fn new_authenticated_stream(
     config: SupabaseAuthConfig,
     login_info: LoginCredentials,
@@ -28,7 +33,7 @@ pub fn new_authenticated_stream(
     let api_key = config.api_key.clone();
     let auth_stream = jwt_stream::JwtStream::new(config)
         .sign_in(login_info)
-        .unwrap();
+        .map_err(RefreshStreamError::from)?;
     let client_stream = auth_stream
         .map(move |item| {
             let url = url.clone();
@@ -37,7 +42,7 @@ pub fn new_authenticated_stream(
             let res = item
                 .map(|item| {
                     if let Some(access_token) = item.access_token.as_ref() {
-                        let client = ApiClient::new_authenticated(url, &api_key, access_token);
+                        let client = ApiClient::new_authenticated(&url, &api_key, access_token);
                         return Some(client);
                     }
                     None
@@ -51,7 +56,12 @@ pub fn new_authenticated_stream(
 }
 
 impl ApiClient {
-    pub fn new_unauthenticated(url: url::Url, api_key: &str) -> Result<Self, AuthError> {
+    /// Create a new unauthenticated API client.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be joined or the client cannot be created.
+    pub fn new_unauthenticated(url: &url::Url, api_key: &str) -> Result<Self, AuthError> {
         let url = url.join("/auth/v1/")?;
         let authenticated_client = unauthenticated_client(api_key)?;
         Ok(Self {
@@ -60,7 +70,16 @@ impl ApiClient {
         })
     }
 
-    pub fn new_authenticated(url: url::Url, api_key: &str, token: &str) -> Result<Self, AuthError> {
+    /// Create a new authenticated API client.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be joined or the client cannot be created.
+    pub fn new_authenticated(
+        url: &url::Url,
+        api_key: &str,
+        token: &str,
+    ) -> Result<Self, AuthError> {
         let url = url.join("/auth/v1/")?;
         let authenticated_client = authenticated_client(api_key, token)?;
         Ok(Self {
@@ -69,6 +88,11 @@ impl ApiClient {
         })
     }
 
+    /// Build a request for the API.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request cannot be built.
     #[instrument(name = "build_request", skip(self, request))]
     pub fn build_request<T>(&self, request: &T) -> Result<Request<T::Res, T::Error>, AuthError>
     where
@@ -81,25 +105,29 @@ impl ApiClient {
         let reqwest_req = client.request(method, endpoint.as_str()).body(payload);
 
         Ok(Request {
-            request: reqwest_req,
+            builder: reqwest_req,
             result: PhantomData,
             err: PhantomData,
         })
     }
 }
 
-/// Encalpsulated HTTP request for the  API
+/// Encapsulated HTTP request for the API
 pub struct Request<T, E> {
-    request: reqwest::RequestBuilder,
+    builder: reqwest::RequestBuilder,
     result: PhantomData<T>,
     err: PhantomData<E>,
 }
 
 impl<T, E> Request<T, E> {
-    /// execute an  API request
+    /// Execute an API request.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
     #[instrument(name = "execute_request", skip(self))]
     pub async fn execute(self) -> Result<Response<T, E>, AuthError> {
-        let (client, request) = self.request.build_split();
+        let (client, request) = self.builder.build_split();
         let request = request?;
 
         // Capture the current span
@@ -111,7 +139,7 @@ impl<T, E> Request<T, E> {
         let response = client.execute(request).await?;
 
         Ok(Response {
-            response,
+            raw: response,
             result: PhantomData,
             err: PhantomData,
             span,
@@ -119,9 +147,9 @@ impl<T, E> Request<T, E> {
     }
 }
 
-/// The raw response of the  API request
+/// The raw response of the API request
 pub struct Response<T, E> {
-    response: reqwest::Response,
+    raw: reqwest::Response,
     result: PhantomData<T>,
     err: PhantomData<E>,
     // this span carries the context of the `Request`
@@ -134,7 +162,7 @@ impl<T, E> Response<T, E> {
     /// Useful when you don't care about the actual response besides if it was an error.
     #[instrument(name = "response_ok", skip(self), err, parent = &self.span)]
     pub fn ok(self) -> Result<(), AuthError> {
-        self.response.error_for_status()?;
+        self.raw.error_for_status()?;
         Ok(())
     }
 
@@ -147,11 +175,11 @@ impl<T, E> Response<T, E> {
     where
         E: serde::de::DeserializeOwned,
     {
-        let status = self.response.status();
+        let status = self.raw.status();
         if status.is_success() {
             Ok(Ok(()))
         } else {
-            let bytes = self.response.bytes().await?.to_vec();
+            let bytes = self.raw.bytes().await?.to_vec();
             let res = parse_error::<E>(bytes, status)?;
             Ok(Err(res))
         }
@@ -164,8 +192,8 @@ impl<T, E> Response<T, E> {
         T: serde::de::DeserializeOwned,
         E: serde::de::DeserializeOwned,
     {
-        let status = self.response.status();
-        let mut bytes = self.response.bytes().await?.to_vec();
+        let status = self.raw.status();
+        let mut bytes = self.raw.bytes().await?.to_vec();
         if status.is_success() {
             let json = String::from_utf8_lossy(bytes.as_ref());
             tracing::debug!(response_body = %json, "Response JSON");

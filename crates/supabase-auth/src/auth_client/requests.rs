@@ -16,6 +16,11 @@ pub trait AuthModuleRequest {
     /// The HTTP method to use
     const METHOD: reqwest::Method;
 
+    /// Returns the path for the request.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be joined or is invalid.
     fn path(&self, base_url: &Url) -> Result<Url, AuthError>;
     /// The payload to send in the request body
     fn payload(&self) -> &Self::Payload;

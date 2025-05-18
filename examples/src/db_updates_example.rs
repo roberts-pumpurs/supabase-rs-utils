@@ -51,7 +51,10 @@ async fn main() -> eyre::Result<()> {
     while let Some(msg) = realtime.next().await {
         match msg {
             Ok(msg) => {
-                use rp_supabase_realtime::message::ProtocolPayload::*;
+                use rp_supabase_realtime::message::ProtocolPayload::{
+                    AccessToken, Broadcast, Heartbeat, PhxClose, PhxError, PhxJoin, PhxReply,
+                    PostgresChanges, PresenceDiff, PresenceInner, PresenceState, System,
+                };
                 match msg.payload {
                     PostgresChanges(postgres_changes_payload) => {
                         let changes = postgres_changes_payload

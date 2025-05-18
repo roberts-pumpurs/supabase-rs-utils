@@ -121,8 +121,8 @@ pub struct TotpDetails {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum ChallengeResponse {
-    TOTPPhone(TOTPPhoneChallengeResponse),
-    WebAuthn(WebAuthnChallengeResponse),
+    TOTPPhone(Box<TOTPPhoneChallengeResponse>),
+    WebAuthn(Box<WebAuthnChallengeResponse>),
 }
 
 /// Response from the `/factors/{factorId}` DELETE endpoint.
@@ -211,34 +211,34 @@ pub struct ErrorSchema {
 }
 
 impl core::fmt::Display for ErrorSchema {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Start with the main error if available
         if let Some(ref error) = self.error {
-            write!(f, "Error: {error}")?;
+            write!(fmt, "Error: {error}")?;
         }
 
         // Append the error description if available
         if let Some(ref description) = self.error_description {
             if self.error.is_some() {
-                write!(f, " - Description: {description}")?;
+                write!(fmt, " - Description: {description}")?;
             } else {
-                write!(f, "Description: {description}")?;
+                write!(fmt, "Description: {description}")?;
             }
         }
 
         // Append the HTTP status code if available
         if let Some(code) = self.code {
-            write!(f, " (HTTP Code: {code})")?;
+            write!(fmt, " (HTTP Code: {code})")?;
         }
 
         // Append the basic message if available
         if let Some(ref msg) = self.msg {
-            write!(f, ". Message: {msg}")?;
+            write!(fmt, ". Message: {msg}")?;
         }
 
         // Append weak password details if available
         if let Some(ref weak_password) = self.weak_password {
-            write!(f, ". Weak Password: {weak_password:?}")?;
+            write!(fmt, ". Weak Password: {weak_password}")?;
         }
 
         Ok(())
@@ -260,6 +260,18 @@ pub enum WeakPasswordReason {
     Length,
     Characters,
     Pwned,
+}
+
+impl core::fmt::Display for WeakPassword {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let reasons = self
+            .reasons
+            .iter()
+            .map(|reason| format!("{reason:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        write!(fmt, "reasons: [{reasons}]")
+    }
 }
 
 /// Object describing the user related to the issued access and refresh tokens.
@@ -743,7 +755,6 @@ pub struct CredentialAssertion {
 
 /// Options for requesting a credential assertion.
 #[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
-
 pub struct CredentialRequestOptions {
     /// A challenge to be signed by the authenticator.
     #[serde(rename = "challenge")]
@@ -773,7 +784,6 @@ pub struct CredentialRequestOptions {
 
 /// Options for creating a new credential.
 #[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
-
 pub struct CredentialCreationOptions {
     /// Relying Party information.
     #[serde(rename = "rp")]
@@ -924,15 +934,32 @@ pub struct AdminGenerateLinkResponse {
     // Include any additional properties
 }
 
-/// Response for settings endpoint
-#[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
-pub struct SettingsResponse {
-    pub disable_signup: bool,
-    pub mailer_autoconfirm: bool,
-    pub phone_autoconfirm: bool,
-    #[builder(setter(strip_option), default)]
-    pub sms_provider: Option<String>,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SignupPolicy {
+    Enabled,
+    Disabled,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AutoconfirmPolicy {
+    None,
+    Mailer,
+    Phone,
+    Both,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignupSettings {
+    pub signup_policy: SignupPolicy,
+    pub autoconfirm_policy: AutoconfirmPolicy,
     pub saml_enabled: bool,
+}
+
+/// Response for settings endpoint
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SettingsResponse {
+    pub signup: SignupSettings,
+    pub sms_provider: Option<String>,
     pub external: std::collections::HashMap<String, bool>,
 }
 

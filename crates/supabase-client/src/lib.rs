@@ -2,6 +2,7 @@ use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
 use rp_postgrest::{Postgrest, reqwest};
+use rp_supabase_auth::error::AuthError;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::{AccessTokenResponseSchema, LoginCredentials};
 use rp_supabase_auth::url;
@@ -65,6 +66,8 @@ pub enum SupabaseClientError {
     AuthSignInError(#[from] rp_supabase_auth::jwt_stream::SignInError),
     #[error("Url parse error {0}")]
     UrlParseError(#[from] url::ParseError),
+    #[error("Auth error {0}")]
+    AuthError(#[from] AuthError),
 }
 
 impl<T> PostgerstResponse<T> {
@@ -90,21 +93,25 @@ impl<T> PostgerstResponse<T> {
     ///
     /// Useful when you don't care about the actual response besides if it was an error.
     #[instrument(name = "parse_response_json_err", skip(self), err)]
-    pub async fn json_err(self) -> Result<Result<(), rp_postgrest_error::Error>, IntrenalError> {
+    pub async fn json_err(
+        self,
+    ) -> Result<Result<(), rp_postgrest_error::PostgrestUtilError>, IntrenalError> {
         let status = self.response.status();
         if status.is_success() {
             Ok(Ok(()))
         } else {
             let bytes = self.response.bytes().await?.to_vec();
             let error = parse_postgrest_error(bytes, status)?;
-            let error = rp_postgrest_error::Error::from_error_response(error);
+            let error = rp_postgrest_error::PostgrestUtilError::from_error_response(error);
             Ok(Err(error))
         }
     }
 
     /// Parse the response json
     #[instrument(name = "parse_response_json", skip(self), err)]
-    pub async fn json(self) -> Result<Result<T, rp_postgrest_error::Error>, IntrenalError>
+    pub async fn json(
+        self,
+    ) -> Result<Result<T, rp_postgrest_error::PostgrestUtilError>, IntrenalError>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -118,7 +125,7 @@ impl<T> PostgerstResponse<T> {
             Ok(Ok(result))
         } else {
             let error = parse_postgrest_error(bytes, status)?;
-            let error = rp_postgrest_error::Error::from_error_response(error);
+            let error = rp_postgrest_error::PostgrestUtilError::from_error_response(error);
             Ok(Err(error))
         }
     }

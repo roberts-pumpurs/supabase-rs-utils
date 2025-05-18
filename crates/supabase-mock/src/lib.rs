@@ -27,35 +27,58 @@ impl SupabaseMockServer {
         self.mockito_server.socket_address()
     }
 
-    #[must_use]
-    pub fn server_url(&self) -> url::Url {
-        self.mockito_server.url().parse().unwrap()
+    /// Returns the server URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server URL cannot be parsed.
+    pub fn server_url(&self) -> Result<url::Url, url::ParseError> {
+        self.mockito_server.url().parse()
     }
 
-    pub fn register_jwt(&mut self, jwt: &str) -> &mut Self {
-        self.register_jwt_password(jwt).register_jwt_refresh(jwt)
+    /// Registers a JWT token for both password and refresh grant types.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JWT token cannot be parsed or does not have an expiration time.
+    pub fn register_jwt(&mut self, jwt: &str) -> Result<&mut Self, JwtParseError> {
+        self.register_jwt_password(jwt)?.register_jwt_refresh(jwt)
     }
 
-    pub fn register_jwt_password(&mut self, jwt: &str) -> &mut Self {
-        let parsed_jwt = parse_jwt(jwt).unwrap();
+    /// Registers a JWT token for password authentication.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JWT token cannot be parsed or does not have an expiration time.
+    pub fn register_jwt_password(&mut self, jwt: &str) -> Result<&mut Self, JwtParseError> {
+        let parsed_jwt = parse_jwt(jwt)?;
         let current_ts = current_ts();
-        let expires_in = parsed_jwt
-            .expires_at
-            .unwrap()
-            .as_millis()
-            .abs_diff(current_ts.as_millis() as u64);
-        self.register_jwt_custom_grant_type(jwt, "password", Duration::from_millis(expires_in))
+        let expires_at = parsed_jwt.expires_at.ok_or(JwtParseError::InvalidJwt)?;
+        let expires_in = expires_at.as_millis().abs_diff(
+            u64::try_from(current_ts.as_millis()).map_err(|_err| JwtParseError::InvalidJwt)?,
+        );
+        self.register_jwt_custom_grant_type(jwt, "password", Duration::from_millis(expires_in));
+        Ok(self)
     }
 
-    pub fn register_jwt_refresh(&mut self, jwt: &str) -> &mut Self {
-        let parsed_jwt = parse_jwt(jwt).unwrap();
+    /// Registers a JWT token for refresh token authentication.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JWT token cannot be parsed or does not have an expiration time.
+    pub fn register_jwt_refresh(&mut self, jwt: &str) -> Result<&mut Self, JwtParseError> {
+        let parsed_jwt = parse_jwt(jwt)?;
         let current_ts = current_ts();
-        let expires_in = parsed_jwt
-            .expires_at
-            .unwrap()
-            .as_millis()
-            .abs_diff(current_ts.as_millis() as u64);
-        self.register_jwt_custom_grant_type(jwt, "refresh_token", Duration::from_millis(expires_in))
+        let expires_at = parsed_jwt.expires_at.ok_or(JwtParseError::InvalidJwt)?;
+        let expires_in = expires_at.as_millis().abs_diff(
+            u64::try_from(current_ts.as_millis()).map_err(|_err| JwtParseError::InvalidJwt)?,
+        );
+        self.register_jwt_custom_grant_type(
+            jwt,
+            "refresh_token",
+            Duration::from_millis(expires_in),
+        );
+        Ok(self)
     }
 
     fn register_jwt_custom_grant_type(
@@ -63,7 +86,7 @@ impl SupabaseMockServer {
         jwt: &str,
         grant_type: &str,
         expires_in: Duration,
-    ) -> &mut Self {
+    ) {
         let body = json!({
             "access_token": jwt,
             "refresh_token": "some-refresh-token",
@@ -74,8 +97,8 @@ impl SupabaseMockServer {
                 "email": "user@example.com"
             }
         });
-        let body = simd_json::to_string(&body).unwrap();
-        let _m = self
+        let body = simd_json::to_string(&body).unwrap_or_else(|_| "{}".to_owned());
+        let mock = self
             .mockito_server
             .mock("POST", "/auth/v1/token")
             .match_query(Matcher::Regex(format!("grant_type={grant_type}")))
@@ -83,18 +106,23 @@ impl SupabaseMockServer {
             .with_header("content-type", "application/json")
             .with_body(body)
             .create();
-        self.api_mock.push(_m);
-        self
+        self.api_mock.push(mock);
     }
 }
 
-#[must_use]
-pub fn make_jwt(expires_in: Duration) -> String {
+/// Creates a new JWT token with the specified expiration time.
+///
+/// # Errors
+///
+/// Returns an error if the JWT key pair cannot be generated or the JWT token cannot be signed.
+pub fn make_jwt(expires_in: Duration) -> Result<String, JwtParseError> {
     use jwt_simple::prelude::*;
     let current_ts = current_ts();
-
-    let will_expire_at = current_ts + expires_in;
-    jwt_simple::algorithms::ES256kKeyPair::generate()
+    let will_expire_at = current_ts
+        .checked_add(expires_in)
+        .ok_or(JwtParseError::InvalidJwt)?;
+    let key_pair = jwt_simple::algorithms::ES256kKeyPair::generate();
+    key_pair
         .with_key_id("secret")
         .sign(JWTClaims {
             issued_at: None,
@@ -110,13 +138,18 @@ pub fn make_jwt(expires_in: Duration) -> String {
             nonce: None,
             custom: NoCustomClaims {},
         })
-        .unwrap()
+        .map_err(|_err| JwtParseError::InvalidJwt)
 }
 
+/// Returns the current timestamp.
+///
+/// # Errors
+///
+/// This function will panic if the system time is before the Unix epoch.
 fn current_ts() -> Duration {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
+        .unwrap_or(Duration::from_secs(0))
 }
 
 fn parse_jwt(token: &str) -> Result<JWTClaims<NoCustomClaims>, JwtParseError> {

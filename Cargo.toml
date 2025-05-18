@@ -34,6 +34,7 @@ restriction = { priority = -1, level = "deny" }
 style = { priority = -1, level = "deny" }
 suspicious = { priority = -1, level = "deny" }
 
+renamed_function_params = "allow"
 arbitrary_source_item_ordering = "allow"
 shadow_unrelated = "allow"
 iter_over_hash_type = "allow"
