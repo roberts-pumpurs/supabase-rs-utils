@@ -935,6 +935,7 @@ pub struct AdminGenerateLinkResponse {
 }
 
 /// Response for settings endpoint
+#[expect(clippy::struct_excessive_bools, reason = "this struct is a DTO")]
 #[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
 pub struct SettingsResponse {
     pub disable_signup: bool,

@@ -1242,7 +1242,7 @@ pub mod postgres_changes {
     }
 
     #[cfg(test)]
-    #[expect(clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used, reason = "allowed for tests")]
     mod tests {
         use pretty_assertions::assert_eq;
 
@@ -1320,7 +1320,7 @@ pub mod postgres_changes {
                         table: "profiles".to_owned(),
                         type_: PostgresDataChangeEvent::Update,
                     },
-                    ids: vec![38606455],
+                    ids: vec![38_606_455],
                 }),
                 ref_field: None,
                 join_ref: None,
@@ -1430,7 +1430,7 @@ pub mod postgres_changes {
                         errors: None,
                         schema: "public".to_owned(),
                     },
-                    ids: vec![60402389],
+                    ids: vec![60_402_389],
                 }),
                 ref_field: None,
                 join_ref: None,
@@ -1537,7 +1537,7 @@ pub mod postgres_changes {
                         errors: None,
                         schema: "public".to_owned(),
                     },
-                    ids: vec![38377940],
+                    ids: vec![38_377_940],
                 }),
                 ref_field: None,
                 join_ref: None,
