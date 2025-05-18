@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.2.3...rp-supabase-realtime-v0.3.0) - 2025-05-18
+
+### Added
+
+- add presence ([#19](https://github.com/roberts-pumpurs/supabase-rs-utils/pull/19))
+
 ## [0.2.3](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.2.2...rp-supabase-realtime-v0.2.3) - 2025-03-23
 
 ### Fixed
