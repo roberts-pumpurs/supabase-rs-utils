@@ -340,7 +340,6 @@ impl RealtimeConnection<Presence> {
         let mut current_state = std::collections::HashMap::new();
 
         let stream = stream.map(move |msg| {
-            dbg!(&msg);
             match msg {
                 Ok(ProtocolMessage {
                     payload: ProtocolPayload::PresenceState(state),
