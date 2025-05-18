@@ -934,32 +934,15 @@ pub struct AdminGenerateLinkResponse {
     // Include any additional properties
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum SignupPolicy {
-    Enabled,
-    Disabled,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum AutoconfirmPolicy {
-    None,
-    Mailer,
-    Phone,
-    Both,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SignupSettings {
-    pub signup_policy: SignupPolicy,
-    pub autoconfirm_policy: AutoconfirmPolicy,
-    pub saml_enabled: bool,
-}
-
 /// Response for settings endpoint
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
 pub struct SettingsResponse {
-    pub signup: SignupSettings,
+    pub disable_signup: bool,
+    pub mailer_autoconfirm: bool,
+    pub phone_autoconfirm: bool,
+    #[builder(setter(strip_option), default)]
     pub sms_provider: Option<String>,
+    pub saml_enabled: bool,
     pub external: std::collections::HashMap<String, bool>,
 }
 
