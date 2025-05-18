@@ -97,7 +97,7 @@ rand = { version = "0.9", features = ["small_rng"] }
 thiserror = "2"
 xshell = "0.2"
 typed-builder = "0.21"
-jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust"] }
+jsonwebtoken = "9"
 rust_decimal_macros = "1"
 rust_decimal = { version = "1", features = ["maths"] }
 arrayvec = "0.7"
