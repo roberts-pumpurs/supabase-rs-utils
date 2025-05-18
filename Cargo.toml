@@ -93,7 +93,7 @@ serde = { version = "1", features = ["derive"] }
 redact = "0.1"
 simd-json = "0.15"
 url = "2"
-rand = { version = "0.8", features = ["small_rng"] }
+rand = { version = "0.9", features = ["small_rng"] }
 thiserror = "2"
 xshell = "0.2"
 typed-builder = "0.21"
@@ -101,7 +101,7 @@ jwt-simple = { version = "0.12", default-features = false, features = ["pure-rus
 rust_decimal_macros = "1"
 rust_decimal = { version = "1", features = ["maths"] }
 arrayvec = "0.7"
-itertools = "0.13"
+itertools = "0.14"
 base64 = "0.22"
 hyper-util = { version = "0.1.0", features = ["tokio"] }
 http-body-util = { version = "0.1.0" }
