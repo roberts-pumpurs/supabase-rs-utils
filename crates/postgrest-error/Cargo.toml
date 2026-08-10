@@ -12,7 +12,9 @@ edition.workspace = true
 readme = "README.md"
 
 [dependencies]
+http.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

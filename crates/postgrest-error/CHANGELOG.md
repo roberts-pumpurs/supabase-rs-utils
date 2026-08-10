@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-10
+
+### Changed
+
+- **Breaking:** replace `PostgrestUtilError` and its duplicated PostgreSQL,
+  PostgREST, and custom wrapper structs with `PostgrestError`, `ErrorResponse`,
+  and the lossless `ErrorCode`/`ErrorKind` model.
+- Require an authoritative `http::StatusCode` when constructing a
+  `PostgrestError`.
+- Make `code` and `message` required when decoding a structured PostgREST
+  response; malformed bodies now produce `DecodeError` instead of silently
+  defaulting required fields.
+- Replace unconditional status reconstruction with explicit optional
+  `inferred_status` fallback behavior.
+
+### Added
+
+- Add `PostgrestError::from_slice` and `PostgrestError::from_vec` for decoding
+  status-plus-body response data without coupling to a particular HTTP client.
+- Preserve status and raw body bytes in `DecodeError`.
+- Add typed classifications for current PostgREST codes through `PGRST128`,
+  `PGRST205`, and `PGRST303` while retaining unknown codes losslessly.
+- Add message-sensitive PostgreSQL status inference for `21000`, `22023`, and
+  `42883`, plus the `57P01` administrative-shutdown mapping.
+- Add `Authentication::Unknown` so authentication-sensitive status inference
+  can return `None` instead of guessing.
+
+### Fixed
+
+- Classify `PTxyz` codes before generic PostgreSQL SQLSTATE codes and infer the
+  encoded custom status (`PT402` now maps to HTTP 402).
+- Map `PGRST001` and `PGRST002` to HTTP 503 and `PGRST107` to the HTTP 406
+  status emitted by PostgREST.
+- Stop mapping unknown PostgREST codes to HTTP 500; unrecognized valid
+  PostgreSQL SQLSTATEs now use PostgREST's documented HTTP 400 fallback.
+- Preserve exact SQLSTATE values instead of displaying only class patterns such
+  as `08*`.
+- Require the exact `PGRSTgxx` shape for PostgREST-code classification and
+  treat retired `PGRST109`, `PGRST110`, and `PGRST119` codes as unknown.
+
 ## [0.3.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-postgrest-error-v0.2.3...rp-postgrest-error-v0.3.0) - 2025-05-18
 
 ### Added

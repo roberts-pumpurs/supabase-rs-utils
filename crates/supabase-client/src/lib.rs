@@ -83,7 +83,7 @@ impl<T> PostgerstResponse<T> {
     ///
     /// Useful when you don't care about the actual response besides if it was an error.
     #[instrument(name = "response_ok", skip(self), err)]
-    pub fn ok(self) -> Result<(), IntrenalError> {
+    pub fn ok(self) -> Result<(), ResponseError> {
         self.response.error_for_status()?;
         Ok(())
     }
@@ -95,23 +95,20 @@ impl<T> PostgerstResponse<T> {
     #[instrument(name = "parse_response_json_err", skip(self), err)]
     pub async fn json_err(
         self,
-    ) -> Result<Result<(), rp_postgrest_error::PostgrestUtilError>, IntrenalError> {
+    ) -> Result<Result<(), rp_postgrest_error::PostgrestError>, ResponseError> {
         let status = self.response.status();
         if status.is_success() {
             Ok(Ok(()))
         } else {
             let bytes = self.response.bytes().await?.to_vec();
             let error = parse_postgrest_error(bytes, status)?;
-            let error = rp_postgrest_error::PostgrestUtilError::from_error_response(error);
             Ok(Err(error))
         }
     }
 
     /// Parse the response json
     #[instrument(name = "parse_response_json", skip(self), err)]
-    pub async fn json(
-        self,
-    ) -> Result<Result<T, rp_postgrest_error::PostgrestUtilError>, IntrenalError>
+    pub async fn json(self) -> Result<Result<T, rp_postgrest_error::PostgrestError>, ResponseError>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -125,19 +122,15 @@ impl<T> PostgerstResponse<T> {
             Ok(Ok(result))
         } else {
             let error = parse_postgrest_error(bytes, status)?;
-            let error = rp_postgrest_error::PostgrestUtilError::from_error_response(error);
             Ok(Err(error))
         }
     }
 }
 
-fn parse_postgrest_error<E>(
-    mut bytes: Vec<u8>,
+fn parse_postgrest_error(
+    bytes: Vec<u8>,
     status: reqwest::StatusCode,
-) -> Result<E, IntrenalError>
-where
-    E: serde::de::DeserializeOwned,
-{
+) -> Result<rp_postgrest_error::PostgrestError, ResponseError> {
     let json = String::from_utf8_lossy(bytes.as_ref());
     tracing::error!(
         status = %status,
@@ -145,14 +138,15 @@ where
         "Failed to execute request"
     );
 
-    let error = simd_json::from_slice::<E>(bytes.as_mut())?;
-    Ok(error)
+    Ok(rp_postgrest_error::PostgrestError::from_vec(status, bytes)?)
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum IntrenalError {
+pub enum ResponseError {
     #[error("simd json error {0}")]
-    SimdJsonError(#[from] simd_json::Error),
+    Json(#[from] simd_json::Error),
+    #[error("PostgREST error response decode error {0}")]
+    PostgrestDecode(#[from] rp_postgrest_error::DecodeError),
     #[error("reqwest {0}")]
-    ReqwestError(#[from] reqwest::Error),
+    Request(#[from] reqwest::Error),
 }

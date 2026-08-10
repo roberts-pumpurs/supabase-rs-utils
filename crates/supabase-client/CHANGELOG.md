@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-10
+
+### Changed
+
+- **Breaking:** return `rp_postgrest_error::PostgrestError` from response JSON
+  helpers.
+- Preserve the authoritative HTTP response status when decoding PostgREST
+  errors.
+- Rename the misspelled `IntrenalError` type to `ResponseError` and simplify
+  its variant names.
+- Report malformed PostgREST error bodies through
+  `ResponseError::PostgrestDecode` with the original status and body.
+
 ## [0.3.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.2.3...rp-supabase-client-v0.3.0) - 2025-05-18
 
 ### Added
