@@ -2,6 +2,7 @@ use rp_supabase_codegen::Generator;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=schema.json");
+    println!("cargo:rerun-if-changed=tests/schema.json");
     println!("cargo:rerun-if-env-changed=SUPABASE_CODEGEN_DATABASE_URL");
     let generator = Generator::new()
         .schema("public")

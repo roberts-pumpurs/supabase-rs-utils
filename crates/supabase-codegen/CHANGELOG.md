@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-06
+
+### Added
+
+- Generated column markers, typed relation query entry points, row projections, nullable
+  predicates, and base-table write contracts.
+- Generated enum display implementations that preserve database labels for typed filters.
+- Forward and reverse FK markers with exact constraint hints and PK/UNIQUE-derived reverse cardinality.
+- Ordered FK, key, qualified target, and partition metadata acquired from PostgreSQL catalogs.
+
+### Changed
+
+- **Breaking:** snapshots use version 2. Regenerate version 1 snapshots from PostgreSQL.
+- Keep dependency-schema types separate from explicitly selected table and RPC endpoints.
+
 ## [0.6.0] - 2026-10-06
 
 ### Changed

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "schemas": [
     {
       "name": "public",
@@ -81,7 +81,43 @@
               "generated": false,
               "identity": "none"
             }
-          ]
+          ],
+          "primary_key": null,
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
+          "name": "typed.probe",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "display.name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": true,
+              "has_default": true,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": null,
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
         },
         {
           "name": "bool",
@@ -98,7 +134,474 @@
               "generated": false,
               "identity": "none"
             }
-          ]
+          ],
+          "primary_key": null,
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
+          "name": "countries",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
+          "name": "addresses",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "country_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": true,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [
+            {
+              "name": "address_country",
+              "columns": [
+                "country_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "countries"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "is_partition": false
+        },
+        {
+          "name": "customers",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
+          "name": "orders",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "customer_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "billing_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": true,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "shipping_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": true,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [
+            {
+              "name": "orders_customer",
+              "columns": [
+                "customer_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "customers"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            },
+            {
+              "name": "orders_billing",
+              "columns": [
+                "billing_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "addresses"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            },
+            {
+              "name": "orders_shipping",
+              "columns": [
+                "shipping_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "addresses"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "is_partition": false
+        },
+        {
+          "name": "order_details",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "order_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "note",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "order_id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [
+            {
+              "name": "details_order",
+              "columns": [
+                "order_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "orders"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "is_partition": false
+        },
+        {
+          "name": "customer_preferences",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "customer_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [
+            [
+              "customer_id"
+            ]
+          ],
+          "foreign_keys": [
+            {
+              "name": "preferences_customer",
+              "columns": [
+                "customer_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "customers"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "is_partition": false
+        },
+        {
+          "name": "composite_parents",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "tenant_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "tenant_id",
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
+          "name": "composite_children",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "parent_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "tenant_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [
+            {
+              "name": "composite_parent",
+              "columns": [
+                "parent_id",
+                "tenant_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "composite_parents"
+              },
+              "referenced_columns": [
+                "id",
+                "tenant_id"
+              ]
+            }
+          ],
+          "is_partition": false
         }
       ],
       "functions": [

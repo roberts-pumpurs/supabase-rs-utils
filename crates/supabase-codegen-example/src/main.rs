@@ -1,18 +1,27 @@
 //! Offline by default. Set SUPABASE_CODEGEN_API_URL to a PostgREST base URL
-//! (including /rest/v1 for Supabase) to run a finite live CRUD/RPC smoke scenario.
+//! (including /rest/v1 for Supabase) to run finite live CRUD/RPC and relationship scenarios.
 //! Apply smoke.sql to a disposable database first. For live code generation set
 //! SUPABASE_CODEGEN_DATABASE_URL in the build environment. Optional API credentials
 //! come only from SUPABASE_CODEGEN_API_KEY and SUPABASE_CODEGEN_ACCESS_TOKEN.
 
 use rp_supabase_client::postgrest::{Builder, Postgrest};
-use rp_supabase_client::schema::{Array, Field, from, rpc};
+use rp_supabase_client::schema::{Array, Field, rpc};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
 rp_supabase_client::include_schema!("database.rs");
 
+#[allow(dead_code)]
+mod relationship_projections;
+mod relationships;
+
 use public::functions::echo_message;
-use public::tables::messages::{Insert, Row, Update};
+use public::tables::messages::{self, Insert, Update};
+
+rp_supabase_client::projection! {
+    #[derive(Debug)]
+    struct Message for public::tables::messages { id, body, note, amount }
+}
 
 fn insert(body: &str) -> Insert {
     // The custom TypedBuilder derive is applied only to this generated struct.
@@ -38,16 +47,12 @@ fn offline() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(request["note"], json!(null));
     assert!(request.get("created_at").is_none());
     assert!(request.get("id").is_none());
-    let row: Row = serde_json::from_value(json!({
+    let row: Message = serde_json::from_value(json!({
         "id": 1, "body": "offline example", "note": null,
-        "created_at": "2026-01-01T00:00:00Z", "mood": "needs-review",
-        "metadata": {"source": "snapshot"}, "tags": [["a", null], ["b", "c"]],
         "amount": serde_json::from_str::<serde_json::Number>("123456789012345678901234567890.123456789")?
     }))?;
-    assert_eq!(
-        serde_json::to_value(&row)?["tags"],
-        json!([["a", null], ["b", "c"]])
-    );
+    assert_eq!(row.note, None);
+    assert_eq!(row.body, "offline example");
     assert_eq!(
         row.amount.to_string(),
         "123456789012345678901234567890.123456789"
@@ -56,6 +61,7 @@ fn offline() -> Result<(), Box<dyn std::error::Error>> {
         "Offline generated bindings: {}",
         serde_json::to_string(&request)?
     );
+    relationship_projections::offline()?;
     Ok(())
 }
 
@@ -67,14 +73,21 @@ async fn decode<T: DeserializeOwned>(request: Builder) -> Result<T, Box<dyn std:
 }
 
 async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
-    let rows: Vec<Row> =
-        decode(from::<Row>(client.clone()).insert(serde_json::to_string(&insert("live example"))?))
-            .await?;
+    relationships::live(client.clone()).await?;
+    let rows = messages::query(client.clone())
+        .select::<Message>()
+        .insert(&insert("live example"))
+        .fetch()
+        .await?;
     let row = rows.first().ok_or("insert returned no row")?;
-    let id = row.id.to_string();
+    let id = row.id;
     // Attempt cleanup after insertion, including recoverable scenario errors.
     let scenario = async {
-        let rows: Vec<Row> = decode(from::<Row>(client.clone()).select("*").eq("id", &id)).await?;
+        let rows = messages::query(client.clone())
+            .select::<Message>()
+            .eq(messages::columns::id, &id)
+            .fetch()
+            .await?;
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].note, None);
         let update = Update {
@@ -85,19 +98,17 @@ async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
             rows[0].amount.to_string(),
             "123456789012345678901234567890.123456789"
         );
-        let rows: Vec<Row> = decode(
-            from::<Row>(client.clone())
-                .eq("id", &id)
-                .update(serde_json::to_string(&update)?),
-        )
-        .await?;
+        let rows = messages::query(client.clone())
+            .select::<Message>()
+            .eq(messages::columns::id, &id)
+            .update(&update)
+            .fetch()
+            .await?;
         assert_eq!(rows[0].note.as_deref(), Some("updated"));
-        let views: Vec<public::tables::message_summaries::Row> = decode(
-            from::<public::tables::message_summaries::Row>(client.clone())
-                .select("*")
-                .eq("id", &id),
-        )
-        .await?;
+        let views = public::tables::message_summaries::query(client.clone())
+            .eq(public::tables::message_summaries::columns::id, &id)
+            .fetch()
+            .await?;
         assert_eq!(views.len(), 1);
         let args = echo_message::Args {
             message: Some("rpc example".into()),
@@ -108,7 +119,11 @@ async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
         Ok::<(), Box<dyn std::error::Error>>(())
     }
     .await;
-    let cleanup: Result<Vec<Row>, _> = decode(from::<Row>(client).eq("id", &id).delete()).await;
+    let cleanup = messages::query(client)
+        .eq(messages::columns::id, &id)
+        .delete()
+        .fetch()
+        .await;
     scenario?;
     assert_eq!(cleanup?.len(), 1);
     println!("Live insert/select/update/view/RPC/delete scenario passed");

@@ -48,16 +48,7 @@ async fn quoted_relation_and_function_names_reach_the_correct_endpoint() {
         .create_async()
         .await;
     let client = rp_supabase_client::postgrest::Postgrest::new(server.url());
-    let response = rp_supabase_client::schema::from::<tables::a_b::Row>(client)
-        .select("*")
-        .execute()
-        .await
-        .unwrap();
-    let rows = rp_supabase_client::PostgerstResponse::<Vec<tables::a_b::Row>>::new(response)
-        .json()
-        .await
-        .unwrap()
-        .unwrap();
+    let rows = tables::a_b::query(client).fetch().await.unwrap();
     assert_eq!(rows[0].body, "quoted");
     relation.assert_async().await;
     let function = server

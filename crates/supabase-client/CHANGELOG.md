@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-06
+
+### Added
+
+- Typed query builders with generated column ownership, scalar filters, nullable predicates,
+  inferred row decoding, checked HTTP errors, and typed insert/update/delete payloads.
+- Named `projection!` results that derive field types and selections from generated schema bindings.
+- Explicit `into_raw()` access for expressions outside typed queries.
+- Nested FK projections with named aliases, inner joins, predicate-only empty embeds,
+  typed child filter paths, and existence or anti-existence predicates.
+- Projection locking after embedded predicates, including typed write queries.
+
+### Changed
+
+- **Breaking:** replace `schema::from::<Row>(client)` with typed `schema::query::<Row>(client)`
+  or the generated relation's `query(client)`.
+- **Breaking:** custom `Projection` implementations must provide `SELECT_LEN` and `write_selection`.
+
 ## [0.6.0] - 2026-10-06
 
 ### Added

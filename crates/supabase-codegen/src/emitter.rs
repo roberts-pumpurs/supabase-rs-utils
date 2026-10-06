@@ -16,6 +16,23 @@ fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }
 
+fn selection_identifier(name: &str) -> String {
+    if !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && !name.starts_with(|character: char| character.is_ascii_digit())
+        && !matches!(
+            name,
+            "select" | "columns" | "on_conflict" | "order" | "limit" | "offset" | "and" | "or"
+        )
+    {
+        name.to_owned()
+    } else {
+        format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+}
+
 fn ident(name: &str, camel: bool) -> Result<Ident, Error> {
     let mut normalized = if camel {
         name.to_upper_camel_case()
@@ -57,6 +74,170 @@ fn unique<'a>(
         }
     }
     Ok(())
+}
+
+fn key_columns<'a>(
+    columns: &'a [String],
+    table: &Table,
+    context: &str,
+) -> Result<BTreeSet<&'a str>, Error> {
+    let names: BTreeSet<_> = columns.iter().map(String::as_str).collect();
+    if names.is_empty()
+        || names.len() != columns.len()
+        || names
+            .iter()
+            .any(|name| !table.columns.iter().any(|column| column.name == *name))
+    {
+        return Err(invalid(format!(
+            "{context}: empty, duplicate, or unknown key columns"
+        )));
+    }
+    Ok(names)
+}
+
+fn validate_relationships(snapshot: &Snapshot) -> Result<(), Error> {
+    for schema in &snapshot.schemas {
+        for table in &schema.tables {
+            let context = format!("{}.{}", schema.name, table.name);
+            if let Some(key) = &table.primary_key {
+                key_columns(key, table, &context)?;
+                if key.iter().any(|name| {
+                    table
+                        .columns
+                        .iter()
+                        .any(|column| column.name == *name && column.nullable)
+                }) {
+                    return Err(invalid(format!(
+                        "{context}: primary key columns cannot be nullable"
+                    )));
+                }
+            }
+            for key in &table.unique_keys {
+                key_columns(key, table, &context)?;
+            }
+            let mut names = BTreeSet::new();
+            for foreign_key in &table.foreign_keys {
+                let context = format!("{context} foreign key {:?}", foreign_key.name);
+                if foreign_key.name.is_empty() || !names.insert(&foreign_key.name) {
+                    return Err(invalid(format!(
+                        "{context}: empty or duplicate constraint name"
+                    )));
+                }
+                key_columns(&foreign_key.columns, table, &context)?;
+                if foreign_key.columns.len() != foreign_key.referenced_columns.len()
+                    || foreign_key.referenced_relation.schema.is_empty()
+                    || foreign_key.referenced_relation.name.is_empty()
+                    || foreign_key.referenced_columns.iter().any(String::is_empty)
+                    || foreign_key
+                        .referenced_columns
+                        .iter()
+                        .collect::<BTreeSet<_>>()
+                        .len()
+                        != foreign_key.referenced_columns.len()
+                {
+                    return Err(invalid(format!("{context}: invalid referenced key")));
+                }
+                let target = snapshot
+                    .schemas
+                    .iter()
+                    .find(|schema| schema.name == foreign_key.referenced_relation.schema)
+                    .and_then(|schema| {
+                        schema
+                            .tables
+                            .iter()
+                            .find(|table| table.name == foreign_key.referenced_relation.name)
+                    });
+                if let Some(target) = target {
+                    // A referenced unique index need not be represented by a UNIQUE constraint.
+                    key_columns(&foreign_key.referenced_columns, target, &context)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn relationship_markers(
+    schema: &Schema,
+    table: &Table,
+    runtime: &syn::Path,
+) -> Result<TokenStream, Error> {
+    let mut edges = Vec::new();
+    if table.kind == TableKind::Table && !table.is_partition {
+        for source in &schema.tables {
+            if source.kind != TableKind::Table || source.is_partition || source.name == table.name {
+                continue;
+            }
+            for foreign_key in &source.foreign_keys {
+                if foreign_key.referenced_relation.schema != schema.name {
+                    continue;
+                }
+                if foreign_key.referenced_relation.name == table.name {
+                    let columns = foreign_key.columns.iter().collect::<BTreeSet<_>>();
+                    let to_one = source
+                        .primary_key
+                        .iter()
+                        .chain(source.unique_keys.iter())
+                        .any(|key| key.iter().collect::<BTreeSet<_>>() == columns);
+                    edges.push((
+                        format!(
+                            "{}_{}",
+                            source.name.to_snake_case(),
+                            foreign_key.name.to_snake_case()
+                        ),
+                        source,
+                        foreign_key,
+                        to_one,
+                    ));
+                }
+            }
+        }
+        for foreign_key in &table.foreign_keys {
+            if foreign_key.referenced_relation.schema != schema.name
+                || foreign_key.referenced_relation.name == table.name
+            {
+                continue;
+            }
+            if let Some(target) = schema.tables.iter().find(|target| {
+                target.name == foreign_key.referenced_relation.name
+                    && target.kind == TableKind::Table
+                    && !target.is_partition
+            }) {
+                edges.push((foreign_key.name.clone(), target, foreign_key, true));
+            }
+        }
+    }
+    edges.sort_by(|left, right| left.0.cmp(&right.0));
+    unique(
+        edges.iter().map(|edge| edge.0.as_str()),
+        false,
+        &format!("{}.{}.relationships", schema.name, table.name),
+    )?;
+    let mut output = TokenStream::new();
+    for (name, target, foreign_key, to_one) in edges {
+        let name = ident(&name, false)?;
+        let target_name = ident(&target.name, false)?;
+        let resource = selection_identifier(&target.name);
+        let hint = selection_identifier(&foreign_key.name);
+        let cardinality = if to_one {
+            quote!(#runtime::ToOne)
+        } else {
+            quote!(#runtime::ToMany)
+        };
+        output.extend(quote!(
+            #[allow(non_camel_case_types)]
+            #[derive(::core::marker::Copy, ::core::clone::Clone)]
+            pub struct #name;
+            impl #runtime::Relationship for #name {
+                type Source = super::Row;
+                type Target = super::super::#target_name::Row;
+                type Cardinality = #cardinality;
+                const RESOURCE: &'static ::core::primitive::str = #resource;
+                const HINT: &'static ::core::primitive::str = #hint;
+            }
+        ));
+    }
+    Ok(output)
 }
 
 fn identifiers(tokens: TokenStream, names: &mut BTreeSet<String>) {
@@ -130,16 +311,22 @@ impl Emitter<'_> {
         let targeted = self.targeted.get(target).cloned().unwrap_or_default();
         let mut derives: Vec<syn::Path> = vec![
             syn::parse_quote!(::serde::Serialize),
-            syn::parse_quote!(Debug),
-            syn::parse_quote!(Clone),
+            syn::parse_quote!(::core::fmt::Debug),
+            syn::parse_quote!(::core::clone::Clone),
         ];
         if deserialize {
             derives.push(syn::parse_quote!(::serde::Deserialize));
         }
         if default {
-            derives.push(syn::parse_quote!(Default));
+            derives.push(syn::parse_quote!(::core::default::Default));
         }
         for derive in &self.derives {
+            let derive = match derive.get_ident().map(Ident::to_string).as_deref() {
+                Some("Debug") => syn::parse_quote!(::core::fmt::Debug),
+                Some("Clone") => syn::parse_quote!(::core::clone::Clone),
+                Some("Default") => syn::parse_quote!(::core::default::Default),
+                _ => derive.clone(),
+            };
             if !derives
                 .iter()
                 .any(|p| quote!(#p).to_string() == quote!(#derive).to_string())
@@ -386,6 +573,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             snapshot.version
         )));
     }
+    validate_relationships(snapshot)?;
     let runtime = syn::parse_str::<syn::Path>(&config.runtime_path)
         .map_err(|e| invalid(format!("invalid runtime path: {e}")))?;
     let prelude =
@@ -425,6 +613,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         .iter()
         .map(|s| (s.name.clone(), s))
         .collect();
+    let selected: BTreeSet<_> = config.schemas.iter().cloned().collect();
     let mut included: BTreeSet<_> = config.schemas.iter().cloned().collect();
     if included.is_empty() {
         return Err(invalid("at least one schema must be selected"));
@@ -438,6 +627,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             for ty in schema
                 .tables
                 .iter()
+                .filter(|_| selected.contains(&name))
                 .flat_map(|t| t.columns.iter().map(|c| &c.ty))
                 .chain(
                     schema
@@ -449,12 +639,13 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                     schema
                         .functions
                         .iter()
+                        .filter(|_| selected.contains(&name))
                         .flat_map(|f| f.arguments.iter().map(|a| &a.ty)),
                 )
             {
                 references(ty, config, &mut included);
             }
-            for function in &schema.functions {
+            for function in schema.functions.iter().filter(|_| selected.contains(&name)) {
                 match &function.returns {
                     ReturnType::Type(ty) => references(ty, config, &mut included),
                     ReturnType::Record(fields) => {
@@ -527,11 +718,20 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             let target = format!("{schema_ident}.enums.{name}");
             let decoration = emitter.decoration(&target, true, false);
             let mut variants = TokenStream::new();
+            let mut display = TokenStream::new();
             for label in &enumeration.variants {
                 let variant = ident(label, true)?;
                 variants.extend(quote!(#[serde(rename = #label)] #variant,));
+                display.extend(quote!(Self::#variant => formatter.write_str(#label),));
             }
-            enums.extend(quote!(#decoration pub enum #name { #variants }));
+            enums.extend(quote!(
+                #decoration pub enum #name { #variants }
+                impl ::core::fmt::Display for #name {
+                    fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                        match self { #display }
+                    }
+                }
+            ));
         }
         let mut composites = TokenStream::new();
         let mut sorted: Vec<_> = schema.composites.iter().collect();
@@ -549,7 +749,11 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             &format!("{schema_name}.tables"),
         )?;
         let mut tables = TokenStream::new();
-        let mut sorted: Vec<_> = schema.tables.iter().collect();
+        let mut sorted: Vec<_> = schema
+            .tables
+            .iter()
+            .filter(|_| selected.contains(&schema_name))
+            .collect();
         sorted.sort_by_key(|t| &t.name);
         for table in sorted {
             let name = ident(&table.name, false)?;
@@ -566,8 +770,40 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 &target,
             )?;
             let runtime = emitter.runtime.clone();
+            let relationship_markers = relationship_markers(schema, table, &runtime)?;
             let wire_name = &table.name;
             let mut writes = TokenStream::new();
+            let mut column_markers = TokenStream::new();
+            for column in &table.columns {
+                let column_name = ident(&column.name, false)?;
+                let wire = &column.name;
+                let selection = selection_identifier(wire);
+                let base = emitter.ty(&column.ty, 4)?;
+                let nullable = column.nullable || table.kind != TableKind::Table;
+                let value = if nullable {
+                    quote!(::std::option::Option<#base>)
+                } else {
+                    base.clone()
+                };
+                let nullable_impl = if nullable {
+                    quote!(impl #runtime::NullableColumn for #column_name {})
+                } else {
+                    TokenStream::new()
+                };
+                column_markers.extend(quote!(
+                    #[allow(non_camel_case_types)]
+                    #[derive(::core::marker::Copy, ::core::clone::Clone)]
+                    pub struct #column_name;
+                    impl #runtime::Column for #column_name {
+                        type Relation = super::Row;
+                        type Value = #value;
+                        type Filter = #base;
+                        const NAME: &'static ::core::primitive::str = #wire;
+                        const SELECT: &'static ::core::primitive::str = #selection;
+                    }
+                    #nullable_impl
+                ));
+            }
             if table.kind == TableKind::Table {
                 for (rust_name, mode) in [("Insert", "insert"), ("Update", "update")] {
                     let default = mode == "update"
@@ -584,12 +820,47 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                     let rust_name = Ident::new(rust_name, Span::call_site());
                     writes.extend(quote!(#decoration pub struct #rust_name { #fields }));
                 }
+                writes.extend(quote!(
+                    impl #runtime::WritableRelation for Row {
+                        type Insert = Insert;
+                        type Update = Update;
+                    }
+                ));
             }
-            tables.extend(quote!(pub mod #name { #[allow(unused_imports)] use super::*; #decoration pub struct Row { #fields } impl #runtime::Relation for Row { const SCHEMA: &'static str = #schema_name; const NAME: &'static str = #wire_name; } #writes }));
+            tables.extend(quote!(
+                pub mod #name {
+                    #[allow(unused_imports)] use super::*;
+                    #decoration pub struct Row { #fields }
+                    impl #runtime::Relation for Row {
+                        const SCHEMA: &'static ::core::primitive::str = #schema_name;
+                        const NAME: &'static ::core::primitive::str = #wire_name;
+                    }
+                    impl #runtime::Projection for Row {
+                        type Relation = Self;
+                        const SELECT_LEN: ::core::primitive::usize = 1;
+                        fn write_selection(output: &mut ::std::string::String) {
+                            output.push('*');
+                        }
+                        fn selection() -> ::std::borrow::Cow<'static, ::core::primitive::str> {
+                            ::std::borrow::Cow::Borrowed("*")
+                        }
+                    }
+                    pub fn query(client: #runtime::Postgrest) -> #runtime::Query<Row, Row> {
+                        #runtime::query::<Row>(client)
+                    }
+                    pub mod columns { #column_markers }
+                    pub mod relationships { #relationship_markers }
+                    #writes
+                }
+            ));
         }
         let mut functions = TokenStream::new();
         let mut groups: BTreeMap<&str, Vec<&Function>> = BTreeMap::new();
-        for function in &schema.functions {
+        for function in schema
+            .functions
+            .iter()
+            .filter(|_| selected.contains(&schema_name))
+        {
             groups.entry(&function.name).or_default().push(function);
         }
         let mut function_names = BTreeSet::new();

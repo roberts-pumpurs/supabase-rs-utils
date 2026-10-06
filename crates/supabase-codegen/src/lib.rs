@@ -166,7 +166,7 @@ impl Generator {
         let path = path.as_ref();
         cargo_path(path)?;
         println!("cargo::rerun-if-changed={}", path.display());
-        let snapshot = serde_json::from_slice(&std::fs::read(path)?)?;
+        let snapshot = parse_snapshot(&std::fs::read(path)?)?;
         self.from_metadata(snapshot)
     }
 
@@ -175,12 +175,7 @@ impl Generator {
     /// # Errors
     /// Fails for unsupported versions, invalid metadata, or invalid custom Rust syntax.
     pub fn from_metadata(self, snapshot: Snapshot) -> Result<Bindings, Error> {
-        if snapshot.version != SNAPSHOT_VERSION {
-            return Err(Error::Invalid(format!(
-                "snapshot version {} is unsupported; expected {SNAPSHOT_VERSION}",
-                snapshot.version
-            )));
-        }
+        validate_snapshot_version(snapshot.version)?;
         if self.config.schemas.is_empty() || self.config.schemas.iter().any(String::is_empty) {
             return Err(Error::Invalid(
                 "select at least one nonempty schema".to_owned(),
@@ -300,6 +295,27 @@ impl Bindings {
     }
 }
 
+fn validate_snapshot_version(version: u32) -> Result<(), Error> {
+    if version != SNAPSHOT_VERSION {
+        return Err(Error::Invalid(format!(
+            "snapshot version {version} is unsupported; expected {SNAPSHOT_VERSION}; \
+             regenerate the snapshot from PostgreSQL with the current supabase-codegen"
+        )));
+    }
+    Ok(())
+}
+
+fn parse_snapshot(bytes: &[u8]) -> Result<Snapshot, Error> {
+    #[derive(serde::Deserialize)]
+    struct VersionHeader {
+        version: u32,
+    }
+
+    let header: VersionHeader = serde_json::from_slice(bytes)?;
+    validate_snapshot_version(header.version)?;
+    Ok(serde_json::from_slice(bytes)?)
+}
+
 fn cargo_path(path: &Path) -> Result<(), Error> {
     let Some(path) = path.to_str() else {
         return Err(Error::Invalid("Cargo input paths must be UTF-8".to_owned()));
@@ -321,4 +337,58 @@ fn write_if_changed(path: &Path, contents: &[u8]) -> Result<(), Error> {
     }
     std::fs::write(path, contents)?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "Unexpected fixture decoding errors must print their diagnostic."
+)]
+mod metadata_tests {
+    use super::{Error, Generator, parse_snapshot};
+    use crate::model::{Snapshot, Table};
+
+    #[test]
+    fn legacy_snapshot_rejected_before_missing_relationship_metadata() {
+        assert!(matches!(
+            parse_snapshot(
+                br#"{"version":1,"schemas":[{"name":"public","enums":[],"composites":[],"functions":[],"tables":[{"name":"orders","kind":"table","columns":[]}]}]}"#,
+            ),
+            Err(Error::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn in_memory_metadata_rejects_legacy_version() {
+        assert!(matches!(
+            Generator::default().from_metadata(Snapshot {
+                version: 1,
+                schemas: Vec::new(),
+            }),
+            Err(Error::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn table_relationship_metadata_is_required_even_for_primary_key() {
+        let table = serde_json::json!({
+            "name": "orders",
+            "kind": "table",
+            "columns": [],
+            "primary_key": null,
+            "unique_keys": [],
+            "foreign_keys": [],
+            "is_partition": false
+        });
+        for field in ["primary_key", "unique_keys", "foreign_keys", "is_partition"] {
+            let mut incomplete = table.clone();
+            incomplete.as_object_mut().expect("object").remove(field);
+            assert!(matches!(
+                serde_json::from_value::<Table>(incomplete),
+                Err(error) if error.classify() == serde_json::error::Category::Data
+            ));
+        }
+        let decoded: Table = serde_json::from_value(table).expect("explicit empty facts are valid");
+        assert_eq!(decoded.primary_key, None);
+    }
 }

@@ -59,7 +59,7 @@ Use global derives and attributes for shared behavior. Use a generated-type path
 
 Generate schema modules rather than flatten names across schemas. Preserve SQL spelling with Serde renames. Reject normalized-name collisions. Allow a prelude to supply imports for custom mappings, and supply an `include_schema!` macro for `OUT_DIR` inclusion.
 
-The client returns `rp_postgrest::Postgrest` today. Its builder already implements schema profiles, filters, RPC requests, and HTTP transport. Typed relation and function selection should return that builder. Arbitrary projections and joins still need caller-defined response types.
+The client re-exports `postgrest::Postgrest`. Typed relation queries now retain generated column and projection types. They reuse the native builder and checked transport internally. `into_raw()` drops typed guarantees for expressions outside this interface. RPCs still return the native builder.
 
 Follow [Cargo's build-script contract](https://doc.rust-lang.org/cargo/reference/build-scripts.html): write generated source into `OUT_DIR`, register input paths and environment variables, and never rewrite committed snapshots during ordinary builds.
 
@@ -71,7 +71,7 @@ Bulk inserts can change missing-property behavior. Review [PostgREST's missing/d
 
 ## Implementation verification
 
-The implementation compiles and runs on Rust 1.85.1. The workspace test command passes 53 tests. Workspace Clippy passes with all features, all targets, and warnings denied.
+The implementation compiles and runs on Rust 1.85.1. The workspace test command passes 84 tests. Workspace Clippy passes with all features, all targets, and warnings denied. The workspace formatting check passes.
 
 The offline example uses a real `build.rs`, generated output, custom type imports, and a targeted `TypedBuilder` derive. A separate compiled consumer verifies primitive-name collisions, prelude alias collisions, composite and singleton OUT/INOUT result shapes, and percent-encoded relation and RPC names.
 
@@ -80,3 +80,103 @@ Live checks use PostgreSQL 17.11 and PostgREST 12.2.12. They exercise CRUD, view
 Introspection also succeeds for a foreign table whose backing file does not exist, proving that the extraction does not need to read that table. A connection without explicit plaintext permission fails against the TLS-disabled local database. Failed authentication diagnostics omit the supplied password.
 
 The workspace documentation build succeeds. It retains an existing unresolved `SupabaseAuth` link in the auth crate.
+
+## Typed relationship selections
+
+Implemented in 0.7.0 on 2026-10-06. Direct FK selections extend the existing typed query runtime.
+
+Extend the existing `projection!` macro rather than add a second fluent selection builder.
+Named projections keep ordinary field access. A fluent builder would need tuples, typed lookup
+records, or another macro to create equivalent named fields.
+
+Implemented syntax:
+
+```rust,ignore
+projection! {
+    struct AddressSummary for database::public::tables::addresses { id, label }
+}
+projection! {
+    struct OrderSummary for database::public::tables::orders {
+        id,
+        billing_address: embed(
+            database::public::tables::orders::relationships::orders_billing,
+            AddressSummary,
+        ),
+        shipping_address: embed(
+            database::public::tables::orders::relationships::orders_shipping,
+            AddressSummary,
+            inner,
+        ),
+    }
+}
+```
+
+Each generated relationship marker records its source relation, target relation, direction,
+cardinality, and exact PostgREST resource and constraint hint. The macro checks both relation
+identities. Field names become response aliases. Distinct markers select billing and shipping
+foreign keys without string hints at call sites.
+
+The billing field renders `billing_address:addresses!orders_billing(id,label)`.
+The shipping field renders `shipping_address:addresses!orders_shipping!inner(id,label)`.
+The marker names and hints come from FK constraint metadata.
+[PostgREST requires FK hints for ambiguous paths](https://docs.postgrest.org/en/stable/references/api/resource_embedding.html#multiple-many-to-one).
+
+### Metadata acquisition
+
+Snapshot version 2 records qualified relation references, ordered foreign-key column pairs,
+constraint names, primary keys, unique constraints, and partition identity.
+[PostgreSQL's constraint catalog](https://www.postgresql.org/docs/current/catalog-pg-constraint.html)
+supplies these facts in the existing read-only repeatable-read transaction.
+Generation derives inverse edges rather than store two copies of each relationship.
+
+Regenerate version 1 snapshots. Required facts do not default to an empty relationship graph.
+Qualified FK targets survive even when their schema is not selected.
+Generation selection does not prove which schemas PostgREST exposes.
+Referenced types can add dependency schemas, but cannot add unrelated table or RPC endpoints.
+Direct markers cover both directions between nonpartition base tables in the same selected schema.
+Reverse edges are to-one when their FK column set exactly matches a recorded primary key or unique constraint, as
+[PostgREST documents](https://docs.postgrest.org/en/stable/references/api/resource_embedding.html#one-to-one-relationships).
+Use nested junction selections before adding inferred many-to-many shortcuts.
+Two foreign keys alone do not establish a PostgREST junction. Its keys also matter.
+
+### Cardinality and filters
+
+Decode to-one embeds as `Option<ChildProjection>` and to-many embeds as `Vec<ChildProjection>`.
+Use these conservative types for inner selections too. A non-null foreign key does not prove
+that a filtered or access-controlled child appears in the response. Every selected relationship
+key must still exist. Distinguish a present null from a missing key.
+
+[Embedded filters normally preserve parent rows](https://docs.postgrest.org/en/stable/references/api/resource_embedding.html#top-level-filtering).
+`inner` explicitly changes parent selection. It does not make nullable child columns or unrelated
+nested left embeds non-null.
+
+Generate projection-owned embedding handles for scoped child filters.
+For example, `OrderSummary::billing_address` identifies the selected alias and child projection.
+Compose these handles for nested filter paths. Check child columns against the relationship target.
+After adding an embedded filter, lock the selected projection. Replacing it could leave filters
+that refer to an alias no longer selected.
+
+Represent predicate-only empty embeds separately. They add selection and filter syntax but no
+decoded response field. Relationship existence and anti-existence predicates are not scalar null tests.
+
+### Unsupported relationships
+
+Do not infer all view, recursive, or computed relationships from foreign keys.
+[View inference depends on selected FK columns and view definitions](https://docs.postgrest.org/en/stable/references/api/resource_embedding.html#foreign-key-joins-on-views).
+[Recursive direction disambiguation uses computed relationships](https://docs.postgrest.org/en/stable/references/api/resource_embedding.html#recursive-relationships).
+[Computed relationships use relation argument/result types and ROWS estimates](https://docs.postgrest.org/en/stable/references/api/resource_embedding.html#computed-relationships).
+The current named-argument RPC model does not capture that contract.
+
+Keep network errors, authorization, schema-cache drift, and response-shape failures explicit.
+Typed selections check captured relation identities and result shapes. They do not prove current
+server availability or row visibility.
+
+Live verification uses PostgreSQL 17.11 and PostgREST 16.2 with a non-superuser API role.
+It covers ambiguous FK aliases, reverse uniqueness, ordered composite joins, nested child filters,
+left versus inner behavior, empty embeds, existence predicates, and projected CRUD/view/RPC calls.
+A separate RLS check hides a non-null FK target and decodes `None` without removing its parent.
+Catalog checks preserve external target identities and type dependencies, and omit inherited partition FKs.
+Grammar checks cover reserved resource, hint, alias, and column names with literal punctuation and Unicode values.
+Projected insert, update, and delete also succeed after scoped child filters lock selection.
+PostgREST 16.2 rejects embed-alias existence predicates as DELETE row conditions.
+Use root column predicates for mutation conditions. The runtime preserves native execution errors rather than rewriting FK predicates.

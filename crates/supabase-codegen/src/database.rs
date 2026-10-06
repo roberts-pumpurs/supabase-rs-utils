@@ -12,8 +12,8 @@ use postgres_native_tls::MakeTlsConnector;
 
 use crate::Error;
 use crate::model::{
-    Argument, Column, Composite, Enum, Function, Identity, PgType, ReturnType, SNAPSHOT_VERSION,
-    Schema, Snapshot, Table, TableKind,
+    Argument, Column, Composite, Enum, ForeignKey, Function, Identity, PgType, RelationRef,
+    ReturnType, SNAPSHOT_VERSION, Schema, Snapshot, Table, TableKind,
 };
 
 const CATALOG: &str = include_str!("catalog.sql");
@@ -302,6 +302,13 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
     for oid in roots {
         catalog.resolve(oid, &mut BTreeSet::new())?;
     }
+    let mut constraints: BTreeMap<i64, Vec<Row>> = BTreeMap::new();
+    for row in query(&mut tx, "constraints", Some(schemas))? {
+        constraints
+            .entry(row.get("relation"))
+            .or_default()
+            .push(row);
+    }
     for row in query(&mut tx, "relations", Some(schemas))? {
         let schema: String = row.get("schema");
         let kind = match row.get::<_, &str>("kind") {
@@ -318,10 +325,36 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         for attribute in attributes {
             columns.push(catalog.column(&attribute, kind != TableKind::Table)?);
         }
+        let mut primary_key = None;
+        let mut unique_keys = Vec::new();
+        let mut foreign_keys = Vec::new();
+        for constraint in constraints
+            .remove(&row.get::<_, i64>("oid"))
+            .unwrap_or_default()
+        {
+            match constraint.get::<_, &str>("kind") {
+                "p" => primary_key = Some(constraint.get("columns")),
+                "u" => unique_keys.push(constraint.get("columns")),
+                "f" => foreign_keys.push(ForeignKey {
+                    name: constraint.get("name"),
+                    columns: constraint.get("columns"),
+                    referenced_relation: RelationRef {
+                        schema: constraint.get("referenced_schema"),
+                        name: constraint.get("referenced_name"),
+                    },
+                    referenced_columns: constraint.get("referenced_columns"),
+                }),
+                _ => return Err(database_error("unsupported constraint kind")),
+            }
+        }
         catalog.schema(&schema).tables.push(Table {
             name: row.get("name"),
             kind,
             columns,
+            primary_key,
+            unique_keys,
+            foreign_keys,
+            is_partition: row.get("is_partition"),
         });
     }
     for row in query(&mut tx, "functions", Some(schemas))? {

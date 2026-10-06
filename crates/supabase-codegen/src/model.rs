@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Current on-disk snapshot format.
-pub const SNAPSHOT_VERSION: u32 = 1;
+pub const SNAPSHOT_VERSION: u32 = 2;
 
 /// Metadata that can be checked into source control for offline builds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +43,29 @@ pub struct Table {
     pub name: String,
     pub kind: TableKind,
     pub columns: Vec<Column>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    pub primary_key: Option<Vec<String>>,
+    pub unique_keys: Vec<Vec<String>>,
+    pub foreign_keys: Vec<ForeignKey>,
+    pub is_partition: bool,
+}
+
+/// Qualified relation identity, including targets outside the selected schemas.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RelationRef {
+    pub schema: String,
+    pub name: String,
+}
+
+/// A direct catalog foreign key, with both column lists in matching constraint order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForeignKey {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub referenced_relation: RelationRef,
+    pub referenced_columns: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

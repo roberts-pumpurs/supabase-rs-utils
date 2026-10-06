@@ -67,11 +67,24 @@ pub trait Function {
     const NAME: &'static str;
 }
 
-/// Start a relation request, retaining the native `PostgREST` builder.
-#[must_use]
-pub fn from<R: Relation>(client: postgrest::Postgrest) -> postgrest::Builder {
-    let name: Cow<'_, str> = utf8_percent_encode(R::NAME, PATH_SEGMENT).into();
-    client.schema(R::SCHEMA).from(name)
+mod projection;
+mod query;
+mod relationship;
+pub use postgrest::Postgrest;
+pub use query::{
+    Column, Locked, NullableColumn, Projection, Query, QueryError, Read, ScopedFilters, Unlocked,
+    WritableRelation, Write, query,
+};
+pub use relationship::{
+    Cardinality, Embed, EmbedPath, EmptySelection, Path, Relationship, ToMany, ToOne,
+};
+
+#[doc(hidden)]
+pub mod __private {
+    pub use super::relationship::{
+        alias, assert_distinct, check_embed, check_empty, identifier_len, write_identifier,
+    };
+    pub use serde;
 }
 
 /// Start an RPC request, preserving omitted arguments and explicit nulls.
@@ -97,8 +110,11 @@ macro_rules! include_schema {
 
 /// Common generated binding runtime imports.
 pub mod prelude {
-    pub use super::{Array, Field, Function, Relation, from, rpc};
-    pub use crate::include_schema;
+    pub use super::{
+        Array, Column, Field, Function, NullableColumn, Projection, Query, QueryError, Relation,
+        WritableRelation, query, rpc,
+    };
+    pub use crate::{include_schema, projection};
 }
 
 #[cfg(test)]

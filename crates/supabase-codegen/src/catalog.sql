@@ -25,11 +25,34 @@ WHERE a.attnum > 0 AND NOT a.attisdropped
 ORDER BY a.attrelid, a.attnum;
 -- query: relations
 SELECT n.nspname::text AS schema, c.relname::text AS name,
-       c.oid::bigint AS oid, c.relkind::text AS kind
+       c.oid::bigint AS oid, c.relkind::text AS kind, c.relispartition AS is_partition
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname::text = ANY($1::text[]) AND c.relkind IN ('r', 'p', 'f', 'v', 'm')
 ORDER BY n.nspname, c.relname;
+-- query: constraints
+SELECT c.conrelid::bigint AS relation, c.conname::text AS name, c.contype::text AS kind,
+       ARRAY(
+           SELECT a.attname::text
+           FROM pg_catalog.unnest(c.conkey) WITH ORDINALITY AS key(attnum, position)
+           JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = key.attnum
+           ORDER BY key.position
+       ) AS columns,
+       rn.nspname::text AS referenced_schema, r.relname::text AS referenced_name,
+       ARRAY(
+           SELECT a.attname::text
+           FROM pg_catalog.unnest(c.confkey) WITH ORDINALITY AS key(attnum, position)
+           JOIN pg_catalog.pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = key.attnum
+           ORDER BY key.position
+       ) AS referenced_columns
+FROM pg_catalog.pg_constraint c
+JOIN pg_catalog.pg_class source ON source.oid = c.conrelid
+JOIN pg_catalog.pg_namespace n ON n.oid = source.relnamespace
+LEFT JOIN pg_catalog.pg_class r ON r.oid = c.confrelid
+LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid = r.relnamespace
+WHERE n.nspname::text = ANY($1::text[]) AND source.relkind IN ('r', 'p')
+  AND c.contype IN ('p', 'u', 'f') AND c.conparentid = 0
+ORDER BY n.nspname, source.relname, c.contype, c.conname;
 -- query: functions
 SELECT n.nspname::text AS schema, p.proname::text AS name,
        COALESCE(p.proallargtypes, p.proargtypes::oid[])::bigint[] AS types,
