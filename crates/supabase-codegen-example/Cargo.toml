@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version = "1.85"
 publish = false
 
+[package.metadata.cargo-machete]
+# Generated timestamp fields use chrono. build.rs adds the TypedBuilder derive.
+ignored = ["chrono", "typed-builder"]
+
 [dependencies]
 rp-supabase-client.workspace = true
 serde.workspace = true
