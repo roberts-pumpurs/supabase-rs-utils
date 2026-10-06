@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "schemas": [
     {
       "name": "public",
@@ -126,7 +126,7 @@
                 "kind": "builtin",
                 "value": "int4"
               },
-              "nullable": false,
+              "nullable": true,
               "has_default": false,
               "generated": false,
               "identity": "none"

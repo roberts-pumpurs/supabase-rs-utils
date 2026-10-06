@@ -7,7 +7,8 @@ SELECT t.oid::bigint AS oid, n.nspname::text AS schema, t.typname::text AS name,
        t.typtype::text AS kind, t.typbasetype::bigint AS base,
        t.typelem::bigint AS element, t.typarray::bigint AS array,
        t.typrelid::bigint AS relation, t.typnotnull AS not_null,
-       (t.typdefaultbin IS NOT NULL OR t.typdefault IS NOT NULL) AS has_default
+       (t.typdefaultbin IS NOT NULL OR t.typdefault IS NOT NULL) AS has_default,
+       pg_catalog.obj_description(t.oid, 'pg_type') AS comment
 FROM pg_catalog.pg_type t
 JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
 WHERE t.typisdefined ORDER BY n.nspname, t.typname;
@@ -25,7 +26,9 @@ WHERE a.attnum > 0 AND NOT a.attisdropped
 ORDER BY a.attrelid, a.attnum;
 -- query: relations
 SELECT n.nspname::text AS schema, c.relname::text AS name,
-       c.oid::bigint AS oid, c.relkind::text AS kind, c.relispartition AS is_partition
+       c.oid::bigint AS oid, c.relkind::text AS kind, c.relispartition AS is_partition,
+       pg_catalog.obj_description(c.oid, 'pg_class') AS comment,
+       CASE WHEN c.relkind IN ('v', 'm') THEN pg_catalog.pg_get_viewdef(c.oid, true) END AS definition
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname::text = ANY($1::text[]) AND c.relkind IN ('r', 'p', 'f', 'v', 'm')
@@ -58,7 +61,8 @@ SELECT n.nspname::text AS schema, p.proname::text AS name,
        COALESCE(p.proallargtypes, p.proargtypes::oid[])::bigint[] AS types,
        p.proargmodes::text[] AS modes, p.proargnames AS names,
        p.pronargs::integer AS input_count, p.pronargdefaults::integer AS defaults,
-       p.prorettype::bigint AS return_oid, p.proretset AS returns_set
+       p.prorettype::bigint AS return_oid, p.proretset AS returns_set,
+       pg_catalog.obj_description(p.oid, 'pg_proc') AS comment
 FROM pg_catalog.pg_proc p
 JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname::text = ANY($1::text[]) AND p.prokind = 'f'

@@ -57,6 +57,7 @@ struct TypeInfo {
     relation: i64,
     not_null: bool,
     has_default: bool,
+    comment: Option<String>,
 }
 
 #[derive(Clone)]
@@ -145,6 +146,8 @@ impl Catalog {
             for attribute in attributes {
                 fields.push(self.column(&attribute, true)?);
             }
+            let fields_annotation = crate::model::annotation(info.comment.as_deref(), "@not_null")?;
+            crate::model::set_not_null(&mut fields, &fields_annotation, &format!("{}.{}", info.schema, info.name))?;
             self.schema(&info.schema).composites.push(Composite {
                 name: info.name.clone(),
                 fields,
@@ -230,6 +233,8 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         .read_only(true)
         .start()
         .map_err(|_error| database_error("snapshot transaction"))?;
+    tx.batch_execute("SET LOCAL search_path = ''")
+        .map_err(|_error| database_error("catalog search path"))?;
     let mut catalog = Catalog {
         types: BTreeMap::new(),
         attributes: BTreeMap::new(),
@@ -260,6 +265,7 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
                 relation: row.get("relation"),
                 not_null: row.get("not_null"),
                 has_default: row.get("has_default"),
+                comment: row.get("comment"),
             },
         );
     }
@@ -309,7 +315,9 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
             .or_default()
             .push(row);
     }
-    for row in query(&mut tx, "relations", Some(schemas))? {
+    let relation_rows = query(&mut tx, "relations", Some(schemas))?;
+    let base_relations: BTreeSet<i64> = relation_rows.iter().filter(|row| matches!(row.get::<_, &str>("kind"), "r" | "p" | "f")).map(|row| row.get("oid")).collect();
+    for row in relation_rows {
         let schema: String = row.get("schema");
         let kind = match row.get::<_, &str>("kind") {
             "v" => TableKind::View,
@@ -324,6 +332,29 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         let mut columns = Vec::with_capacity(attributes.len());
         for attribute in attributes {
             columns.push(catalog.column(&attribute, kind != TableKind::Table)?);
+        }
+        if kind != TableKind::Table {
+            if let Some((relation, projected)) = row.get::<_, Option<&str>>("definition").and_then(crate::model::view_columns) {
+                let base = match relation.as_slice() {
+                    [namespace, name] => catalog.types.values().find(|info| &info.schema == namespace && &info.name == name && info.kind == "c"),
+                    _ => None,
+                };
+                // Only base tables qualify, not another view's row composite.
+                if let Some(base) = base {
+                    let base_relation = base.relation;
+                    if base_relations.contains(&base_relation) {
+                        if let Some(attributes) = catalog.attributes.get(&base_relation) {
+                            for (column, source) in columns.iter_mut().zip(projected) {
+                                if let Some(source) = source {
+                                    column.nullable = !attributes.iter().any(|attribute| attribute.name == source && attribute.not_null);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let annotation = crate::model::annotation(row.get("comment"), "@not_null")?;
+            crate::model::set_not_null(&mut columns, &annotation, &format!("{schema}.{}", row.get::<_, &str>("name")))?;
         }
         let mut primary_key = None;
         let mut unique_keys = Vec::new();
@@ -416,7 +447,7 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
                 has_default,
             });
         }
-        let returns = if outputs.is_empty() {
+        let mut returns = if outputs.is_empty() {
             ReturnType::Type(catalog.resolve(return_oid, &mut BTreeSet::new())?)
         } else {
             let mut fields = Vec::with_capacity(outputs.len());
@@ -432,6 +463,14 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
             }
             ReturnType::Record(fields)
         };
+        let annotation = crate::model::annotation(row.get("comment"), "@not_null")?;
+        if !annotation.is_empty() {
+            if let ReturnType::Record(fields) = &mut returns {
+                crate::model::set_not_null(fields, &annotation, row.get("name"))?;
+            } else {
+                return Err(Error::Invalid("@not_null requires an RPC record return".into()));
+            }
+        }
         let schema: String = row.get("schema");
         catalog.schema(&schema).functions.push(Function {
             name: row.get("name"),

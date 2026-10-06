@@ -338,7 +338,7 @@ impl<'a> ColumnContract<'a> {
         )?;
         let base_table = table_kind == Some(TableKind::Table);
         Ok(columns.iter().map(move |column| {
-            let nullable = column.nullable || !base_table;
+            let nullable = column.nullable;
             let insert = if !base_table || column.generated || column.identity == Identity::Always {
                 FieldPresence::Excluded
             } else if nullable || column.has_default || column.identity == Identity::ByDefault {

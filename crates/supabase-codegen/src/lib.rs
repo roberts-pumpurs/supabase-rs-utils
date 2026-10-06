@@ -41,6 +41,7 @@ struct Config {
     pub type_overrides: BTreeMap<String, String>,
     pub type_attributes: BTreeMap<String, Vec<String>>,
     pub runtime_path: String,
+    pub not_null: BTreeMap<String, Vec<String>>,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -78,6 +79,7 @@ impl Generator {
                 type_overrides: BTreeMap::new(),
                 type_attributes: BTreeMap::new(),
                 runtime_path: "::rp_supabase_client::schema".to_owned(),
+                not_null: BTreeMap::new(),
             },
         }
     }
@@ -154,6 +156,18 @@ impl Generator {
         self
     }
 
+    /// Assert non-null fields on a view Row, composite, or RPC Record.
+    /// Unknown targets and SQL field names fail generation.
+    #[must_use]
+    pub fn not_null(
+        mut self,
+        target: impl Into<String>,
+        fields: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.config.not_null.insert(target.into(), fields.into_iter().map(Into::into).collect());
+        self
+    }
+
     /// Load a portable snapshot and register Cargo's file change detection.
     ///
     /// # Errors
@@ -174,7 +188,7 @@ impl Generator {
     ///
     /// # Errors
     /// Fails for unsupported versions, invalid metadata, or invalid custom Rust syntax.
-    pub fn from_metadata(self, snapshot: Snapshot) -> Result<Bindings, Error> {
+    pub fn from_metadata(self, mut snapshot: Snapshot) -> Result<Bindings, Error> {
         validate_snapshot_version(snapshot.version)?;
         if self.config.schemas.is_empty() || self.config.schemas.iter().any(String::is_empty) {
             return Err(Error::Invalid(
@@ -188,6 +202,7 @@ impl Generator {
                 )));
             }
         }
+        model::apply_not_null(&mut snapshot, &self.config.not_null)?;
         let source = emitter::generate(&snapshot, &self.config)?;
         Ok(Bindings { snapshot, source })
     }

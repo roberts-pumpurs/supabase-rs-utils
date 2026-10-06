@@ -43,7 +43,7 @@ pub mod database {
 
 The generator registers the snapshot with Cargo's change detection. It writes only the requested file and leaves identical output unchanged. Rust formatting uses `prettyplease`, not an external formatter.
 
-See the [complete snapshot and executable example](../supabase-codegen-example). The public `model::Snapshot` format is version 2. It requires explicit primary-key, unique-key, foreign-key, and partition facts for every table. Version 1 snapshots require regeneration, not an empty relationship graph.
+See the [complete snapshot and executable example](../supabase-codegen-example). The public `model::Snapshot` format is version 3. Older snapshots require regeneration.
 
 ## Direct database introspection
 
@@ -100,7 +100,7 @@ For `public.messages`, the generator emits:
 Rows implement `schema::Relation` and `schema::Projection<Row>`. Each relation module exposes
 `query(client)`. The query retains its relation and response type until decoding.
 It consumes the client, so cloning remains explicit. Regenerate previously emitted Rust bindings
-with codegen 0.9 before using runtime 0.9. The snapshot format remains version 2.
+with current codegen before using the matching runtime. The snapshot format is version 3.
 JSON and JSONB column markers, including domains over those types, implement `schema::JsonColumn`.
 
 ```rust,ignore
@@ -309,8 +309,7 @@ Generated expression columns and ALWAYS identity columns appear only in rows. BY
 The generator resolves each relation column's read nullability and write obligation once.
 Rows, column marker value types and nullable capabilities, insert/update fields, and automatic
 `Default` derives consume that same private contract. `Insert` derives `Default` only when every
-writable field is omittable; `Update` always does. This does not change snapshot version 2 or
-the generated caller interface.
+writable field is omittable; `Update` always does.
 
 Bulk inserts with different omitted keys require care. PostgREST's `Prefer: missing=default` controls missing-key defaults in bulk requests. Generated omission alone does not change server preferences.
 
@@ -324,7 +323,7 @@ Bytea, network, interval, range, geometric, and text-search columns use their JS
 
 `schema::Array<T>` preserves null elements and variable rank with `Elements(Vec<Option<T>>)` and `Nested(Vec<Array<T>>)`. Use another outer `Option` for a nullable column. PostgreSQL does not enforce declared array dimensions. For JSON-valued array elements, JSON itself does not distinguish nested SQL arrays from JSON arrays stored as elements.
 
-Enums preserve exact database labels with Serde renames. Standalone and relation-row composites have nullable members. They remain distinct from a full table row's constraints. Domains preserve their qualified identity for overrides and otherwise resolve to their base type. Unknown types fail generation and require `type_override`.
+Enums preserve exact database labels with Serde renames. Composites honor snapshot field nullability. Live introspection defaults composite fields to nullable unless a type comment declares `@not_null id, name`. Domains preserve their qualified identity for overrides and otherwise resolve to their base type. Unknown types fail generation and require `type_override`.
 
 ### Functions
 
@@ -372,7 +371,7 @@ Prelude items appear at the generated root. Nested modules import their parent, 
 
 ## Scope and safety
 
-View and materialized-view bindings are read-only, even when PostgreSQL permits writes to a view. Their row fields are conservatively nullable.
+View and materialized-view bindings are read-only. Live introspection infers non-null direct base-column projections from a single base table, without joins, CTEs or grouping. Other fields remain nullable. View comments and RPC record function comments can declare `@not_null field, other_field`. These contracts persist in snapshots. `.not_null("public.functions.finalize_flow_publish.Record", ["flow_id", "created"])` provides the same checked contract in the builder. View targets use `public.tables.view.Row`; composite targets use `public.composites.ResultInfo`. Unknown fields and targets fail generation.
 
 The named-object RPC generator excludes unnamed input arguments, trigger functions, polymorphic pseudotypes, and dynamic records without named output fields. Those need different request bodies or explicit application-specific contracts.
 

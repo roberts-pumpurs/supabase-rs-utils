@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Respect non-table snapshot nullability, infer safe single-table view projections with a SQL parser, and support checked `not_null` builder and SQL comment contracts. Snapshot format is now version 3.
+
 ## [0.9.3](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-codegen-v0.9.2...rp-supabase-codegen-v0.9.3) - 2026-10-06
 
 ### Other

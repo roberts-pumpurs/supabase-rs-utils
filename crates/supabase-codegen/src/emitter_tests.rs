@@ -353,3 +353,19 @@ fn relationship_resource_and_constraint_preserve_escaped_wire_identities() {
     assert!(generated.contains("= \"\\\"order\\\"\";"));
     assert!(generated.contains("= \"\\\"odd\\\\\\\"constraint\\\"\";"));
 }
+
+#[test]
+fn not_null_customization_persists_and_rejects_unknown_fields() {
+    let mut metadata = snapshot();
+    metadata.schemas[0].functions.push(Function {
+        name: "finalize".into(),
+        arguments: vec![],
+        returns: ReturnType::Record(vec![Column { nullable: true, ..column("id") }]),
+        returns_set: false,
+    });
+    let bindings = crate::Generator::new().not_null("public.functions.finalize.Record", ["id"]).from_metadata(metadata.clone()).unwrap();
+    let ReturnType::Record(fields) = &bindings.snapshot().schemas[0].functions[0].returns else { panic!("record"); };
+    assert!(!fields[0].nullable);
+    assert!(crate::Generator::new().not_null("public.functions.finalize.Record", ["missing"]).from_metadata(metadata.clone()).is_err());
+    assert!(crate::Generator::new().not_null("public.functions.missing.Record", ["id"]).from_metadata(metadata).is_err());
+}
