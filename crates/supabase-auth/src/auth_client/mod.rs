@@ -202,19 +202,22 @@ pub struct Response<T, E> {
 }
 
 impl<T, E> Response<T, E> {
-    /// Only check if the returtned HTTP response is of error type; don't parse the data
+    /// Checks the HTTP error status without decoding the response body.
     ///
-    /// Useful when you don't care about the actual response besides if it was an error.
+    /// # Errors
+    ///
+    /// Returns an error for HTTP 4xx or 5xx responses.
     #[instrument(name = "response_ok", skip(self), err, parent = &self.span)]
     pub fn ok(self) -> Result<(), AuthError> {
         self.raw.error_for_status()?;
         Ok(())
     }
 
-    /// Check if the returned HTTP result is an error;
-    /// Only parse the error type if we received an error.
+    /// Decodes the API error only when the response status is not successful.
     ///
-    /// Useful when you don't care about the actual response besides if it was an error.
+    /// # Errors
+    ///
+    /// Returns an outer error if reading or decoding the error body fails.
     #[instrument(name = "parse_response_json_err", skip(self), err, parent = &self.span)]
     pub async fn json_err(self) -> Result<Result<(), E>, AuthError>
     where
@@ -230,7 +233,11 @@ impl<T, E> Response<T, E> {
         }
     }
 
-    /// Parse the response json
+    /// Decodes a successful response or its typed API error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an outer error if reading or decoding the response body fails.
     #[instrument(name = "parse_response_json", skip(self), err, parent = &self.span)]
     pub async fn json(self) -> Result<Result<T, E>, AuthError>
     where

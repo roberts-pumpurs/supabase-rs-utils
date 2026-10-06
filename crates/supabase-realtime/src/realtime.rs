@@ -187,6 +187,26 @@ impl<T> RealtimeConnection<T> {
         }
     }
 
+    fn heartbeat_stream() -> futures::stream::BoxStream<'static, RealtimeStreamType> {
+        let mut interval = tokio::time::interval(Self::HEARTBEAT_PERIOD);
+        interval.reset();
+        IntervalStream::new(interval)
+            .fuse()
+            .map(move |_s| message::ProtocolMessage {
+                topic: "phoenix".to_owned(),
+                payload: message::ProtocolPayload::Heartbeat(message::heartbeat::Heartbeat),
+                ref_field: None,
+                join_ref: None,
+            })
+            .map(Ok)
+            .boxed()
+    }
+
+    /// Connects an authenticated realtime channel and starts its outgoing streams.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if URL construction, authentication, or the websocket connection fails.
     #[tracing::instrument(skip_all, err)]
     pub async fn connect(
         self,
@@ -239,20 +259,7 @@ impl<T> RealtimeConnection<T> {
             .map(Ok)
             .boxed();
 
-        let heartbeat_stream = {
-            let mut interval = tokio::time::interval(Self::HEARTBEAT_PERIOD);
-            interval.reset();
-            let interval_stream = IntervalStream::new(interval).fuse();
-            interval_stream
-                .map(move |_s| message::ProtocolMessage {
-                    topic: "phoenix".to_owned(),
-                    payload: message::ProtocolPayload::Heartbeat(message::heartbeat::Heartbeat),
-                    ref_field: None,
-                    join_ref: None,
-                })
-                .map(Ok)
-                .boxed()
-        };
+        let heartbeat_stream = Self::heartbeat_stream();
 
         let topic = self.topic.clone();
         let access_token_stream = {
@@ -322,6 +329,11 @@ pub struct PresenceMetaParsed<T> {
 }
 
 impl RealtimeConnection<Presence> {
+    /// Connects a presence channel and tracks its current presence state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if authentication or the realtime connection fails.
     #[tracing::instrument(skip_all, err)]
     pub async fn connect_with_state_tracking<T: DeserializeOwned>(
         self,
