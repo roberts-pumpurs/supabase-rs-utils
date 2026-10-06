@@ -1,0 +1,287 @@
+{
+  "version": 1,
+  "schemas": [
+    {
+      "name": "public",
+      "enums": [
+        {
+          "name": "record",
+          "variants": [
+            "ok"
+          ]
+        }
+      ],
+      "composites": [
+        {
+          "name": "payload",
+          "fields": [
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": true,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "state",
+              "ty": {
+                "kind": "named",
+                "value": {
+                  "schema": "shared",
+                  "name": "state"
+                }
+              },
+              "nullable": true,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ]
+        }
+      ],
+      "tables": [
+        {
+          "name": "a#b",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "body",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "active",
+              "ty": {
+                "kind": "builtin",
+                "value": "bool"
+              },
+              "nullable": false,
+              "has_default": true,
+              "generated": false,
+              "identity": "none"
+            }
+          ]
+        },
+        {
+          "name": "bool",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "value",
+              "ty": {
+                "kind": "builtin",
+                "value": "bool"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ]
+        }
+      ],
+      "functions": [
+        {
+          "name": "enum_record",
+          "arguments": [],
+          "returns": {
+            "kind": "type",
+            "value": {
+              "kind": "named",
+              "value": {
+                "schema": "public",
+                "name": "record"
+              }
+            }
+          },
+          "returns_set": false
+        },
+        {
+          "name": "payload_rpc",
+          "arguments": [
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "has_default": false
+            }
+          ],
+          "returns": {
+            "kind": "type",
+            "value": {
+              "kind": "named",
+              "value": {
+                "schema": "public",
+                "name": "payload"
+              }
+            }
+          },
+          "returns_set": false
+        },
+        {
+          "name": "single_inout",
+          "arguments": [
+            {
+              "name": "num",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "has_default": false
+            }
+          ],
+          "returns": {
+            "kind": "record",
+            "value": [
+              {
+                "name": "num",
+                "ty": {
+                  "kind": "builtin",
+                  "value": "int4"
+                },
+                "nullable": true,
+                "has_default": false,
+                "generated": false,
+                "identity": "none"
+              }
+            ]
+          },
+          "returns_set": false
+        },
+        {
+          "name": "single_out",
+          "arguments": [
+            {
+              "name": "num",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "has_default": false
+            }
+          ],
+          "returns": {
+            "kind": "record",
+            "value": [
+              {
+                "name": "plus",
+                "ty": {
+                  "kind": "builtin",
+                  "value": "int4"
+                },
+                "nullable": true,
+                "has_default": false,
+                "generated": false,
+                "identity": "none"
+              }
+            ]
+          },
+          "returns_set": false
+        },
+        {
+          "name": "table_rpc",
+          "arguments": [
+            {
+              "name": "label",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "has_default": true
+            }
+          ],
+          "returns": {
+            "kind": "record",
+            "value": [
+              {
+                "name": "value",
+                "ty": {
+                  "kind": "builtin",
+                  "value": "text"
+                },
+                "nullable": true,
+                "has_default": false,
+                "generated": false,
+                "identity": "none"
+              },
+              {
+                "name": "state",
+                "ty": {
+                  "kind": "named",
+                  "value": {
+                    "schema": "shared",
+                    "name": "state"
+                  }
+                },
+                "nullable": true,
+                "has_default": false,
+                "generated": false,
+                "identity": "none"
+              }
+            ]
+          },
+          "returns_set": true
+        },
+        {
+          "name": "rpc?echo",
+          "arguments": [
+            {
+              "name": "message",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "has_default": false
+            }
+          ],
+          "returns": {
+            "kind": "type",
+            "value": {
+              "kind": "builtin",
+              "value": "text"
+            }
+          },
+          "returns_set": false
+        }
+      ]
+    },
+    {
+      "name": "shared",
+      "enums": [
+        {
+          "name": "state",
+          "variants": [
+            "in-progress",
+            "type"
+          ]
+        }
+      ],
+      "composites": [],
+      "tables": [],
+      "functions": []
+    }
+  ]
+}

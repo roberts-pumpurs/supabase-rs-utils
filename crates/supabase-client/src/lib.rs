@@ -1,3 +1,7 @@
+extern crate alloc;
+
+pub mod schema;
+
 use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
@@ -113,15 +117,15 @@ impl<T> PostgerstResponse<T> {
         T: serde::de::DeserializeOwned,
     {
         let status = self.response.status();
-        let mut bytes = self.response.bytes().await?.to_vec();
+        let bytes = self.response.bytes().await?;
         if status.is_success() {
             let json = String::from_utf8_lossy(bytes.as_ref());
             tracing::debug!(response_body = %json, "Response JSON");
 
-            let result = simd_json::from_slice::<T>(bytes.as_mut())?;
+            let result = serde_json::from_slice::<T>(&bytes)?;
             Ok(Ok(result))
         } else {
-            let error = parse_postgrest_error(bytes, status)?;
+            let error = parse_postgrest_error(bytes.to_vec(), status)?;
             Ok(Err(error))
         }
     }
@@ -143,8 +147,8 @@ fn parse_postgrest_error(
 
 #[derive(thiserror::Error, Debug)]
 pub enum ResponseError {
-    #[error("simd json error {0}")]
-    Json(#[from] simd_json::Error),
+    #[error("JSON response decode error {0}")]
+    Json(#[from] serde_json::Error),
     #[error("PostgREST error response decode error {0}")]
     PostgrestDecode(#[from] rp_postgrest_error::DecodeError),
     #[error("reqwest {0}")]

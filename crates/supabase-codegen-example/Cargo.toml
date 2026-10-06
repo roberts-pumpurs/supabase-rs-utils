@@ -1,0 +1,20 @@
+[package]
+name = "rp-supabase-codegen-example"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+rp-supabase-client.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+chrono.workspace = true
+typed-builder.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[build-dependencies]
+rp-supabase-codegen = { path = "../supabase-codegen", features = ["database"] }
+
+[dev-dependencies]
+mockito.workspace = true

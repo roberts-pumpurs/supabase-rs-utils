@@ -12,6 +12,7 @@ This repository is a Cargo workspace containing multiple Rust crates that provid
 - [rp-postgrest-error](./crates/postgrest-error/README.md): Error parsing and handling for PostgREST and PostgreSQL responses.
 - [rp-supabase-realtime](./crates/supabase-realtime/README.md): A client library for Supabase's Realtime API.
 - [rp-supabase-client](./crates/supabase-client/README.md): A client for Supabase's PostgREST API with authenticated requests.
+- [rp-supabase-codegen](./crates/supabase-codegen/README.md): Generate Rust schema bindings in `build.rs`, with offline snapshots and custom derives, attributes, and preludes.
 
 ## Getting Started
 
@@ -35,6 +36,7 @@ Check out our [examples directory](./examples/README.md) for complete working ex
 - Presence tracking
 - JWT token management
 - Database operations
+- [Build-script schema bindings](./crates/supabase-codegen-example/README.md), including offline generation and live PostgREST CRUD/RPC verification.
 
 Each example is self-contained and includes detailed documentation about its use case and how to run it.
 

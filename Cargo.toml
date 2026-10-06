@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "xtask", "examples"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 authors = [
   "Roberts Pumpurs <roberts@pumpurlabs.com>",
 ]
@@ -70,6 +70,7 @@ rp-supabase-auth = { path = "crates/supabase-auth", version = "0" }
 rp-supabase-client = { path = "crates/supabase-client", version = "0" }
 rp-postgrest-error = { path = "crates/postgrest-error", version = "0" }
 rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0" }
+rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0" }
 
 # fork of postgrest-rs
 rp-postgrest = { version = "1" }
@@ -92,6 +93,7 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 http = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+uuid = { version = "1", features = ["serde"] }
 redact = "0.1"
 simd-json = "0.15"
 url = "2"

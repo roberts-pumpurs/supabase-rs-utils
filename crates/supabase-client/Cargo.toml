@@ -17,9 +17,14 @@ tracing.workspace = true
 rp-postgrest-error.workspace = true
 thiserror.workspace = true
 serde.workspace = true
-simd-json.workspace = true
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+percent-encoding = "2"
 futures.workspace = true
 rp-supabase-auth.workspace = true
+
+[dev-dependencies]
+mockito.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

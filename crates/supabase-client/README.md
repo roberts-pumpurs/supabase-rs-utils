@@ -18,7 +18,7 @@ use clap::Parser;
 use futures::StreamExt;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
-use rp_supabase_client::{new_authenticated, PostgrestResponse};
+use rp_supabase_client::{new_authenticated, PostgerstResponse};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -60,9 +60,9 @@ async fn main() {
                 .build()
                 .send()
                 .await
-                .map(PostgrestResponse::new)
+                .map(PostgerstResponse::<serde_json::Value>::new)
                 .unwrap()
-                .json::<serde_json::Value>()
+                .json()
                 .await;
 
             println!("Response: {:?}", res);
@@ -70,3 +70,25 @@ async fn main() {
     }
 }
 ```
+
+## Generated schema bindings
+
+Use [rp-supabase-codegen](../supabase-codegen/README.md) as a build dependency.
+It generates Rust bindings from PostgreSQL catalogs or a committed offline snapshot.
+No external generator CLI is required.
+
+Generated rows implement `schema::Relation`. Call `schema::from::<Row>(client.clone())`
+to select their schema and table while retaining the existing PostgREST builder.
+Generated RPC markers work with `schema::rpc::<Function>(client.clone(), &args)`.
+
+Insert and update payloads distinguish omitted fields from explicit null.
+`schema::Field<Option<T>>` represents omission, null, or a value.
+`schema::Array<T>` preserves nullable elements and nested PostgreSQL arrays.
+`schema::prelude` exports these helpers and the `include_schema!` macro.
+
+`PostgerstResponse::json` uses Serde JSON with arbitrary precision.
+It preserves generated numeric values without converting them to floating point.
+`ResponseError::Json` contains `serde_json::Error`.
+
+Run the [complete build-script example](../supabase-codegen-example/README.md)
+to exercise offline generation or live CRUD and RPC calls.

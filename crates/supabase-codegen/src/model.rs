@@ -1,0 +1,123 @@
+//! Versioned, portable `PostgreSQL` schema metadata. Snapshots contain no credentials or row data.
+
+use serde::{Deserialize, Serialize};
+
+/// Current on-disk snapshot format.
+pub const SNAPSHOT_VERSION: u32 = 1;
+
+/// Metadata that can be checked into source control for offline builds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Snapshot {
+    pub version: u32,
+    pub schemas: Vec<Schema>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Schema {
+    pub name: String,
+    pub enums: Vec<Enum>,
+    pub composites: Vec<Composite>,
+    pub tables: Vec<Table>,
+    pub functions: Vec<Function>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Enum {
+    pub name: String,
+    pub variants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Composite {
+    pub name: String,
+    pub fields: Vec<Column>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Table {
+    pub name: String,
+    pub kind: TableKind,
+    pub columns: Vec<Column>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TableKind {
+    Table,
+    View,
+    MaterializedView,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Column {
+    pub name: String,
+    pub ty: PgType,
+    pub nullable: bool,
+    pub has_default: bool,
+    pub generated: bool,
+    pub identity: Identity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Identity {
+    None,
+    Always,
+    ByDefault,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    content = "value",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum PgType {
+    Builtin(String),
+    Named {
+        schema: String,
+        name: String,
+    },
+    Array(Box<PgType>),
+    Domain {
+        schema: String,
+        name: String,
+        base: Box<PgType>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Function {
+    pub name: String,
+    pub arguments: Vec<Argument>,
+    pub returns: ReturnType,
+    pub returns_set: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Argument {
+    pub name: String,
+    pub ty: PgType,
+    pub has_default: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    content = "value",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum ReturnType {
+    Type(PgType),
+    Record(Vec<Column>),
+}

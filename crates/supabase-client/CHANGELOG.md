@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-06
+
+### Added
+
+- Generated-schema integration with relation and RPC metadata, typed field omission,
+  nullable multidimensional arrays, a runtime prelude, and `include_schema!`.
+
+### Changed
+
+- Decode JSON responses with arbitrary-precision Serde JSON, preserving PostgreSQL
+  numeric values and avoiding a mutable response-body copy.
+- **Breaking:** `ResponseError::Json` now contains `serde_json::Error` instead of
+  `simd_json::Error`.
+
 ## [0.4.0] - 2026-08-10
 
 ### Changed
