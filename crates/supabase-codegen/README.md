@@ -10,7 +10,7 @@ Keep a schema snapshot in source control. Ordinary builds need no database or cr
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.5"
+rp-supabase-client = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 # Add these when your schema has UUID or temporal columns.
@@ -18,8 +18,12 @@ uuid = { version = "1", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]
-rp-supabase-codegen = "0.5"
+rp-supabase-codegen = "0.6"
 ```
+
+Generated bindings only need the `schema` runtime. Applications with their own `postgrest` client and
+response handling can use `rp-supabase-client = { version = "0.6", default-features = false }`. That
+leaves out authentication and does not enable `serde_json/arbitrary_precision`.
 
 ```rust
 // build.rs
@@ -93,7 +97,7 @@ For `public.messages`, the generator emits:
 - `public::tables::messages::Insert`, with required fields and omittable default or nullable fields.
 - `public::tables::messages::Update`, with omittable writable fields and `Default`.
 
-Rows implement `schema::Relation`. The `schema::from::<Row>(client)` helper selects the correct schema and relation. It consumes the client, so cloning remains explicit. It returns the existing `rp_postgrest::Builder`.
+Rows implement `schema::Relation`. The `schema::from::<Row>(client)` helper selects the correct schema and relation. It consumes the client, so cloning remains explicit. It returns the existing `postgrest::Builder`.
 
 ```rust,ignore
 use rp_supabase_client::{PostgerstResponse, schema};
@@ -128,7 +132,7 @@ Bulk inserts with different omitted keys require care. PostgREST's `Prefer: miss
 
 Integer widths match PostgreSQL. UUID and temporal columns use `uuid` and `chrono`. Timestamps with time zones use `DateTime<FixedOffset>`. JSON columns use `serde_json::Value`.
 
-Numeric columns use `serde_json::Number`. Enable `arbitrary_precision` when decoding outside the client. `PostgerstResponse::json` enables this support through the client's dependency and preserves numeric precision. Non-finite numeric values need a custom mapping because they are not ordinary JSON numbers.
+Numeric columns use `serde_json::Number`. Enable `arbitrary_precision` when decoding outside the client. `PostgerstResponse::json` enables this support through the client's default `client` feature and preserves numeric precision. Non-finite numeric values need a custom mapping because they are not ordinary JSON numbers.
 
 Bytea, network, interval, range, geometric, and text-search columns use their JSON string representation. SQL bytea does not map to a JSON byte array.
 

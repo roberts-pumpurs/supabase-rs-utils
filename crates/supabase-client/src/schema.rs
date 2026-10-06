@@ -69,7 +69,7 @@ pub trait Function {
 
 /// Start a relation request, retaining the native `PostgREST` builder.
 #[must_use]
-pub fn from<R: Relation>(client: rp_postgrest::Postgrest) -> rp_postgrest::Builder {
+pub fn from<R: Relation>(client: postgrest::Postgrest) -> postgrest::Builder {
     let name: Cow<'_, str> = utf8_percent_encode(R::NAME, PATH_SEGMENT).into();
     client.schema(R::SCHEMA).from(name)
 }
@@ -79,9 +79,9 @@ pub fn from<R: Relation>(client: rp_postgrest::Postgrest) -> rp_postgrest::Build
 /// # Errors
 /// Returns the argument serialization error, including an unskipped omitted field.
 pub fn rpc<F: Function>(
-    client: rp_postgrest::Postgrest,
+    client: postgrest::Postgrest,
     args: &F::Args,
-) -> Result<rp_postgrest::Builder, serde_json::Error> {
+) -> Result<postgrest::Builder, serde_json::Error> {
     let body = serde_json::to_string(args)?;
     let name: Cow<'_, str> = utf8_percent_encode(F::NAME, PATH_SEGMENT).into();
     Ok(client.schema(F::SCHEMA).rpc(name, body))

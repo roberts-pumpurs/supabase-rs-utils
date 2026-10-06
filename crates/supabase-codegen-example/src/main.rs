@@ -4,7 +4,7 @@
 //! SUPABASE_CODEGEN_DATABASE_URL in the build environment. Optional API credentials
 //! come only from SUPABASE_CODEGEN_API_KEY and SUPABASE_CODEGEN_ACCESS_TOKEN.
 
-use rp_supabase_client::rp_postgrest::{Builder, Postgrest};
+use rp_supabase_client::postgrest::{Builder, Postgrest};
 use rp_supabase_client::schema::{Array, Field, from, rpc};
 use serde::de::DeserializeOwned;
 use serde_json::json;

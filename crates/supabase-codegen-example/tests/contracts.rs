@@ -47,7 +47,7 @@ async fn quoted_relation_and_function_names_reach_the_correct_endpoint() {
         .with_body(r#"[{"id":7,"body":"quoted","active":true}]"#)
         .create_async()
         .await;
-    let client = rp_supabase_client::rp_postgrest::Postgrest::new(server.url());
+    let client = rp_supabase_client::postgrest::Postgrest::new(server.url());
     let response = rp_supabase_client::schema::from::<tables::a_b::Row>(client)
         .select("*")
         .execute()
@@ -65,7 +65,7 @@ async fn quoted_relation_and_function_names_reach_the_correct_endpoint() {
         .with_body(r#""quoted RPC""#)
         .create_async()
         .await;
-    let client = rp_supabase_client::rp_postgrest::Postgrest::new(server.url());
+    let client = rp_supabase_client::postgrest::Postgrest::new(server.url());
     let request = rp_supabase_client::schema::rpc::<functions::rpc_echo::Function>(
         client,
         &functions::rpc_echo::Args {

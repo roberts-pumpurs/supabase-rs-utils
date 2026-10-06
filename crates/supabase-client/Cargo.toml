@@ -11,20 +11,37 @@ license.workspace = true
 edition.workspace = true
 readme = "README.md"
 
+[features]
+default = ["client"]
+# Authentication, response decoding, and arbitrary-precision numeric decoding.
+# Without it, only the generated-binding runtime in `schema` is compiled.
+client = [
+    "dep:futures",
+    "dep:rp-postgrest-error",
+    "dep:rp-supabase-auth",
+    "dep:thiserror",
+    "dep:tracing",
+    "serde_json/arbitrary_precision",
+]
+
 [dependencies]
-rp-postgrest.workspace = true
-tracing.workspace = true
-rp-postgrest-error.workspace = true
-thiserror.workspace = true
+postgrest.workspace = true
 serde.workspace = true
-serde_json = { workspace = true, features = ["arbitrary_precision"] }
+serde_json.workspace = true
 percent-encoding = "2"
-futures.workspace = true
-rp-supabase-auth.workspace = true
+tracing = { workspace = true, optional = true }
+rp-postgrest-error = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+rp-supabase-auth = { workspace = true, optional = true }
 
 [dev-dependencies]
 mockito.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[test]]
+name = "numeric_response"
+required-features = ["client"]
 
 [lints]
 workspace = true

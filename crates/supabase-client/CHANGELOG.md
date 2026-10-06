@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-06
+
+### Added
+
+- A default `client` feature. Disable default features to depend only on the generated-binding
+  `schema` runtime, without `rp-supabase-auth` or `serde_json/arbitrary_precision`.
+
+### Changed
+
+- **Breaking:** depend on `rp-postgrest` 2.1 and `reqwest` 0.13.
+- **Breaking:** re-export the PostgREST client as `postgrest` (its library name since
+  `rp-postgrest` 2) instead of `rp_postgrest`.
+
 ## [0.5.0] - 2026-10-06
 
 ### Added

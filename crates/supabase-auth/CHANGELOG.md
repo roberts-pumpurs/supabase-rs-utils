@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-06
+
+### Changed
+
+- **Breaking:** depend on `reqwest` 0.13; public error types wrap `reqwest` 0.13 errors.
+
 ## [0.5.0] - 2026-10-06
 
 ### Other

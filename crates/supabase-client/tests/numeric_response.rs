@@ -3,7 +3,7 @@
     reason = "Cargo compiles this integration test as its own test crate."
 )]
 
-use rp_supabase_client::{PostgerstResponse, rp_postgrest::reqwest};
+use rp_supabase_client::{PostgerstResponse, postgrest::reqwest};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

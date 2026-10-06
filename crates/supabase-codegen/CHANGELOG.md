@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-06
+
+### Changed
+
+- Document schema-only runtime use through `rp-supabase-client` with default features disabled.
+
 ## [0.5.0] - 2026-10-06
 
 ### Added
