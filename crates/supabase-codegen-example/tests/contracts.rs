@@ -359,3 +359,19 @@ fn typed_json_preserves_sql_null_array_set_and_argument_contracts() {
     assert_eq!(serde_json::to_value(update).unwrap(), serde_json::json!({"manifest":{"ok":true}}));
     assert!(serde_json::from_str::<invite_outcome::Returns>(r#"{"ok":"not a boolean"}"#).is_err());
 }
+
+#[test]
+fn relationship_aliases_keep_marker_identity_and_wire_hints() {
+    use bindings::public::tables::{customers, orders};
+    use rp_supabase_client::{key, schema::{Relationship, RelationshipByKey}};
+    fn same<T>(_: T, _: T) {}
+    same(orders::relationships::orders_customer, orders::relationships::customer_id);
+    same(orders::relationships::orders_customer, orders::relationships::customer);
+    same(customers::relationships::orders_orders_customer, customers::relationships::orders);
+    type CustomerEdge = <orders::Row as RelationshipByKey<key!(type customer)>>::Edge;
+    type ReverseEdge = <customers::Row as RelationshipByKey<key!(type orders)>>::Edge;
+    assert_eq!(CustomerEdge::HINT, "orders_customer");
+    assert_eq!(ReverseEdge::HINT, "orders_customer");
+    assert_eq!(CustomerEdge::RESOURCE, "customers");
+    assert_eq!(ReverseEdge::RESOURCE, "orders");
+}

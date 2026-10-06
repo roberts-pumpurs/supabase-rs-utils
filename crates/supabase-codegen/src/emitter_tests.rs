@@ -390,3 +390,19 @@ fn json_customization_rejects_non_json_and_unknown_targets() {
         assert!(crate::Generator::new().json_type(target, "crate::Outcome").from_metadata(metadata.clone()).is_err());
     }
 }
+
+#[test]
+fn relationship_aliases_reject_unknown_edges_and_collisions() {
+    let mut metadata = snapshot();
+    let mut orders = table("orders");
+    orders.foreign_keys.push(foreign_key("orders_customer", "customers"));
+    metadata.schemas[0].tables = vec![orders, table("customers")];
+    for (target, alias) in [
+        ("public.tables.orders.relationships.missing", "customer"),
+        ("public.tables.orders.relationships.orders_customer", "orders_customer"),
+        ("public.tables.orders.relationships.orders_customer", "parent_id"),
+        ("public.tables.orders.relationships.orders_customer", "not valid"),
+    ] {
+        assert!(crate::Generator::new().relationship_alias(target, alias).from_metadata(metadata.clone()).is_err());
+    }
+}

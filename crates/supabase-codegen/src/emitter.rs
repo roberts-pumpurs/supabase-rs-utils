@@ -168,6 +168,8 @@ fn relationship_markers(
     schema: &Schema,
     table: &Table,
     runtime: &syn::Path,
+    config: &Config,
+    used_aliases: &mut BTreeSet<String>,
 ) -> Result<TokenStream, Error> {
     let mut edges = Vec::new();
     if table.kind == TableKind::Table && !table.is_partition {
@@ -220,8 +222,45 @@ fn relationship_markers(
         false,
         &format!("{}.{}.relationships", schema.name, table.name),
     )?;
+    let mut alias_candidates: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (name, target, foreign_key, _) in &edges {
+        let alias = if table.foreign_keys.iter().any(|key| core::ptr::eq(key, *foreign_key)) {
+            match foreign_key.columns.as_slice() {
+                [column] => Some(column.clone()),
+                _ => None,
+            }
+        } else {
+            Some(target.name.clone())
+        };
+        if let Some(alias) = alias {
+            alias_candidates.entry(ident(&alias, false)?.to_string()).or_default().push(name.clone());
+        }
+    }
+    let mut occupied: BTreeSet<String> = edges.iter().map(|edge| ident(&edge.0, false).map(|name| name.to_string())).collect::<Result<_, _>>()?;
+    let mut aliases: BTreeMap<String, Vec<Ident>> = BTreeMap::new();
+    for (alias, names) in alias_candidates {
+        if names.len() == 1 && !occupied.contains(&alias) {
+            if let Some(name) = names.first() {
+                aliases.entry(name.clone()).or_default().push(syn::parse_str(&alias).map_err(|error| invalid(format!("invalid relationship alias: {error}")))?);
+                occupied.insert(alias);
+            }
+        }
+    }
+    for (name, _, _, _) in &edges {
+        let target = format!("{}.tables.{}.relationships.{}", ident(&schema.name, false)?, ident(&table.name, false)?, ident(name, false)?);
+        if let Some(alias) = config.relationship_aliases.get(&target) {
+            let alias = syn::parse_str::<Ident>(alias).map_err(|error| invalid(format!("invalid relationship alias for {target}: {error}")))?;
+            if occupied.iter().any(|name| name.trim_start_matches("r#") == alias.to_string().trim_start_matches("r#")) {
+                return Err(invalid(format!("relationship alias collision {target}: {alias}")));
+            }
+            occupied.insert(alias.to_string());
+            used_aliases.insert(target);
+            aliases.entry(name.clone()).or_default().push(alias);
+        }
+    }
     let mut output = TokenStream::new();
     for (name, target, foreign_key, to_one) in edges {
+        let edge_aliases = aliases.remove(&name).unwrap_or_default();
         let name = ident(&name, false)?;
         let key = key_name(&name, runtime);
         let target_name = ident(&target.name, false)?;
@@ -247,6 +286,15 @@ fn relationship_markers(
                 type Edge = #name;
             }
         ));
+        for alias in edge_aliases {
+            let key = key_name(&alias, runtime);
+            output.extend(quote!(
+                pub use self::#name as #alias;
+                impl #runtime::RelationshipByKey<#key> for super::Row {
+                    type Edge = #name;
+                }
+            ));
+        }
     }
     Ok(output)
 }
@@ -904,6 +952,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         }
     }
     let mut modules = TokenStream::new();
+    let mut used_relationship_aliases = BTreeSet::new();
     for schema_name in included {
         let schema = schemas
             .get(&schema_name)
@@ -968,7 +1017,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 ColumnContract::resolve(&table.columns, Some(table.kind), &target)?.collect();
             let fields = emitter.fields(columns.iter().copied(), 3, FieldMode::Row, &target)?;
             let runtime = emitter.runtime.clone();
-            let relationship_markers = relationship_markers(schema, table, &runtime)?;
+            let relationship_markers = relationship_markers(schema, table, &runtime, config, &mut used_relationship_aliases)?;
             let wire_name = &table.name;
             let mut writes = TokenStream::new();
             let mut column_markers = TokenStream::new();
@@ -1137,6 +1186,11 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             return Err(invalid(format!(
                 "unknown generated type attribute target {target:?}"
             )));
+        }
+    }
+    for target in config.relationship_aliases.keys() {
+        if !used_relationship_aliases.contains(target) {
+            return Err(invalid(format!("unknown relationship_alias target {target:?}")));
         }
     }
     let macros = if config.reexport_macros {

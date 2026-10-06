@@ -37,6 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .json_type("public.functions.invite_outcome.Args.audience", "InviteOutcome")
         .json_type("public.functions.invite_outcome.Returns", "InviteOutcome")
         .json_type("public.functions.invite_records.Record.data", "InviteOutcome")
+        .relationship_alias("public.tables.orders.relationships.orders_customer", "customer")
         .from_snapshot("tests/schema.json")?
         .write_to_out_dir("contract_bindings.rs")?;
     Generator::new()

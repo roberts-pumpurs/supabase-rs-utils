@@ -45,6 +45,7 @@ struct Config {
     pub column_types: BTreeMap<String, String>,
     pub json_types: BTreeMap<String, String>,
     pub reexport_macros: bool,
+    pub relationship_aliases: BTreeMap<String, String>,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -86,6 +87,7 @@ impl Generator {
                 column_types: BTreeMap::new(),
                 json_types: BTreeMap::new(),
                 reexport_macros: false,
+                relationship_aliases: BTreeMap::new(),
             },
         }
     }
@@ -195,6 +197,14 @@ impl Generator {
     #[must_use]
     pub fn reexport_macros(mut self) -> Self {
         self.config.reexport_macros = true;
+        self
+    }
+
+    /// Add an alias for one canonical qualified relationship marker.
+    /// For example `public.tables.orders.relationships.orders_customer_fkey`.
+    #[must_use]
+    pub fn relationship_alias(mut self, target: impl Into<String>, alias: impl Into<String>) -> Self {
+        self.config.relationship_aliases.insert(target.into(), alias.into());
         self
     }
 
