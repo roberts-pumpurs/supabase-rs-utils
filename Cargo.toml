@@ -84,8 +84,8 @@ rp-supabase-client = { path = "crates/supabase-client", version = "0.9" }
 rp-postgrest-error = { path = "crates/postgrest-error", version = "0.8" }
 rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.8" }
 rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.9" }
-rp-postgrest = { path = "crates/postgrest", version = "3.0" }
-rp-supabase-client-macros = { path = "crates/supabase-client-macros", version = "=0.9.1" }
+rp-postgrest = { path = "crates/postgrest", version = "3.1" }
+rp-supabase-client-macros = { path = "crates/supabase-client-macros", version = "=0.9.2" }
 
 # Async
 futures-concurrency = "7.4"

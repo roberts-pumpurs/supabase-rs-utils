@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-macros-v0.9.1...rp-supabase-client-macros-v0.9.2) - 2026-10-06
+
+### Changed
+
+- Align the version with client 0.9.2. Macro behavior is unchanged.
+
 ## [0.9.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-macros-v0.9.0...rp-supabase-client-macros-v0.9.1) - 2026-10-06
 
 ### Fixed

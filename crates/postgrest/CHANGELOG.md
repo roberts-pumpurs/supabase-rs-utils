@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.1.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-postgrest-v3.0.0...rp-postgrest-v3.1.0) - 2026-10-06
+
 ### Added
 
 - `Error::postgrest_response()` returns observed HTTP status and the borrowed typed server error body together.
