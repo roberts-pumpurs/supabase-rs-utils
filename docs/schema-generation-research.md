@@ -196,4 +196,10 @@ The same live acceptance covered all six reported product gaps:
 
 `Projection<R>` keeps shared DTO contracts relation-specific. Paged read queries cannot transition into writes. Counts preserve requested pagination, and minimal writes do not decode a fabricated row array. The owned client retains observed status, response headers, and effective URL for response failures. Malformed error envelopes retain the exact body bytes read successfully; valid structured errors do not retain original JSON bytes, and failed body reads do not promise partial-byte retention.
 
-Release checks passed on Rust 1.85.1. The workspace passed 134 tests and 9 documentation tests. Standalone no-default-feature runs passed 36 owned-client tests and 8 schema-runtime tests. Strict all-feature/all-target Clippy and stable formatting passed. The final live program passed every scenario listed above after the fixes. Registry-only consumer verification follows publication.
+Release checks passed on Rust 1.85.1. The workspace passed 134 tests and 9 documentation tests. Standalone no-default-feature runs passed 36 owned-client tests and 8 schema-runtime tests. Strict all-feature/all-target Clippy and stable formatting passed. The final live program passed every scenario listed above after the fixes.
+
+`rp-postgrest` 3.0.0 and all six workspace crates at 0.8.0 are published on crates.io. Each has a matching signed Git tag and GitHub release.
+
+A separate Rust 1.85.1 consumer generated bindings from PostgreSQL and ran against PostgREST using only registry dependencies. Shared DTOs, typed ordering/IN/JSON/pagination, server totals, minimal writes, and raw DTO decoding passed. Independent Reqwest query pairs, inferred RPC and HTTP 204, RLS-null embeds, and typed HTTP 300 ambiguity details also passed.
+
+Cargo metadata confirmed one `rp-postgrest` 3.0.0, one canonical error 0.8.0, and one Reqwest 0.13.5. These crates have no path dependencies in the consumer.
