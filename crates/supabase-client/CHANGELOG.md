@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.9.0...rp-supabase-client-v0.9.1) - 2026-10-06
+
+### Fixed
+
+- *(release)* publish selections from committed source
+
 ### Fixed
 
 - Declare Rust 1.85 support and link the package documentation.
