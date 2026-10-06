@@ -359,6 +359,7 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         let mut primary_key = None;
         let mut unique_keys = Vec::new();
         let mut foreign_keys = Vec::new();
+        let mut check_enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for constraint in constraints
             .remove(&row.get::<_, i64>("oid"))
             .unwrap_or_default()
@@ -375,7 +376,25 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
                     },
                     referenced_columns: constraint.get("referenced_columns"),
                 }),
+                "c" => {
+                    for column in &columns {
+                        if !matches!(&column.ty, PgType::Builtin(name) if matches!(name.as_str(), "text" | "varchar" | "bpchar")) { continue; }
+                        if let Some(variants) = constraint.get::<_, Option<&str>>("expression").and_then(|expression| crate::model::check_values(expression, &column.name)) {
+                            check_enums.entry(column.name.clone()).and_modify(|existing| existing.retain(|variant| variants.contains(variant))).or_insert(variants);
+                        }
+                    }
+                }
                 _ => return Err(database_error("unsupported constraint kind")),
+            }
+        }
+        for (column_name, variants) in check_enums {
+            let enum_name = format!("{}_{}", row.get::<_, &str>("name"), column_name);
+            if variants.is_empty() || catalog.schema(&schema).enums.iter().any(|enumeration| enumeration.name == enum_name) {
+                return Err(Error::Invalid(format!("invalid or colliding CHECK enum {schema}.{enum_name}")));
+            }
+            catalog.schema(&schema).enums.push(Enum { name: enum_name.clone(), variants });
+            if let Some(column) = columns.iter_mut().find(|column| column.name == column_name) {
+                column.ty = PgType::Named { schema: schema.clone(), name: enum_name };
             }
         }
         catalog.schema(&schema).tables.push(Table {

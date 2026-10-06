@@ -372,6 +372,7 @@ struct Emitter<'a> {
     used_targets: BTreeSet<String>,
     overrides: BTreeMap<String, Ident>,
     named: BTreeMap<(String, String), bool>, // true for composite, false for enum
+    field_overrides: BTreeMap<String, Ident>,
 }
 
 fn attributes(values: &[String]) -> Result<Vec<syn::Attribute>, Error> {
@@ -531,11 +532,21 @@ impl Emitter<'_> {
         }
     }
 
+    fn field_ty(&self, ty: &PgType, target: &str, depth: usize) -> Result<TokenStream, Error> {
+        if let Some(alias) = self.field_overrides.get(target) {
+            let parents = core::iter::repeat_with(|| quote!(super::)).take(depth);
+            Ok(quote!(#(#parents)* #alias))
+        } else {
+            self.ty(ty, depth)
+        }
+    }
+
     fn fields<'a>(
         &self,
         columns: impl IntoIterator<Item = ColumnContract<'a>>,
         depth: usize,
         mode: FieldMode,
+        target: &str,
     ) -> Result<TokenStream, Error> {
         let mut fields = TokenStream::new();
         for contract in columns {
@@ -546,7 +557,7 @@ impl Emitter<'_> {
             let column = contract.column;
             let name = ident(&column.name, false)?;
             let wire = &column.name;
-            let base = self.ty(&column.ty, depth)?;
+            let base = self.field_ty(&column.ty, &format!("{target}.{}", column.name), depth)?;
             let ty = contract.value_type(base);
             if presence == FieldPresence::Omittable {
                 let runtime = &self.runtime;
@@ -584,7 +595,7 @@ impl Emitter<'_> {
             ReturnType::Record(columns) => {
                 let decoration = self.decoration(&format!("{target}.Record"), true, false);
                 let columns = ColumnContract::resolve(columns, None, target)?;
-                let fields = self.fields(columns, 3, FieldMode::Row)?;
+                let fields = self.fields(columns, 3, FieldMode::Row, &format!("{target}.Record"))?;
                 record.extend(quote!(#decoration pub struct Record { #fields }));
                 if function.returns_set {
                     quote!(::std::vec::Vec<Record>)
@@ -685,7 +696,24 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             ))
         })
         .collect::<Result<_, Error>>()?;
+    let mut override_types = override_types;
+    let mut canonical_fields = BTreeMap::new();
+    for (target, value) in &config.column_types {
+        let canonical = snapshot.schemas.iter().filter(|schema| config.schemas.contains(&schema.name)).find_map(|schema| {
+            schema.tables.iter().find_map(|table| table.columns.iter().find_map(|column| {
+                let canonical = format!("{}.tables.{}.{}", schema.name, table.name, column.name);
+                (target == &canonical || target == &format!("{}.{}.{}", schema.name, table.name, column.name)).then_some(canonical)
+            }))
+        }).ok_or_else(|| invalid(format!("unknown column_type target {target:?}")))?;
+        if canonical_fields.contains_key(&canonical) {
+            return Err(invalid(format!("duplicate column_type target {canonical:?}")));
+        }
+        let key = format!("field:{canonical}");
+        override_types.insert(key.clone(), syn::parse_str::<syn::Type>(value).map_err(|e| invalid(format!("invalid override for {target}: {e}")))?);
+        canonical_fields.insert(canonical, key);
+    }
     let (aliases, overrides) = override_aliases(&prelude, override_types);
+    let field_overrides = canonical_fields.into_iter().filter_map(|(target, key)| overrides.get(&key).cloned().map(|alias| (target, alias))).collect();
     let targeted = config
         .type_attributes
         .iter()
@@ -757,6 +785,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         used_targets: BTreeSet::new(),
         overrides,
         named: BTreeMap::new(),
+        field_overrides,
     };
     for name in &included {
         let schema = schemas
@@ -829,7 +858,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             let target = format!("{schema_ident}.composites.{name}");
             let decoration = emitter.decoration(&target, true, false);
             let columns = ColumnContract::resolve(&composite.fields, None, &target)?;
-            let fields = emitter.fields(columns, 2, FieldMode::Row)?;
+            let fields = emitter.fields(columns, 2, FieldMode::Row, &target)?;
             composites.extend(quote!(#decoration pub struct #name { #fields }));
         }
         unique(
@@ -850,7 +879,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             let decoration = emitter.decoration(&format!("{target}.Row"), true, false);
             let columns: Vec<_> =
                 ColumnContract::resolve(&table.columns, Some(table.kind), &target)?.collect();
-            let fields = emitter.fields(columns.iter().copied(), 3, FieldMode::Row)?;
+            let fields = emitter.fields(columns.iter().copied(), 3, FieldMode::Row, &target)?;
             let runtime = emitter.runtime.clone();
             let relationship_markers = relationship_markers(schema, table, &runtime)?;
             let wire_name = &table.name;
@@ -862,7 +891,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 let key = key_name(&column_name, &runtime);
                 let wire = &column.name;
                 let selection = selection_identifier(wire);
-                let base = emitter.ty(&column.ty, 4)?;
+                let base = emitter.field_ty(&column.ty, &format!("{target}.{}", column.name), 4)?;
                 let value = contract.value_type(base.clone());
                 let nullable_impl = if contract.nullable {
                     quote!(impl #runtime::NullableColumn for #column_name {})
@@ -902,7 +931,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                         .all(|column| mode.presence(column) != FieldPresence::Required);
                     let decoration =
                         emitter.decoration(&format!("{target}.{rust_name}"), false, default);
-                    let fields = emitter.fields(columns.iter().copied(), 3, mode)?;
+                    let fields = emitter.fields(columns.iter().copied(), 3, mode, &target)?;
                     let rust_name = Ident::new(rust_name, Span::call_site());
                     writes.extend(quote!(#decoration pub struct #rust_name { #fields }));
                 }

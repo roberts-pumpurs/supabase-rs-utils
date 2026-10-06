@@ -42,6 +42,7 @@ struct Config {
     pub type_attributes: BTreeMap<String, Vec<String>>,
     pub runtime_path: String,
     pub not_null: BTreeMap<String, Vec<String>>,
+    pub column_types: BTreeMap<String, String>,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -80,6 +81,7 @@ impl Generator {
                 type_attributes: BTreeMap::new(),
                 runtime_path: "::rp_supabase_client::schema".to_owned(),
                 not_null: BTreeMap::new(),
+                column_types: BTreeMap::new(),
             },
         }
     }
@@ -165,6 +167,14 @@ impl Generator {
         fields: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
         self.config.not_null.insert(target.into(), fields.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Override one SQL column's base type, preserving nullability and omission.
+    /// Accepts `public.table.column` or `public.tables.table.column`.
+    #[must_use]
+    pub fn column_type(mut self, target: impl Into<String>, rust_type: impl Into<String>) -> Self {
+        self.config.column_types.insert(target.into(), rust_type.into());
         self
     }
 

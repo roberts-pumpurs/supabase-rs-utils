@@ -323,3 +323,19 @@ async fn typed_rpc_rejects_wrong_composite_set_and_void_shapes() {
         void.assert_async().await;
     }
 }
+
+#[test]
+fn check_enum_and_external_override_share_write_and_filter_contracts() {
+    use bindings::{OwnerType, public::{enums::CheckProbeOwnerType, tables::check_probe}};
+    use rp_supabase_client::schema::{Column, Field, params};
+    let row: check_probe::Row = serde_json::from_str(r#"{"owner_type":"organization","external_owner":"user"}"#).unwrap();
+    let owner: <check_probe::columns::owner_type as Column>::Filter = row.owner_type;
+    let external: <check_probe::columns::external_owner as Column>::Value = row.external_owner;
+    assert_eq!(owner.to_string(), "organization");
+    assert_eq!(external, Some(OwnerType::User));
+    assert_eq!(params::eq(check_probe::columns::owner_type, &owner).1, "eq.organization");
+    let insert = check_probe::Insert { owner_type: CheckProbeOwnerType::User, external_owner: Field::Value(None) };
+    assert_eq!(serde_json::to_value(insert).unwrap(), serde_json::json!({"owner_type":"user","external_owner":null}));
+    let update = check_probe::Update { owner_type: Field::Value(CheckProbeOwnerType::Organization), external_owner: Field::Value(Some(OwnerType::User)) };
+    assert_eq!(serde_json::to_value(update).unwrap(), serde_json::json!({"owner_type":"organization","external_owner":"user"}));
+}

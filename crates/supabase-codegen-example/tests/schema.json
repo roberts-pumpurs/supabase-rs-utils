@@ -4,6 +4,7 @@
     {
       "name": "public",
       "enums": [
+        {"name": "check_probe_owner_type", "variants": ["user", "organization"]},
         {
           "name": "record",
           "variants": [
@@ -44,6 +45,15 @@
         }
       ],
       "tables": [
+        {
+          "name": "check_probe",
+          "kind": "table",
+          "columns": [
+            {"name": "owner_type", "ty": {"kind": "named", "value": {"schema": "public", "name": "check_probe_owner_type"}}, "nullable": false, "has_default": false, "generated": false, "identity": "none"},
+            {"name": "external_owner", "ty": {"kind": "builtin", "value": "text"}, "nullable": true, "has_default": false, "generated": false, "identity": "none"}
+          ],
+          "primary_key": null, "unique_keys": [], "foreign_keys": [], "is_partition": false
+        },
         {
           "name": "column_defaults",
           "kind": "table",

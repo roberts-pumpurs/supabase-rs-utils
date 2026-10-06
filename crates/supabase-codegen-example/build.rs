@@ -28,8 +28,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Compile consumer regressions using an alias that deliberately shares Row's name.
     Generator::new()
         .schemas(["public", "shared"])
-        .prelude("use ::std::string::String as Row;")
+        .prelude("use ::std::string::String as Row; #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)] pub enum OwnerType { #[serde(rename = \"user\")] User }")
         .type_override("pg_catalog.text", "Row")
+        .column_type("public.check_probe.external_owner", "OwnerType")
         .from_snapshot("tests/schema.json")?
         .write_to_out_dir("contract_bindings.rs")?;
     Ok(())

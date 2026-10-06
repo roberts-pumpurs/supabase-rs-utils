@@ -257,4 +257,48 @@ mod contract_tests {
         assert_eq!(annotation(Some("@not_null id, name"), "@not_null").unwrap(), ["id", "name"]);
         assert!(annotation(Some("@not_null"), "@not_null").is_err());
     }
+
+    #[test]
+    fn check_membership_accepts_only_literal_exact_forms() {
+        let labels = Some(vec!["organization".into(), "user".into()]);
+        assert_eq!(check_values("owner_type IN ('user', 'organization')", "owner_type"), labels);
+        assert_eq!(check_values("((owner_type = ANY (ARRAY['user'::text, 'organization'::text])))", "owner_type"), labels);
+        for expression in ["owner_type NOT IN ('user')", "owner_type IN ('user', other)", "owner_type IN ('user') OR owner_type IS NULL", "lower(owner_type) IN ('user')", "owner_type::uuid IN ('user')"] {
+            assert!(check_values(expression, "owner_type").is_none());
+        }
+    }
+}
+
+/// Recognize only a single string-valued column membership test. A compound
+/// CHECK, negation, nonliteral item, or arbitrary cast never becomes an enum.
+pub(crate) fn check_values(sql: &str, column: &str) -> Option<Vec<String>> {
+    use sqlparser::{ast::{BinaryOperator, Expr, SelectItem, SetExpr, Statement, Value}, dialect::PostgreSqlDialect, parser::Parser};
+    fn unnest(expression: &Expr) -> Option<&Expr> {
+        match expression {
+            Expr::Nested(inner) => unnest(inner),
+            Expr::Cast { expr, data_type, .. } if matches!(data_type.to_string().as_str(), "TEXT" | "VARCHAR" | "CHAR" | "TEXT[]" | "VARCHAR[]" | "pg_catalog.text" | "pg_catalog.text[]") => unnest(expr),
+            Expr::Cast { .. } => None,
+            other => Some(other),
+        }
+    }
+    let statements = Parser::parse_sql(&PostgreSqlDialect {}, &format!("SELECT {sql}")).ok()?;
+    let [Statement::Query(query)] = statements.as_slice() else { return None };
+    let SetExpr::Select(select) = query.body.as_ref() else { return None };
+    let [SelectItem::UnnamedExpr(expression)] = select.projection.as_slice() else { return None };
+    let (left, values) = match unnest(expression)? {
+        Expr::InList { expr, list, negated: false } => (expr.as_ref(), list.as_slice()),
+        Expr::AnyOp { left, compare_op: BinaryOperator::Eq, right, .. } => {
+            let Expr::Array(array) = unnest(right)? else { return None };
+            (left.as_ref(), array.elem.as_slice())
+        }
+        _ => return None,
+    };
+    if !matches!(unnest(left)?, Expr::Identifier(name) if name.value == column) || values.is_empty() { return None; }
+    let mut labels = values.iter().map(|value| match unnest(value)? {
+        Expr::Value(value) => match &value.value { Value::SingleQuotedString(label) => Some(label.clone()), _ => None },
+        _ => None,
+    }).collect::<Option<Vec<_>>>()?;
+    labels.sort();
+    labels.dedup();
+    Some(labels)
 }

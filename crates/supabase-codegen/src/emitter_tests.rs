@@ -369,3 +369,15 @@ fn not_null_customization_persists_and_rejects_unknown_fields() {
     assert!(crate::Generator::new().not_null("public.functions.finalize.Record", ["missing"]).from_metadata(metadata.clone()).is_err());
     assert!(crate::Generator::new().not_null("public.functions.missing.Record", ["id"]).from_metadata(metadata).is_err());
 }
+
+#[test]
+fn column_overrides_validate_sql_targets_and_rust_types() {
+    let mut metadata = snapshot();
+    metadata.schemas[0].tables.push(table("adapters"));
+    for target in ["public.adapters.id", "public.tables.adapters.id"] {
+        assert!(crate::Generator::new().column_type(target, "::domain::OwnerType").from_metadata(metadata.clone()).is_ok());
+    }
+    for (target, ty) in [("public.adapters.missing", "String"), ("public.missing.id", "String"), ("public.adapters.id", "Vec<")] {
+        assert!(crate::Generator::new().column_type(target, ty).from_metadata(metadata.clone()).is_err());
+    }
+}

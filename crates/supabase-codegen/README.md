@@ -325,6 +325,8 @@ Bytea, network, interval, range, geometric, and text-search columns use their JS
 
 Enums preserve exact database labels with Serde renames. Composites honor snapshot field nullability. Live introspection defaults composite fields to nullable unless a type comment declares `@not_null id, name`. Domains preserve their qualified identity for overrides and otherwise resolve to their base type. Unknown types fail generation and require `type_override`.
 
+Validated string membership CHECK constraints, including PostgreSQL's normalized `= ANY (ARRAY[...])` form, generate enums in `public::enums`, named after the table and column. Compound predicates, arbitrary casts and nonliteral values remain their SQL base types. Enums support Serde and `Display` for filters. `.column_type("public.adapters.owner_type", "::domain::OwnerType")` replaces a column's base Rust type across Row, Insert, Update and column markers without changing omission or nullability. The canonical `public.tables.adapters.owner_type` target also works. Unknown columns or invalid Rust types fail generation.
+
 ### Functions
 
 Named-object RPCs emit `public::functions::<name>::Args`, `Returns`, and `Function`. Overloads use deterministic numbered modules, such as `lookup_0` and `lookup_1`, while retaining the original RPC name.
