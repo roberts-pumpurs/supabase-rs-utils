@@ -13,6 +13,22 @@ pub struct Snapshot {
     pub schemas: Vec<Schema>,
 }
 
+impl Snapshot {
+    /// Export metadata for later offline generation without rendering Rust.
+    ///
+    /// # Errors
+    /// Fails when encoding, reading, or writing the snapshot fails.
+    #[expect(
+        clippy::impl_trait_in_params,
+        reason = "Path arguments accept standard owned and borrowed path types."
+    )]
+    pub fn write_to(&self, path: impl AsRef<std::path::Path>) -> Result<(), crate::Error> {
+        let mut bytes = serde_json::to_vec_pretty(self)?;
+        bytes.push(b'\n');
+        crate::write_if_changed(path.as_ref(), &bytes)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Schema {

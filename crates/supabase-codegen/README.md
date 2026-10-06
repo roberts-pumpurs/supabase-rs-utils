@@ -78,18 +78,31 @@ Live failures never fall back to cached metadata. Choose offline or live input e
 
 ### Creating a snapshot
 
-Call the same library outside `build.rs` to refresh the committed snapshot:
+Install the standalone CLI. It does not build the consumer crate or run its `build.rs`.
+
+```sh
+cargo install rp-supabase-codegen --features cli
+export DATABASE_URL='postgresql://...'
+rp-supabase-codegen snapshot write --out schema.json
+rp-supabase-codegen snapshot check --out schema.json
+```
+
+Both commands default to `public` and `schema.json`. Repeat `--schema` to select more schemas. Use `--database-url-env NAME` for another environment variable. Prefer environment variables over `--database-url`, which can expose credentials in process listings and shell history.
+
+`check` writes nothing. It reports schema drift and exits with status 1 on drift, missing snapshots, or invalid input. Review drift before running `write` with the same schema selection and output path. Snapshot acquisition does not require Rust type overrides.
+
+The library also exports metadata without generating Rust bindings:
 
 ```rust
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     rp_supabase_codegen::Generator::new()
-        .from_database_env("SUPABASE_CODEGEN_DATABASE_URL")?
-        .write_snapshot("schema.json")?;
+        .snapshot_from_database(&std::env::var("DATABASE_URL")?)?
+        .write_to("schema.json")?;
     Ok(())
 }
 ```
 
-Run this Rust code in a small host-side example or maintenance task. Do not write committed snapshots from an ordinary build script. `Bindings::snapshot()` also exposes typed metadata for your own tooling.
+Do not write committed snapshots from an ordinary build script. `Bindings::snapshot()` also exposes typed metadata for tooling.
 
 ## Generated contracts
 
@@ -329,7 +342,7 @@ Enums preserve exact database labels with Serde renames. Composites honor snapsh
 
 Validated string membership CHECK constraints, including PostgreSQL's normalized `= ANY (ARRAY[...])` form, generate enums in `public::enums`, named after the table and column. Compound predicates, arbitrary casts and nonliteral values remain their SQL base types. Enums support Serde and `Display` for filters. `.column_type("public.adapters.owner_type", "::domain::OwnerType")` replaces a column's base Rust type across Row, Insert, Update and column markers without changing omission or nullability. The canonical `public.tables.adapters.owner_type` target also works. Unknown columns or invalid Rust types fail generation.
 
-Relationship canonical names remain unchanged. Single-column forward links also expose their FK column name when unambiguous; reverse links expose the source table name when unambiguous. `.relationship_alias("public.tables.orders.relationships.orders_customer_fkey", "customer")` adds a checked custom alias. Alias markers are reexports of the canonical marker, including its cardinality and exact PostgREST constraint hint. Unknown relationship targets and aliases colliding with another canonical or alias name fail generation.
+Relationship canonical names remain unchanged. Single-column forward links expose the FK column name without a trailing `_id`, when unambiguous. Reverse links expose the source table name when unambiguous. `.relationship_alias("public.tables.orders.relationships.orders_customer_fkey", "buyer")` adds a checked custom alias. Alias markers retain the canonical marker's cardinality and exact PostgREST constraint hint. Unknown targets and alias name collisions fail generation.
 
 Use `.json_type("public.functions.invite_org_member.Returns", "crate::InviteOutcome")` for typed JSON RPC results. Table columns accept `public.tables.artifacts.manifest` or `public.artifacts.manifest`; composite fields use `public.composites.ResultInfo.data`, RPC inputs use `public.functions.invite.Args.audience`, and OUT fields use `public.functions.invite.Record.data`. Targets must have a JSON/JSONB type, a domain over JSON, or an array of JSON. Custom Serde types bind in the root prelude scope. Generated fields retain SQL `Option`, `Array`, omission and set-returning wrappers, so plain fetches decode the custom type directly.
 
@@ -379,7 +392,7 @@ Prelude items appear at the generated root. Nested modules import their parent, 
 
 ## Scope and safety
 
-View and materialized-view bindings are read-only. Live introspection infers non-null direct base-column projections from a single base table, without joins, CTEs or grouping. Other fields remain nullable. View comments and RPC record function comments can declare `@not_null field, other_field`. These contracts persist in snapshots. `.not_null("public.functions.finalize_flow_publish.Record", ["flow_id", "created"])` provides the same checked contract in the builder. View targets use `public.tables.view.Row`; composite targets use `public.composites.ResultInfo`. Unknown fields and targets fail generation.
+View and materialized-view bindings are read-only. Ordinary views infer non-null direct base-column projections from a single base table, without joins, CTEs or grouping. Materialized views remain nullable because their stored rows can predate current base constraints. View comments and RPC record function comments can declare `@not_null field, other_field`. Snapshots retain these contracts. `.not_null("public.functions.finalize_flow_publish.Record", ["flow_id", "created"])` sets the same contract in the builder. View targets use `public.tables.view.Row`; composite targets use `public.composites.ResultInfo`. Unknown fields and targets fail generation.
 
 The named-object RPC generator excludes unnamed input arguments, trigger functions, polymorphic pseudotypes, and dynamic records without named output fields. Those need different request bodies or explicit application-specific contracts.
 

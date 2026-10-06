@@ -265,6 +265,20 @@ impl Generator {
         Ok(Bindings { snapshot, source })
     }
 
+    /// Acquire portable metadata without rendering Rust bindings.
+    ///
+    /// # Errors
+    /// Fails for empty schema selection, connection errors, or invalid catalog metadata.
+    #[cfg(feature = "database")]
+    pub fn snapshot_from_database(&self, url: &str) -> Result<Snapshot, Error> {
+        if self.config.schemas.is_empty() || self.config.schemas.iter().any(String::is_empty) {
+            return Err(Error::Invalid(
+                "select at least one nonempty schema".to_owned(),
+            ));
+        }
+        database::introspect(url, &self.config.schemas)
+    }
+
     /// Introspect `PostgreSQL` directly. No CLI or Supabase service-role key is needed.
     ///
     /// Register migration paths in your build script, because Cargo cannot detect database DDL.
@@ -274,7 +288,7 @@ impl Generator {
     /// Fails on connection, catalog, unsupported SQL type, or generation errors.
     #[cfg(feature = "database")]
     pub fn from_database(self, url: &str) -> Result<Bindings, Error> {
-        let snapshot = database::introspect(url, &self.config.schemas)?;
+        let snapshot = self.snapshot_from_database(url)?;
         self.from_metadata(snapshot)
     }
 
@@ -362,9 +376,7 @@ impl Bindings {
     /// # Errors
     /// Fails when encoding or writing the snapshot fails.
     pub fn write_snapshot(&self, path: impl AsRef<Path>) -> Result<(), Error> {
-        let mut bytes = serde_json::to_vec_pretty(&self.snapshot)?;
-        bytes.push(b'\n');
-        write_if_changed(path.as_ref(), &bytes)
+        self.snapshot.write_to(path)
     }
 }
 

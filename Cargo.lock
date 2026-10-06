@@ -2051,6 +2051,7 @@ dependencies = [
 name = "rp-supabase-codegen"
 version = "0.9.3"
 dependencies = [
+ "clap",
  "heck",
  "native-tls",
  "postgres",
