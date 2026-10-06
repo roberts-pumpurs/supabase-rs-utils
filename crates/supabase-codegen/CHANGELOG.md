@@ -6,13 +6,9 @@
 
 ### Fixed
 
-- *(ci)* restore release checks ([#28](https://github.com/roberts-pumpurs/supabase-rs-utils/pull/28))
-- *(release)* publish selections from committed source
-
-### Fixed
-
 - Require PostgreSQL client 0.19.14 with patched protocol decoding and bounded SCRAM authentication.
 - Link the package API documentation.
+- Publish committed source through release-plz. Version 0.9.0 archives retain their original dirty-tree provenance.
 
 ## [0.9.0] - 2026-10-06
 

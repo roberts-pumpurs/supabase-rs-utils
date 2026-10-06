@@ -11,12 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(release)* publish selections from committed source
-
-### Fixed
-
 - Declare Rust 1.85 support and link the package documentation.
-- Release committed source through release-plz instead of publishing a dirty working tree.
+- Publish committed source through release-plz. Version 0.9.0 archives retain their original dirty-tree provenance.
 
 ## [0.9.0] - 2026-10-06
 

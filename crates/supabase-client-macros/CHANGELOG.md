@@ -11,4 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(release)* publish selections from committed source
+- Link the package API documentation.
+- Publish committed source through release-plz. Version 0.9.0 archives retain their original dirty-tree provenance.
+
+## [0.9.0] - 2026-10-06
+
+### Added
+
+- Query-first `select!` expressions and lossless `key!` names for client 0.9.
