@@ -13,6 +13,7 @@
         }
       ],
       "composites": [
+        {"name": "json_info", "fields": [{"name": "data", "ty": {"kind": "builtin", "value": "jsonb"}, "nullable": false, "has_default": false, "generated": false, "identity": "none"}]},
         {
           "name": "payload",
           "fields": [
@@ -45,6 +46,10 @@
         }
       ],
       "tables": [
+        {"name": "json_probe", "kind": "table", "columns": [
+          {"name": "manifest", "ty": {"kind": "builtin", "value": "jsonb"}, "nullable": true, "has_default": false, "generated": false, "identity": "none"},
+          {"name": "manifests", "ty": {"kind": "array", "value": {"kind": "builtin", "value": "jsonb"}}, "nullable": false, "has_default": false, "generated": false, "identity": "none"}
+        ], "primary_key": null, "unique_keys": [], "foreign_keys": [], "is_partition": false},
         {
           "name": "check_probe",
           "kind": "table",
@@ -708,6 +713,8 @@
         }
       ],
       "functions": [
+        {"name": "invite_outcome", "arguments": [{"name": "audience", "ty": {"kind": "builtin", "value": "jsonb"}, "has_default": false}], "returns": {"kind": "type", "value": {"kind": "builtin", "value": "jsonb"}}, "returns_set": false},
+        {"name": "invite_records", "arguments": [], "returns": {"kind": "record", "value": [{"name": "data", "ty": {"kind": "builtin", "value": "jsonb"}, "nullable": false, "has_default": false, "generated": false, "identity": "none"}]}, "returns_set": true},
         {
           "name": "void_action",
           "arguments": [],

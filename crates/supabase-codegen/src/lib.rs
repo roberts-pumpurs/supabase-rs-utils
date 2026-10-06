@@ -43,6 +43,7 @@ struct Config {
     pub runtime_path: String,
     pub not_null: BTreeMap<String, Vec<String>>,
     pub column_types: BTreeMap<String, String>,
+    pub json_types: BTreeMap<String, String>,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -82,6 +83,7 @@ impl Generator {
                 runtime_path: "::rp_supabase_client::schema".to_owned(),
                 not_null: BTreeMap::new(),
                 column_types: BTreeMap::new(),
+                json_types: BTreeMap::new(),
             },
         }
     }
@@ -175,6 +177,14 @@ impl Generator {
     #[must_use]
     pub fn column_type(mut self, target: impl Into<String>, rust_type: impl Into<String>) -> Self {
         self.config.column_types.insert(target.into(), rust_type.into());
+        self
+    }
+
+    /// Decode a JSON field, RPC argument or return using a custom Serde type.
+    /// SQL arrays, nullability, and set-returning wrappers remain intact.
+    #[must_use]
+    pub fn json_type(mut self, target: impl Into<String>, rust_type: impl Into<String>) -> Self {
+        self.config.json_types.insert(target.into(), rust_type.into());
         self
     }
 

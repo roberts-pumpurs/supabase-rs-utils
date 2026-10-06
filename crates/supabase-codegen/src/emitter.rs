@@ -373,6 +373,7 @@ struct Emitter<'a> {
     overrides: BTreeMap<String, Ident>,
     named: BTreeMap<(String, String), bool>, // true for composite, false for enum
     field_overrides: BTreeMap<String, Ident>,
+    json_targets: BTreeSet<String>,
 }
 
 fn attributes(values: &[String]) -> Result<Vec<syn::Attribute>, Error> {
@@ -535,9 +536,26 @@ impl Emitter<'_> {
     fn field_ty(&self, ty: &PgType, target: &str, depth: usize) -> Result<TokenStream, Error> {
         if let Some(alias) = self.field_overrides.get(target) {
             let parents = core::iter::repeat_with(|| quote!(super::)).take(depth);
-            Ok(quote!(#(#parents)* #alias))
+            let base = quote!(#(#parents)* #alias);
+            if self.json_targets.contains(target) {
+                Ok(self.json_wrappers(ty, base))
+            } else {
+                Ok(base)
+            }
         } else {
             self.ty(ty, depth)
+        }
+    }
+
+    fn json_wrappers(&self, ty: &PgType, base: TokenStream) -> TokenStream {
+        match ty {
+            PgType::Array(inner) => {
+                let inner = self.json_wrappers(inner, base);
+                let runtime = &self.runtime;
+                quote!(#runtime::Array<#inner>)
+            }
+            PgType::Domain { base: inner, .. } => self.json_wrappers(inner, base),
+            _ => base,
         }
     }
 
@@ -604,7 +622,7 @@ impl Emitter<'_> {
                 }
             }
             ReturnType::Type(ty) => {
-                let base = self.ty(ty, 3)?;
+                let base = self.field_ty(ty, &format!("{target}.Returns"), 3)?;
                 if matches!(ty, PgType::Builtin(name) if name == "void" || name == "pg_catalog.void")
                 {
                     quote!(())
@@ -636,6 +654,54 @@ fn is_json_column_type(ty: &PgType) -> bool {
         PgType::Domain { base, .. } => is_json_column_type(base),
         PgType::Named { .. } | PgType::Array(_) => false,
     }
+}
+
+fn is_json_type(ty: &PgType) -> bool {
+    match ty {
+        PgType::Array(inner) | PgType::Domain { base: inner, .. } => is_json_type(inner),
+        _ => is_json_column_type(ty),
+    }
+}
+
+fn json_field_types<'a>(snapshot: &'a Snapshot, config: &Config) -> Result<BTreeMap<String, &'a PgType>, Error> {
+    let mut fields = BTreeMap::new();
+    for schema in &snapshot.schemas {
+        let schema_ident = ident(&schema.name, false)?;
+        for composite in &schema.composites {
+            let name = ident(&composite.name, true)?;
+            for column in &composite.fields {
+                fields.insert(format!("{schema_ident}.composites.{name}.{}", column.name), &column.ty);
+            }
+        }
+        if !config.schemas.contains(&schema.name) { continue; }
+        for table in &schema.tables {
+            let name = ident(&table.name, false)?;
+            for column in &table.columns {
+                fields.insert(format!("{schema_ident}.tables.{name}.{}", column.name), &column.ty);
+            }
+        }
+        let mut groups: BTreeMap<&str, Vec<&Function>> = BTreeMap::new();
+        for function in &schema.functions { groups.entry(&function.name).or_default().push(function); }
+        for (name, mut functions) in groups {
+            functions.sort_by_key(|function| function.arguments.iter().map(|argument| format!("{}:{:?}", argument.name, argument.ty)).collect::<Vec<_>>());
+            let count = functions.len();
+            let base = ident(name, false)?.to_string();
+            for (index, function) in functions.into_iter().enumerate() {
+                let name = if count == 1 { base.clone() } else { format!("{}_{index}", base.strip_prefix("r#").unwrap_or(&base)) };
+                let target = format!("{schema_ident}.functions.{name}");
+                for argument in &function.arguments {
+                    fields.insert(format!("{target}.Args.{}", argument.name), &argument.ty);
+                }
+                match &function.returns {
+                    ReturnType::Type(ty) => { fields.insert(format!("{target}.Returns"), ty); }
+                    ReturnType::Record(columns) => for column in columns {
+                        fields.insert(format!("{target}.Record.{}", column.name), &column.ty);
+                    },
+                }
+            }
+        }
+    }
+    Ok(fields)
 }
 
 fn references(ty: &PgType, config: &Config, output: &mut BTreeSet<String>) {
@@ -712,6 +778,26 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         override_types.insert(key.clone(), syn::parse_str::<syn::Type>(value).map_err(|e| invalid(format!("invalid override for {target}: {e}")))?);
         canonical_fields.insert(canonical, key);
     }
+    let known_fields = json_field_types(snapshot, config)?;
+    let mut json_targets = BTreeSet::new();
+    for (target, value) in &config.json_types {
+        let canonical = if known_fields.contains_key(target) {
+            target.clone()
+        } else {
+            known_fields.keys().find(|canonical| canonical.replace(".tables.", ".") == *target).cloned().ok_or_else(|| invalid(format!("unknown json_type target {target:?}")))?
+        };
+        let ty = known_fields.get(&canonical).ok_or_else(|| invalid(format!("unknown json_type target {target:?}")))?;
+        if !is_json_type(ty) {
+            return Err(invalid(format!("json_type target {target:?} is not JSON-compatible")));
+        }
+        if canonical_fields.contains_key(&canonical) {
+            return Err(invalid(format!("conflicting field overrides for {canonical:?}")));
+        }
+        let key = format!("field:{canonical}");
+        override_types.insert(key.clone(), syn::parse_str::<syn::Type>(value).map_err(|error| invalid(format!("invalid json_type for {target}: {error}")))?);
+        json_targets.insert(canonical.clone());
+        canonical_fields.insert(canonical, key);
+    }
     let (aliases, overrides) = override_aliases(&prelude, override_types);
     let field_overrides = canonical_fields.into_iter().filter_map(|(target, key)| overrides.get(&key).cloned().map(|alias| (target, alias))).collect();
     let targeted = config
@@ -786,6 +872,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         overrides,
         named: BTreeMap::new(),
         field_overrides,
+        json_targets,
     };
     for name in &included {
         let schema = schemas
@@ -1026,7 +1113,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 for argument in &function.arguments {
                     let field = ident(&argument.name, false)?;
                     let wire = &argument.name;
-                    let base = emitter.ty(&argument.ty, 3)?;
+                    let base = emitter.field_ty(&argument.ty, &format!("{target}.Args.{}", argument.name), 3)?;
                     if argument.has_default {
                         let runtime = &emitter.runtime;
                         let skip = format!(

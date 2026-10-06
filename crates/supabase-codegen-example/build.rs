@@ -28,9 +28,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Compile consumer regressions using an alias that deliberately shares Row's name.
     Generator::new()
         .schemas(["public", "shared"])
-        .prelude("use ::std::string::String as Row; #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)] pub enum OwnerType { #[serde(rename = \"user\")] User }")
+        .prelude("use ::std::string::String as Row; #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)] pub enum OwnerType { #[serde(rename = \"user\")] User } #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)] pub struct InviteOutcome { pub ok: bool }")
         .type_override("pg_catalog.text", "Row")
         .column_type("public.check_probe.external_owner", "OwnerType")
+        .json_type("public.tables.json_probe.manifest", "InviteOutcome")
+        .json_type("public.tables.json_probe.manifests", "InviteOutcome")
+        .json_type("public.composites.JsonInfo.data", "InviteOutcome")
+        .json_type("public.functions.invite_outcome.Args.audience", "InviteOutcome")
+        .json_type("public.functions.invite_outcome.Returns", "InviteOutcome")
+        .json_type("public.functions.invite_records.Record.data", "InviteOutcome")
         .from_snapshot("tests/schema.json")?
         .write_to_out_dir("contract_bindings.rs")?;
     Ok(())

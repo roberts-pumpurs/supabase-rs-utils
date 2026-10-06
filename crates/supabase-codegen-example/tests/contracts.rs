@@ -339,3 +339,23 @@ fn check_enum_and_external_override_share_write_and_filter_contracts() {
     let update = check_probe::Update { owner_type: Field::Value(CheckProbeOwnerType::Organization), external_owner: Field::Value(Some(OwnerType::User)) };
     assert_eq!(serde_json::to_value(update).unwrap(), serde_json::json!({"owner_type":"organization","external_owner":"user"}));
 }
+
+#[test]
+fn typed_json_preserves_sql_null_array_set_and_argument_contracts() {
+    use bindings::{InviteOutcome, public::{composites::JsonInfo, functions::{invite_outcome, invite_records}, tables::json_probe}};
+    use rp_supabase_client::schema::{Array, Column, Field};
+    let row: json_probe::Row = serde_json::from_str(r#"{"manifest":null,"manifests":[{"ok":true},null]}"#).unwrap();
+    let manifest: <json_probe::columns::manifest as Column>::Value = row.manifest;
+    assert_eq!(manifest, None);
+    assert_eq!(row.manifests, Array::Elements(vec![Some(InviteOutcome { ok: true }), None]));
+    let outcome: invite_outcome::Returns = serde_json::from_str(r#"{"ok":true}"#).unwrap();
+    assert_eq!(outcome, Some(InviteOutcome { ok: true }));
+    let records: invite_records::Returns = serde_json::from_str(r#"[{"data":{"ok":true}}]"#).unwrap();
+    assert!(records[0].data.ok);
+    let composite: JsonInfo = serde_json::from_str(r#"{"data":{"ok":true}}"#).unwrap();
+    assert!(composite.data.ok);
+    assert_eq!(serde_json::to_value(invite_outcome::Args { audience: Some(InviteOutcome { ok: false }) }).unwrap(), serde_json::json!({"audience":{"ok":false}}));
+    let update = json_probe::Update { manifest: Field::Value(Some(InviteOutcome { ok: true })), manifests: Field::Omit };
+    assert_eq!(serde_json::to_value(update).unwrap(), serde_json::json!({"manifest":{"ok":true}}));
+    assert!(serde_json::from_str::<invite_outcome::Returns>(r#"{"ok":"not a boolean"}"#).is_err());
+}

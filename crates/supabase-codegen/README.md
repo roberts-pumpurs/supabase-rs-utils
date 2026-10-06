@@ -327,6 +327,8 @@ Enums preserve exact database labels with Serde renames. Composites honor snapsh
 
 Validated string membership CHECK constraints, including PostgreSQL's normalized `= ANY (ARRAY[...])` form, generate enums in `public::enums`, named after the table and column. Compound predicates, arbitrary casts and nonliteral values remain their SQL base types. Enums support Serde and `Display` for filters. `.column_type("public.adapters.owner_type", "::domain::OwnerType")` replaces a column's base Rust type across Row, Insert, Update and column markers without changing omission or nullability. The canonical `public.tables.adapters.owner_type` target also works. Unknown columns or invalid Rust types fail generation.
 
+Use `.json_type("public.functions.invite_org_member.Returns", "crate::InviteOutcome")` for typed JSON RPC results. Table columns accept `public.tables.artifacts.manifest` or `public.artifacts.manifest`; composite fields use `public.composites.ResultInfo.data`, RPC inputs use `public.functions.invite.Args.audience`, and OUT fields use `public.functions.invite.Record.data`. Targets must have a JSON/JSONB type, a domain over JSON, or an array of JSON. Custom Serde types bind in the root prelude scope. Generated fields retain SQL `Option`, `Array`, omission and set-returning wrappers, so plain fetches decode the custom type directly.
+
 ### Functions
 
 Named-object RPCs emit `public::functions::<name>::Args`, `Returns`, and `Function`. Overloads use deterministic numbered modules, such as `lookup_0` and `lookup_1`, while retaining the original RPC name.

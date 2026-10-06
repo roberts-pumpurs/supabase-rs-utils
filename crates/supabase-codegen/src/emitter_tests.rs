@@ -381,3 +381,12 @@ fn column_overrides_validate_sql_targets_and_rust_types() {
         assert!(crate::Generator::new().column_type(target, ty).from_metadata(metadata.clone()).is_err());
     }
 }
+
+#[test]
+fn json_customization_rejects_non_json_and_unknown_targets() {
+    let mut metadata = snapshot();
+    metadata.schemas[0].tables.push(table("items"));
+    for target in ["public.tables.items.id", "public.functions.missing.Returns"] {
+        assert!(crate::Generator::new().json_type(target, "crate::Outcome").from_metadata(metadata.clone()).is_err());
+    }
+}
