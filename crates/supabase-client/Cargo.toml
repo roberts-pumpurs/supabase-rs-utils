@@ -3,7 +3,7 @@ name = "rp-supabase-client"
 description = """
 Supabase PostgREST client wrapper with auth capabilities
 """
-version = "0.9.2"
+version = "0.9.3"
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true

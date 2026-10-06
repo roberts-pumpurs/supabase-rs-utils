@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.9.2...rp-supabase-client-v0.9.3) - 2026-10-06
+
+### Other
+
+- *(schema)* share column contracts and projection compilation
+
 ### Changed
 
 - Named `projection!` and query-local `select!` share strict decoder emission and exact-capacity selection rendering.

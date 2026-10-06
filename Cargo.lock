@@ -2024,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-client"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "futures",
  "mockito",
@@ -2040,7 +2040,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-client-macros"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2049,7 +2049,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-codegen"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "heck",
  "native-tls",
