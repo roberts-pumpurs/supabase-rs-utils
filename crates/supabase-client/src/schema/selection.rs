@@ -1,4 +1,4 @@
-//! Typed query-local selections and version-owned macro support.
+//! Typed named and query-local selection descriptors and version-owned macro support.
 use super::{
     Cardinality, Column, ColumnByKey, EmbedPath, Key, Path, Projection, Relation, Relationship,
     RelationshipByKey,
@@ -164,6 +164,7 @@ impl<C> Clone for Scalar<C> {
 }
 
 /// Resolved selection descriptor contract.
+/// Named and query-local projection compilation both render through these descriptors.
 #[doc(hidden)]
 pub trait SelectionField<R: Relation>: Copy {
     /// Resolved descriptor component.

@@ -47,13 +47,13 @@ fn normalized_name_collisions_and_unknown_attribute_targets_fail() {
     });
     let generator = crate::Generator::new();
     assert!(matches!(
-        generate(&metadata, &generator.config),
+        generator.clone().from_metadata(metadata.clone()),
         Err(Error::Invalid(_))
     ));
     metadata.schemas[0].tables[0].columns.pop();
     let generator = generator.type_attribute("public.tables.missing.Insert", "#[allow(dead_code)]");
     assert!(matches!(
-        generate(&metadata, &generator.config),
+        generator.from_metadata(metadata),
         Err(Error::Invalid(_))
     ));
 }
@@ -73,9 +73,12 @@ fn output_is_stable_across_metadata_object_order() {
         });
     }
     let generator = crate::Generator::new();
-    let first = generate(&metadata, &generator.config).unwrap();
+    let first = generator.clone().from_metadata(metadata.clone()).unwrap();
     metadata.schemas[0].tables.reverse();
-    assert_eq!(first, generate(&metadata, &generator.config).unwrap());
+    assert_eq!(
+        first.source(),
+        generator.from_metadata(metadata).unwrap().source()
+    );
 }
 
 #[test]

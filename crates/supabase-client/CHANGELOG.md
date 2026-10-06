@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Named `projection!` and query-local `select!` share strict decoder emission and exact-capacity selection rendering.
+  Both grammars, shared DTO contracts, and typed handle ownership stay unchanged.
+
 ## [0.9.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.9.1...rp-supabase-client-v0.9.2) - 2026-10-06
 
 ### Added

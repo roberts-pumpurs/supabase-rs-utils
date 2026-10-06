@@ -45,6 +45,99 @@
       ],
       "tables": [
         {
+          "name": "column_defaults",
+          "kind": "table",
+          "columns": [
+            {
+              "name": "nullable",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": true,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "defaulted",
+              "ty": {
+                "kind": "domain",
+                "value": {
+                  "schema": "public",
+                  "name": "defaulted_number",
+                  "base": {
+                    "kind": "builtin",
+                    "value": "int4"
+                  }
+                }
+              },
+              "nullable": false,
+              "has_default": true,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "by_default",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "by_default"
+            },
+            {
+              "name": "generated",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": true,
+              "identity": "none"
+            },
+            {
+              "name": "always",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "always"
+            }
+          ],
+          "primary_key": null,
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
+          "name": "column_view",
+          "kind": "view",
+          "columns": [
+            {
+              "name": "value",
+              "ty": {
+                "kind": "builtin",
+                "value": "int4"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": null,
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false
+        },
+        {
           "name": "a#b",
           "kind": "table",
           "columns": [

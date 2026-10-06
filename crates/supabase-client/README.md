@@ -48,7 +48,7 @@ For a renamed Cargo dependency, pass `runtime = renamed_client;` before the root
 
 Selections and inline handles are copyable zero-byte values. Each macro expansion has a distinct owner. Shared named child descendants use `selected.billing.then(AddressSummary::country)` or `AddressSummary::country` inside the billing filter scope. They do not expose `.child.country`. Paths containing named DTO handles retain their stored alias strings.
 
-Missing selected fields fail decoding, including nullable fields. Explicit null is accepted where the schema permits it. Duplicate selected keys fail; extra keys are ignored. Neither local selection nor named child reuse requires `Debug` or `Serialize`. Generated record implementations for those traits depend on the selected values.
+Missing selected fields fail decoding, including nullable fields. Explicit null is accepted where the schema permits it. Duplicate selected keys fail; extra keys are ignored. Named `projection!` and query-local `select!` compile through the same streaming typed decoder and exact-capacity field/embed renderer, without an intermediate JSON map. Neither local selection nor named child reuse requires `Debug` or `Serialize`. Generated record implementations for those traits depend on the selected values.
 
 Keep named DTOs for reusable children and stable public return types. Move local result fields into an application DTO when needed; no JSON conversion is required.
 
@@ -87,7 +87,7 @@ let same_dto = adapters::query(client.clone())
 println!("{} rows, {} total", page.data.len(), page.count);
 ```
 
-The shared macro emits one DTO and a `Projection<R>` implementation for each relation. Every selected field must exist on each relation with exactly the same Rust value type and SQL response key. Unselected fields need not match. Selection preserves exact SQL response keys, including renamed identifiers. Missing selected fields are decoding errors even when their type allows null; extra fields are ignored.
+The shared macro emits one DTO and a `Projection<R>` implementation for each relation. Every selected field must exist on each relation with exactly the same Rust value type and SQL response key. Unselected fields need not match. Selection preserves exact SQL response keys, including renamed identifiers. Missing selected fields are decoding errors even when their type allows null; extra fields are ignored. Named projections retain their attributes, visibility, and DTO-owned relationship handles. `projection!` resolves its runtime through `$crate`, including renamed dependencies; the hidden proc-macro support is version-owned implementation, not additional caller syntax.
 
 Column markers enforce relation ownership and scalar filter types. String columns accept borrowed `str`; nullable comparisons take a non-null value. `is_null(column)` requires a nullable column. Typed `in_` accepts borrowed scalar values and quotes/escapes them in list context. `order` composes multiple terms; `order_with_nulls` accepts `Nulls::First` or `Last`. `json_text_eq` requires a JSON/JSONB column and a nonempty key path. It escapes path identifiers and leaves the scalar value literal; an empty path returns a configuration error.
 

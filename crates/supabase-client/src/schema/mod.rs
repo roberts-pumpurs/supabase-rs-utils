@@ -118,6 +118,7 @@ pub mod __private {
         alias, assert_distinct, assert_same_column, check_embed, check_empty, identifier_len,
         write_identifier,
     };
+    pub use rp_supabase_client_macros::__projection;
     pub use serde;
 }
 

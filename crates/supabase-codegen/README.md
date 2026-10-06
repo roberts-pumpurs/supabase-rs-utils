@@ -306,6 +306,12 @@ Non-null writes use `Field<T>`, so they cannot send null. Generated serializers 
 
 Generated expression columns and ALWAYS identity columns appear only in rows. BY DEFAULT identities remain optional on insert and writable on update. Domain defaults and not-null constraints participate in insert requirements.
 
+The generator resolves each relation column's read nullability and write obligation once.
+Rows, column marker value types and nullable capabilities, insert/update fields, and automatic
+`Default` derives consume that same private contract. `Insert` derives `Default` only when every
+writable field is omittable; `Update` always does. This does not change snapshot version 2 or
+the generated caller interface.
+
 Bulk inserts with different omitted keys require care. PostgREST's `Prefer: missing=default` controls missing-key defaults in bulk requests. Generated omission alone does not change server preferences.
 
 ### Types

@@ -6,6 +6,72 @@ mod bindings {
 use bindings::public::{functions, tables};
 
 #[test]
+fn column_contracts_agree_on_read_nullability_and_write_omission() {
+    use rp_supabase_client::schema::{Column, Field, NullableColumn};
+    use tables::{column_defaults as defaults, column_view as view};
+
+    fn nullable_column<C: NullableColumn>(_: C) {}
+
+    let row: defaults::Row = serde_json::from_str(
+        r#"{"nullable":null,"defaulted":7,"by_default":8,"generated":9,"always":10}"#,
+    )
+    .unwrap();
+    let nullable: <defaults::columns::nullable as Column>::Value = row.nullable;
+    let defaulted: <defaults::columns::defaulted as Column>::Value = row.defaulted;
+    let by_default: <defaults::columns::by_default as Column>::Value = row.by_default;
+    let generated: <defaults::columns::generated as Column>::Value = row.generated;
+    let always: <defaults::columns::always as Column>::Value = row.always;
+    assert_eq!(nullable, None);
+    assert_eq!((defaulted, by_default, generated, always), (7, 8, 9, 10));
+    nullable_column(defaults::columns::nullable);
+
+    assert_eq!(
+        serde_json::to_value(defaults::Insert::default()).unwrap(),
+        serde_json::json!({})
+    );
+    assert_eq!(
+        serde_json::to_value(defaults::Insert {
+            nullable: Field::Value(None),
+            defaulted: Field::Omit,
+            by_default: Field::Value(11),
+        })
+        .unwrap(),
+        serde_json::json!({"nullable": null, "by_default": 11})
+    );
+    assert_eq!(
+        serde_json::to_value(defaults::Update {
+            nullable: Field::Value(Some(12)),
+            defaulted: Field::Value(13),
+            by_default: Field::Omit,
+        })
+        .unwrap(),
+        serde_json::json!({"nullable": 12, "defaulted": 13})
+    );
+    assert_eq!(
+        serde_json::to_value(defaults::Update::default()).unwrap(),
+        serde_json::json!({})
+    );
+    assert_eq!(
+        serde_json::to_value(tables::a_b::Insert {
+            id: 1,
+            body: "required".into(),
+            active: Field::Omit,
+        })
+        .unwrap(),
+        serde_json::json!({"id": 1, "body": "required"})
+    );
+    assert_eq!(
+        serde_json::to_value(tables::a_b::Update::default()).unwrap(),
+        serde_json::json!({})
+    );
+
+    let row: view::Row = serde_json::from_str(r#"{"value":null}"#).unwrap();
+    let value: <view::columns::value as Column>::Value = row.value;
+    assert_eq!(value, None);
+    nullable_column(view::columns::value);
+}
+
+#[test]
 fn generated_names_do_not_shadow_primitive_or_prelude_types() {
     let row: tables::a_b::Row =
         serde_json::from_str(r#"{"id":7,"body":"text alias","active":true}"#).unwrap();

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Resolve relation column nullability and write obligations once for row fields, column markers,
+  insert/update payloads, and automatic `Default` eligibility. Generated contracts and snapshot
+  version 2 remain unchanged.
+
 ## [0.9.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-codegen-v0.9.1...rp-supabase-codegen-v0.9.2) - 2026-10-06
 
 ### Changed

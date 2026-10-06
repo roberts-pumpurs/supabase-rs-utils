@@ -38,6 +38,11 @@ typed-builder = "0.21"
     );
     let cases = [
         (
+            "named_projection_runtime_and_item_hygiene",
+            "#[allow(non_camel_case_types)] fn consumer(c: Postgrest) { use renamed as __selection_Runtime; struct str; struct usize; type __selection_Alias0=AddressSummary; __selection_Runtime::projection! { #[derive(Debug)] pub struct __selection_KeyVisitor for rel::orders { id, r#select: embed(rel::orders::relationships::orders_billing, __selection_Alias0, inner), matched: empty(rel::orders::relationships::order_details_details_order) } } let _: __selection_KeyVisitor=serde_json::from_str(\"{\\\"id\\\":7,\\\"select\\\":null}\").unwrap(); let _=rel::orders::query(c).select(__selection_Runtime::schema::named::<_, __selection_KeyVisitor>()).embedded(__selection_KeyVisitor::r#select.then(AddressSummary::country), |_| {}).exists(__selection_KeyVisitor::matched); }",
+            true,
+        ),
+        (
             "root_private_item_alias_hygiene",
             "fn consumer() { use rel::orders::Row as __Record; let selected=rp_supabase_client::select!(__Record => { id }); let _=selected.decode(\"[]\"); }",
             true,

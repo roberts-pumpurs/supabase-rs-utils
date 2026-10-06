@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Compile named projections through hidden support behind the runtime's `$crate`-preserving adapter.
+  Named and local records share one strict decoder emitter and one selected-field renderer.
+
 ## [0.9.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-macros-v0.9.1...rp-supabase-client-macros-v0.9.2) - 2026-10-06
 
 ### Changed

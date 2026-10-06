@@ -290,6 +290,79 @@ fn override_aliases(
     (aliases, overrides)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FieldPresence {
+    Excluded,
+    Required,
+    Omittable,
+}
+
+#[derive(Clone, Copy)]
+enum FieldMode {
+    Row,
+    Insert,
+    Update,
+}
+
+impl FieldMode {
+    const fn presence(self, column: &ColumnContract<'_>) -> FieldPresence {
+        match self {
+            Self::Row => FieldPresence::Required,
+            Self::Insert => column.insert,
+            Self::Update => match column.insert {
+                FieldPresence::Excluded => FieldPresence::Excluded,
+                FieldPresence::Required | FieldPresence::Omittable => FieldPresence::Omittable,
+            },
+        }
+    }
+}
+
+// Resolved once per relation; every rendering consumes the same read/write obligations.
+#[derive(Clone, Copy)]
+struct ColumnContract<'a> {
+    column: &'a Column,
+    nullable: bool,
+    insert: FieldPresence,
+}
+
+impl<'a> ColumnContract<'a> {
+    fn resolve(
+        columns: &'a [Column],
+        table_kind: Option<TableKind>,
+        context: &str,
+    ) -> Result<impl Iterator<Item = Self> + 'a, Error> {
+        unique(
+            columns.iter().map(|column| column.name.as_str()),
+            false,
+            context,
+        )?;
+        let base_table = table_kind == Some(TableKind::Table);
+        Ok(columns.iter().map(move |column| {
+            let nullable = column.nullable || !base_table;
+            let insert = if !base_table || column.generated || column.identity == Identity::Always {
+                FieldPresence::Excluded
+            } else if nullable || column.has_default || column.identity == Identity::ByDefault {
+                FieldPresence::Omittable
+            } else {
+                FieldPresence::Required
+            };
+            Self {
+                column,
+                nullable,
+                insert,
+            }
+        }))
+    }
+
+    fn value_type(&self, base: TokenStream) -> TokenStream {
+        if self.nullable {
+            quote!(::std::option::Option<#base>)
+        } else {
+            base
+        }
+    }
+}
+
 struct Emitter<'a> {
     config: &'a Config,
     runtime: syn::Path,
@@ -458,34 +531,24 @@ impl Emitter<'_> {
         }
     }
 
-    fn fields(
+    fn fields<'a>(
         &self,
-        columns: &[Column],
+        columns: impl IntoIterator<Item = ColumnContract<'a>>,
         depth: usize,
-        mode: &str,
-        context: &str,
+        mode: FieldMode,
     ) -> Result<TokenStream, Error> {
-        unique(columns.iter().map(|c| c.name.as_str()), false, context)?;
         let mut fields = TokenStream::new();
-        for column in columns {
-            if matches!(mode, "insert" | "update")
-                && (column.generated || column.identity == Identity::Always)
-            {
+        for contract in columns {
+            let presence = mode.presence(&contract);
+            if presence == FieldPresence::Excluded {
                 continue;
             }
+            let column = contract.column;
             let name = ident(&column.name, false)?;
             let wire = &column.name;
             let base = self.ty(&column.ty, depth)?;
-            let nullable = column.nullable || matches!(mode, "composite" | "view" | "record");
-            let ty = if nullable {
-                quote!(::std::option::Option<#base>)
-            } else {
-                base
-            };
-            let optional = mode == "update"
-                || mode == "insert"
-                    && (nullable || column.has_default || column.identity == Identity::ByDefault);
-            if optional {
+            let ty = contract.value_type(base);
+            if presence == FieldPresence::Omittable {
                 let runtime = &self.runtime;
                 let skip = format!(
                     "{}::Field::is_omit",
@@ -520,7 +583,8 @@ impl Emitter<'_> {
         let returns = match &function.returns {
             ReturnType::Record(columns) => {
                 let decoration = self.decoration(&format!("{target}.Record"), true, false);
-                let fields = self.fields(columns, 3, "record", target)?;
+                let columns = ColumnContract::resolve(columns, None, target)?;
+                let fields = self.fields(columns, 3, FieldMode::Row)?;
                 record.extend(quote!(#decoration pub struct Record { #fields }));
                 if function.returns_set {
                     quote!(::std::vec::Vec<Record>)
@@ -764,7 +828,8 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             let name = ident(&composite.name, true)?;
             let target = format!("{schema_ident}.composites.{name}");
             let decoration = emitter.decoration(&target, true, false);
-            let fields = emitter.fields(&composite.fields, 2, "composite", &target)?;
+            let columns = ColumnContract::resolve(&composite.fields, None, &target)?;
+            let fields = emitter.fields(columns, 2, FieldMode::Row)?;
             composites.extend(quote!(#decoration pub struct #name { #fields }));
         }
         unique(
@@ -783,34 +848,23 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             let name = ident(&table.name, false)?;
             let target = format!("{schema_ident}.tables.{name}");
             let decoration = emitter.decoration(&format!("{target}.Row"), true, false);
-            let fields = emitter.fields(
-                &table.columns,
-                3,
-                if table.kind == TableKind::Table {
-                    "row"
-                } else {
-                    "view"
-                },
-                &target,
-            )?;
+            let columns: Vec<_> =
+                ColumnContract::resolve(&table.columns, Some(table.kind), &target)?.collect();
+            let fields = emitter.fields(columns.iter().copied(), 3, FieldMode::Row)?;
             let runtime = emitter.runtime.clone();
             let relationship_markers = relationship_markers(schema, table, &runtime)?;
             let wire_name = &table.name;
             let mut writes = TokenStream::new();
             let mut column_markers = TokenStream::new();
-            for column in &table.columns {
+            for contract in &columns {
+                let column = contract.column;
                 let column_name = ident(&column.name, false)?;
                 let key = key_name(&column_name, &runtime);
                 let wire = &column.name;
                 let selection = selection_identifier(wire);
                 let base = emitter.ty(&column.ty, 4)?;
-                let nullable = column.nullable || table.kind != TableKind::Table;
-                let value = if nullable {
-                    quote!(::std::option::Option<#base>)
-                } else {
-                    base.clone()
-                };
-                let nullable_impl = if nullable {
+                let value = contract.value_type(base.clone());
+                let nullable_impl = if contract.nullable {
                     quote!(impl #runtime::NullableColumn for #column_name {})
                 } else {
                     TokenStream::new()
@@ -840,18 +894,15 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 ));
             }
             if table.kind == TableKind::Table {
-                for (rust_name, mode) in [("Insert", "insert"), ("Update", "update")] {
-                    let default = mode == "update"
-                        || table
-                            .columns
-                            .iter()
-                            .filter(|c| !c.generated && c.identity != Identity::Always)
-                            .all(|c| {
-                                c.nullable || c.has_default || c.identity == Identity::ByDefault
-                            });
+                for (rust_name, mode) in
+                    [("Insert", FieldMode::Insert), ("Update", FieldMode::Update)]
+                {
+                    let default = columns
+                        .iter()
+                        .all(|column| mode.presence(column) != FieldPresence::Required);
                     let decoration =
                         emitter.decoration(&format!("{target}.{rust_name}"), false, default);
-                    let fields = emitter.fields(&table.columns, 3, mode, &target)?;
+                    let fields = emitter.fields(columns.iter().copied(), 3, mode)?;
                     let rust_name = Ident::new(rust_name, Span::call_site());
                     writes.extend(quote!(#decoration pub struct #rust_name { #fields }));
                 }

@@ -10,6 +10,18 @@ use syn::{
     parse_macro_input,
 };
 
+mod named;
+mod projection;
+
+/// Version-owned support for the runtime's `$crate`-preserving `projection!` adapter.
+#[doc(hidden)]
+#[proc_macro]
+pub fn __projection(input: TokenStream) -> TokenStream {
+    let names = Names::new(input.clone().into());
+    let input = parse_macro_input!(input as named::Input);
+    named::expand(&names, &input).into()
+}
+
 struct Input {
     runtime: Path,
     root: Type,
@@ -236,8 +248,7 @@ fn node(names: &Names, rt: &Path, fields: &[Field], relation: &Tokens) -> Tokens
     let relation_ident = names.ident("relation");
     let emission = Emission::new(names, rt, fields);
     let record = record(&emission);
-    let keys = decoder_keys(&emission);
-    let decoder = decoder(&emission);
+    let decoder = local_decoder(&emission);
     let projection = projection(&emission);
     let descriptor = descriptor(&emission);
     let values = emission
@@ -246,7 +257,6 @@ fn node(names: &Names, rt: &Path, fields: &[Field], relation: &Tokens) -> Tokens
         .map(|field| field_value(names, rt, field));
     quote!({
         #record
-        #keys
         #decoder
         #projection
         #descriptor
@@ -340,110 +350,54 @@ fn record(emission: &Emission<'_>) -> Tokens {
     }
 }
 
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "quote emits identifier visitor branches, not emitter control flow"
-)]
-fn decoder_keys(emission: &Emission<'_>) -> Tokens {
-    let de_lifetime = syn::Lifetime::new(
-        &format!("'{}", emission.names.ident("de")),
-        proc_macro2::Span::mixed_site(),
-    );
-    let d_ident = emission.names.ident("D");
-    let e_ident = emission.names.ident("E");
-    let key_ident = emission.names.ident("Key");
-    let keyvisitor_ident = emission.names.ident("KeyVisitor");
-    let r_ident = emission.names.ident("R");
-    let rt = emission.runtime;
-    let fs: Vec<_> = emission.types().collect();
+fn local_generics(emission: &Emission<'_>) -> syn::Generics {
+    let relation_ident = emission.names.ident("R");
+    let fields = emission.types();
     let bound = emission.bound();
-    let dfs: Vec<_> = emission.decoded().map(|field| &field.ty).collect();
-    let indices: Vec<_> = emission.decoded().map(|field| field.index).collect();
-    quote! {
-        struct #key_ident<#r_ident,#(#fs),*>(::core::option::Option<::core::primitive::usize>, ::core::marker::PhantomData<fn() -> (#r_ident,#(#fs),*)>);
-        struct #keyvisitor_ident<#r_ident,#(#fs),*>(::core::marker::PhantomData<fn() -> (#r_ident,#(#fs),*)>);
-        impl<#de_lifetime,#r_ident,#(#fs),*> #rt::schema::__private::serde::de::Visitor<#de_lifetime> for #keyvisitor_ident<#r_ident,#(#fs),*> where #bound {
-            type Value = #key_ident<#r_ident,#(#fs),*>;
-            fn expecting(&self,f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result { f.write_str("a selected object field") }
-            fn visit_str<#e_ident: #rt::schema::__private::serde::de::Error>(self,key: &::core::primitive::str) -> ::core::result::Result<Self::Value,#e_ident> {
-                #(if key == <#dfs as #rt::schema::selection::SelectionField<#r_ident>>::KEY { return ::core::result::Result::Ok(#key_ident(::core::option::Option::Some(#indices), ::core::marker::PhantomData)); })*
-                ::core::result::Result::Ok(#key_ident(::core::option::Option::None, ::core::marker::PhantomData))
-            }
-        }
-        impl<#de_lifetime,#r_ident,#(#fs),*> #rt::schema::__private::serde::Deserialize<#de_lifetime> for #key_ident<#r_ident,#(#fs),*> where #bound {
-            fn deserialize<#d_ident: #rt::schema::__private::serde::Deserializer<#de_lifetime>>(d: #d_ident) -> ::core::result::Result<Self,#d_ident::Error> { d.deserialize_identifier(#keyvisitor_ident::<#r_ident,#(#fs),*>(::core::marker::PhantomData)) }
-        }
-    }
+    let mut generics: syn::Generics = syn::parse_quote!(<#relation_ident, #(#fields),*>);
+    generics.where_clause = Some(syn::parse_quote!(where #bound));
+    generics
 }
 
-// The complexity is inside the emitted decoder, not the emitter's control flow.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "quote emits the map visitor's field decoding branches"
-)]
-fn decoder(emission: &Emission<'_>) -> Tokens {
-    let de_lifetime = syn::Lifetime::new(
-        &format!("'{}", emission.names.ident("de")),
-        proc_macro2::Span::mixed_site(),
-    );
-    let d_ident = emission.names.ident("D");
-    let key_type_ident = emission.names.ident("Key");
-    let m_ident = emission.names.ident("M");
-    let r_ident = emission.names.ident("R");
-    let record_ident = emission.names.ident("Record");
-    let visitor_ident = emission.names.ident("Visitor");
-    let key_value_ident = emission.names.ident("key");
-    let map_ident = emission.names.ident("map");
+fn local_decoder(emission: &Emission<'_>) -> Tokens {
     let rt = emission.runtime;
-    let fs: Vec<_> = emission.types().collect();
-    let bound = emission.bound();
-    let marker = &emission.marker;
-    let dfs: Vec<_> = emission.decoded().map(|field| &field.ty).collect();
-    let dnames: Vec<_> = emission.decoded().map(|field| &field.field.alias).collect();
-    let dslots: Vec<_> = emission.decoded().map(|field| &field.slot).collect();
-    let indices: Vec<_> = emission.decoded().map(|field| field.index).collect();
-    quote! {
-        struct #visitor_ident<#r_ident,#(#fs),*>(::core::marker::PhantomData<fn() -> (#r_ident,#(#fs),*)>);
-        impl<#de_lifetime,#r_ident,#(#fs),*> #rt::schema::__private::serde::de::Visitor<#de_lifetime> for #visitor_ident<#r_ident,#(#fs),*> where #bound {
-            type Value = #record_ident<#r_ident,#(#fs),*>;
-            fn expecting(&self,f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result { f.write_str("a selected object") }
-            fn visit_map<#m_ident: #rt::schema::__private::serde::de::MapAccess<#de_lifetime>>(self,mut #map_ident: #m_ident) -> ::core::result::Result<Self::Value,#m_ident::Error> {
-                #(let mut #dslots: ::core::option::Option<<#dfs as #rt::schema::selection::SelectionField<#r_ident>>::Value> = ::core::option::Option::None;)*
-                while let ::core::option::Option::Some(#key_value_ident) = #map_ident.next_key::<#key_type_ident<#r_ident,#(#fs),*>>()? {
-                    match #key_value_ident.0 {
-                        #(::core::option::Option::Some(#indices) => {
-                            if #dslots.is_some() { return ::core::result::Result::Err(<#m_ident::Error as #rt::schema::__private::serde::de::Error>::duplicate_field(<#dfs as #rt::schema::selection::SelectionField<#r_ident>>::KEY)); }
-                            #dslots = ::core::option::Option::Some(#map_ident.next_value()?);
-                        })*
-                        _ => { let _: #rt::schema::__private::serde::de::IgnoredAny = #map_ident.next_value()?; }
-                    }
-                }
-                ::core::result::Result::Ok(#record_ident { #(#dnames: #dslots.ok_or_else(|| <#m_ident::Error as #rt::schema::__private::serde::de::Error>::missing_field(<#dfs as #rt::schema::selection::SelectionField<#r_ident>>::KEY))?,)* #marker: ::core::marker::PhantomData })
+    let relation_ident = emission.names.ident("R");
+    let record = emission.names.ident("Record");
+    let fields: Vec<_> = emission
+        .decoded()
+        .map(|field| {
+            let ty = &field.ty;
+            projection::DecodedField {
+                name: field.field.alias.clone(),
+                ty: quote!(<#ty as #rt::schema::selection::SelectionField<#relation_ident>>::Value),
+                key: quote!(<#ty as #rt::schema::selection::SelectionField<#relation_ident>>::KEY),
+                slot: field.slot.clone(),
             }
-        }
-        impl<#de_lifetime,#r_ident,#(#fs),*> #rt::schema::__private::serde::Deserialize<#de_lifetime> for #record_ident<#r_ident,#(#fs),*> where #bound {
-            fn deserialize<#d_ident: #rt::schema::__private::serde::Deserializer<#de_lifetime>>(d: #d_ident) -> ::core::result::Result<Self,#d_ident::Error> { d.deserialize_map(#visitor_ident::<#r_ident,#(#fs),*>(::core::marker::PhantomData)) }
-        }
-    }
+        })
+        .collect();
+    projection::decoder(
+        emission.names,
+        &quote!(#rt),
+        &record,
+        &local_generics(emission),
+        &fields,
+        Some(&emission.marker),
+        ("a selected object", "a selected object field"),
+    )
 }
 
 fn projection(emission: &Emission<'_>) -> Tokens {
-    let r_ident = emission.names.ident("R");
-    let record_ident = emission.names.ident("Record");
     let rt = emission.runtime;
-    let fs: Vec<_> = emission.types().collect();
-    let bound = emission.bound();
-    quote! {
-        impl<#r_ident,#(#fs),*> #rt::schema::Projection<#r_ident> for #record_ident<#r_ident,#(#fs),*> where #bound {
-            const SELECT_LEN: ::core::primitive::usize = {
-                #rt::schema::__private::assert_distinct(&[#(<#fs as #rt::schema::selection::SelectionField<#r_ident>>::KEY),*]);
-                (0usize #(+ <#fs as #rt::schema::selection::SelectionField<#r_ident>>::LEN + 1)*).saturating_sub(1)
-            };
-            fn write_selection(out: &mut ::std::string::String) {
-                let start = out.len(); #(if out.len() != start { out.push(','); } <#fs as #rt::schema::selection::SelectionField<#r_ident>>::write(out);)*
-            }
-        }
-    }
+    let relation_ident = emission.names.ident("R");
+    let record = emission.names.ident("Record");
+    let fields = emission.types().map(|ty| quote!(#ty)).collect::<Vec<_>>();
+    projection::rendering(
+        &quote!(#rt),
+        &record,
+        &quote!(#relation_ident),
+        &local_generics(emission),
+        &fields,
+    )
 }
 
 #[expect(
