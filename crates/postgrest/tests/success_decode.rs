@@ -59,6 +59,8 @@ async fn successful_json_and_shape_failures_retain_metadata() {
             .await
             .unwrap_err();
         assert_eq!(error.status(), Some(StatusCode::OK));
+        assert!(error.server_response().is_none());
+        assert!(!error.is_jwt_expired());
         assert_eq!(error.url().unwrap().path(), "/items");
         assert_eq!(
             error.response_metadata().unwrap().headers()["content-range"],
@@ -87,6 +89,7 @@ async fn successful_body_read_failure_retains_metadata() {
         .fetch::<Vec<u32>>()
         .await
         .unwrap_err();
+    assert!(error.server_response().is_none());
     let Error::ResponseBody { metadata, source } = error else {
         panic!("expected body read failure, got {error:?}");
     };

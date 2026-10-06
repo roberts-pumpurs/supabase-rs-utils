@@ -89,6 +89,22 @@ pub struct ErrorResponse {
 }
 
 impl ErrorResponse {
+    /// Returns a canonical five-character SQLSTATE, excluding `PostgREST` codes.
+    ///
+    /// SQLSTATE uses uppercase ASCII letters and digits. Unknown SQLSTATEs are
+    /// accepted; lowercase, custom HTTP codes and `PGRST` codes return `None`.
+    #[must_use]
+    pub fn sqlstate(&self) -> Option<&str> {
+        let code = self.code.as_str();
+        (code.len() == 5
+            && !code.starts_with("PGRST")
+            && !matches!(self.code.kind(), ErrorKind::CustomStatus(_))
+            && code
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit()))
+        .then_some(code)
+    }
+
     /// Returns the HTTP status implied by this body, when one is known.
     ///
     /// This method includes the message-sensitive mappings used by

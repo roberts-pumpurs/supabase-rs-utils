@@ -110,6 +110,8 @@ assert_eq!(
 `ErrorCode::as_str()` always returns the exact wire value. Known-code enums are
 `#[non_exhaustive]`; callers should include a fallback match arm.
 
+`ErrorResponse::sqlstate()` borrows a canonical five-character uppercase ASCII SQLSTATE. It accepts unknown SQLSTATEs and rejects lowercase values, `PGRST` codes, and custom HTTP status codes such as `PT402`.
+
 ## Body-only status inference
 
 When no HTTP response is available, `ErrorCode::inferred_status` exposes

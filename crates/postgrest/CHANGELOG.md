@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add `Error::server_response()` to retain non-success status even without a decoded error body, and `Error::is_jwt_expired()` for explicit JWT expiration messages.
+- Add the `test-util` feature with `Error::from_response(status, body)` using the production decoder. Successful statuses return `None`.
+
 ## [3.1.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-postgrest-v3.0.0...rp-postgrest-v3.1.0) - 2026-10-06
 
 ### Added

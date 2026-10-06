@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `ErrorResponse::sqlstate()` for canonical SQLSTATE codes, excluding PostgREST and custom HTTP status codes.
+
 ## [0.8.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-postgrest-error-v0.8.0...rp-postgrest-error-v0.8.1) - 2026-10-06
 
 ### Changed

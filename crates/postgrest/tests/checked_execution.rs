@@ -212,6 +212,10 @@ async fn checked_execution_preserves_malformed_error_body() {
 
     assert_eq!(error.status(), Some(StatusCode::BAD_GATEWAY));
     assert!(error.postgrest_response().is_none());
+    assert_eq!(
+        error.server_response(),
+        Some((StatusCode::BAD_GATEWAY, None))
+    );
     assert_eq!(error.url().unwrap().path(), "/items");
     assert_eq!(
         error.response_metadata().unwrap().headers()["x-request-id"],
@@ -246,6 +250,10 @@ async fn checked_execution_preserves_status_when_body_read_fails() {
 
     assert_eq!(error.status(), Some(StatusCode::SERVICE_UNAVAILABLE));
     assert!(error.postgrest_response().is_none());
+    assert_eq!(
+        error.server_response(),
+        Some((StatusCode::SERVICE_UNAVAILABLE, None))
+    );
     let Error::ResponseBody { metadata, source } = error else {
         panic!("expected response body error, got {error:?}");
     };

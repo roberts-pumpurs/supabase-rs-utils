@@ -383,16 +383,7 @@ impl Builder {
             Ok(body) => body,
             Err(source) => return Err(Error::ResponseBody { metadata, source }),
         };
-        match rp_postgrest_error::PostgrestError::from_slice(metadata.status(), &body) {
-            Ok(source) => Err(Error::Postgrest {
-                metadata,
-                source: Box::new(source),
-            }),
-            Err(source) => Err(Error::Decode {
-                metadata,
-                source: Box::new(source),
-            }),
-        }
+        Err(Error::decode_server_response(metadata, &body))
     }
     /// Checks HTTP success, then centrally decodes the requested response shape.
     ///

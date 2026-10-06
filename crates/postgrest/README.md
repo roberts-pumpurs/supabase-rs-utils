@@ -134,6 +134,10 @@ fn inspect(error: &rp_postgrest::Error) {
 
 `postgrest_response()` returns the observed HTTP status and a borrowed typed `ErrorResponse` together. It does not allocate or infer status from the error code. It returns `None` for transport failures, malformed error envelopes, and other errors without a decoded server response.
 
+`server_response()` also returns the observed non-success status when the error envelope is malformed or reading the body failed. Its optional body is `None` in those cases. Successful-status decoding and count errors are not server errors. `is_jwt_expired()` requires PGRST301 or PGRST303 and the message `JWT expired`, case-insensitive with an optional final period. Invalid signatures and other JWT failures return `false`.
+
+With the `test-util` feature, `Error::from_response(status, body: &[u8]) -> Option<Error>` decodes fixtures through the production error-envelope decoder. Successful statuses return `None` without decoding. Malformed bytes are copied into the error; valid envelopes retain decoded fields only. Fixture metadata uses empty headers and `http://localhost/`, not an actual request URL.
+
 Enable `serde_json/arbitrary_precision` in the dependency graph when decoding exact PostgreSQL numerics. This avoids an intermediate floating-point conversion; the requested Rust response type still determines its own numeric representation.
 
 ## Migration from 2.1

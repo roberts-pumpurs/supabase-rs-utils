@@ -120,6 +120,72 @@ pub enum Error {
     },
 }
 impl Error {
+    pub(crate) fn decode_server_response(metadata: Box<ResponseMetadata>, body: &[u8]) -> Self {
+        match PostgrestError::from_slice(metadata.status(), body) {
+            Ok(source) => Self::Postgrest {
+                metadata,
+                source: Box::new(source),
+            },
+            Err(source) => Self::Decode {
+                metadata,
+                source: Box::new(source),
+            },
+        }
+    }
+
+    /// Decodes a fixture using the same error-body decoder as checked execution.
+    ///
+    /// Returns `None` for successful HTTP statuses without decoding the body.
+    /// Borrows the body; malformed envelopes copy their bytes into the error.
+    /// Metadata contains empty headers and the synthetic URL `http://localhost/`.
+    ///
+    /// # Panics
+    /// Panics if the constant fixture URL cannot be parsed.
+    #[cfg(feature = "test-util")]
+    #[expect(
+        clippy::expect_used,
+        reason = "The fixture URL is a valid static literal"
+    )]
+    #[must_use]
+    pub fn from_response(status: StatusCode, body: &[u8]) -> Option<Self> {
+        if status.is_success() {
+            return None;
+        }
+        let metadata = Box::new(ResponseMetadata {
+            status,
+            headers: HeaderMap::new(),
+            url: Url::parse("http://localhost/").expect("static URL"),
+        });
+        Some(Self::decode_server_response(metadata, body))
+    }
+
+    /// Observed non-success HTTP status and any decoded server error body.
+    ///
+    /// Malformed envelopes and failed body reads retain their status with no body.
+    /// Successful-response decode and count failures are not server errors.
+    #[must_use]
+    pub fn server_response(
+        &self,
+    ) -> Option<(StatusCode, Option<&rp_postgrest_error::ErrorResponse>)> {
+        let metadata = self.response_metadata()?;
+        if metadata.status().is_success() {
+            return None;
+        }
+        Some((metadata.status(), self.postgrest_body()))
+    }
+
+    /// Whether a JWT validation error specifically reports token expiration.
+    ///
+    /// Other JWT failures, including invalid signatures, return `false`.
+    #[must_use]
+    pub fn is_jwt_expired(&self) -> bool {
+        self.postgrest_body().is_some_and(|body| {
+            matches!(body.code.as_str(), "PGRST301" | "PGRST303")
+                && (body.message.eq_ignore_ascii_case("JWT expired")
+                    || body.message.eq_ignore_ascii_case("JWT expired."))
+        })
+    }
+
     /// The decoded structured server error without destructuring this error.
     #[must_use]
     pub const fn postgrest_error(&self) -> Option<&PostgrestError> {
