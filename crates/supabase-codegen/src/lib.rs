@@ -44,6 +44,7 @@ struct Config {
     pub not_null: BTreeMap<String, Vec<String>>,
     pub column_types: BTreeMap<String, String>,
     pub json_types: BTreeMap<String, String>,
+    pub reexport_macros: bool,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -84,6 +85,7 @@ impl Generator {
                 not_null: BTreeMap::new(),
                 column_types: BTreeMap::new(),
                 json_types: BTreeMap::new(),
+                reexport_macros: false,
             },
         }
     }
@@ -185,6 +187,14 @@ impl Generator {
     #[must_use]
     pub fn json_type(mut self, target: impl Into<String>, rust_type: impl Into<String>) -> Self {
         self.config.json_types.insert(target.into(), rust_type.into());
+        self
+    }
+
+    /// Export crate-local `select!` and `key!` wrappers with the runtime path filled.
+    /// Include the generated bindings at the schema crate's root.
+    #[must_use]
+    pub fn reexport_macros(mut self) -> Self {
+        self.config.reexport_macros = true;
         self
     }
 

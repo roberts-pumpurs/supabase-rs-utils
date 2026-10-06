@@ -43,6 +43,8 @@ pub mod database {
 
 The generator registers the snapshot with Cargo's change detection. It writes only the requested file and leaves identical output unchanged. Rust formatting uses `prettyplease`, not an external formatter.
 
+Schema crates can call `.reexport_macros()` and include their generated bindings at the crate root. Consumers then use `renamed_schema::select!(Row => { id })` and `renamed_schema::key!(id)` without naming the runtime dependency. The wrappers use `$crate` and a public hidden runtime reexport, so Cargo dependency aliases do not affect expansion. The same macros work inside the schema crate. `key!(type id)` also works.
+
 See the [complete snapshot and executable example](../supabase-codegen-example). The public `model::Snapshot` format is version 3. Older snapshots require regeneration.
 
 ## Direct database introspection

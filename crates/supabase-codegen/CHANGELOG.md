@@ -5,6 +5,7 @@
 - Respect non-table snapshot nullability, infer safe single-table view projections with a SQL parser, and support checked `not_null` builder and SQL comment contracts. Snapshot format is now version 3.
 - Generate Serde and filtering enums from exact validated string CHECK memberships, and add checked per-column Rust type overrides.
 - Add checked typed JSON customization for relation columns, composite fields, RPC inputs, OUT records, and returns, preserving SQL wrappers.
+- Export hygienic schema-crate `select!` and `key!` wrappers through an opt-in runtime reexport.
 
 ## [0.9.3](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-codegen-v0.9.2...rp-supabase-codegen-v0.9.3) - 2026-10-06
 

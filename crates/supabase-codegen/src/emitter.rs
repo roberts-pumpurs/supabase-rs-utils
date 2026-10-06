@@ -1139,7 +1139,35 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             )));
         }
     }
-    let file = syn::parse2::<syn::File>(quote!(#prelude #aliases #modules))
+    let macros = if config.reexport_macros {
+        let runtime = &emitter.runtime;
+        quote!(
+            #[doc(hidden)]
+            pub mod __supabase_codegen_runtime {
+                pub use #runtime as schema;
+                pub use #runtime::prelude::{select, key};
+            }
+            #[macro_export]
+            macro_rules! select {
+                ($($tokens:tt)*) => {
+                    $crate::__supabase_codegen_runtime::select!(
+                        runtime = $crate::__supabase_codegen_runtime; $($tokens)*
+                    )
+                };
+            }
+            #[macro_export]
+            macro_rules! key {
+                ($($tokens:tt)*) => {
+                    $crate::__supabase_codegen_runtime::key!(
+                        runtime = $crate::__supabase_codegen_runtime; $($tokens)*
+                    )
+                };
+            }
+        )
+    } else {
+        TokenStream::new()
+    };
+    let file = syn::parse2::<syn::File>(quote!(#prelude #aliases #modules #macros))
         .map_err(|e| invalid(format!("generated Rust is invalid: {e}")))?;
     Ok(prettyplease::unparse(&file))
 }
