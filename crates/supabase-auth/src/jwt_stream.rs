@@ -40,7 +40,23 @@ impl JwtStream {
     /// expected suffix or if the client cannot be created.
     #[tracing::instrument(skip_all, err)]
     pub fn sign_in(&self, params: LoginCredentials) -> Result<JwtRefreshStream, AuthError> {
-        let client = ApiClient::new_unauthenticated(&self.config.url, &self.config.api_key)?;
+        self.sign_in_with_client(params, reqwest::Client::builder().build()?)
+    }
+
+    /// Sign in and refresh using the supplied HTTP pool and transport policies.
+    ///
+    /// # Errors
+    /// Returns URL or credential header configuration failures.
+    pub fn sign_in_with_client(
+        &self,
+        params: LoginCredentials,
+        http: reqwest::Client,
+    ) -> Result<JwtRefreshStream, AuthError> {
+        let client = ApiClient::new_unauthenticated_with_client(
+            &self.config.url,
+            &self.config.api_key,
+            http,
+        )?;
         let max_reconnect_attempts = usize::from(self.config.max_reconnect_attempts);
         Ok(JwtRefreshStream {
             api_key: self.config.api_key.clone(),

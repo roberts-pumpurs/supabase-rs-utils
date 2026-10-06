@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-06
+
+### Changed
+
+- Change `ErrorResponse::details` from `Option<String>` to `Option<ErrorDetails>`, with `Text` and `AmbiguousEmbeddings` variants.
+- Align the crate version with the workspace release.
+
+### Added
+
+- Add `EmbeddingDetail` and `EmbeddingCardinality` for PostgREST's ambiguous relationship candidate arrays, including the `PGRST201` response observed on PostgREST 16.2.
+
 ## [0.7.0] - 2026-10-06
 
 ### Changed

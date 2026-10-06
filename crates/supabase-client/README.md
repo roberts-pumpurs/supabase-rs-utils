@@ -1,174 +1,180 @@
 # rp-supabase-client
 
-A Rust client for interacting with Supabase’s PostgREST API using authenticated requests.
+Supabase authentication and a typed query runtime for generated PostgreSQL bindings. Version 0.8 uses the workspace-owned [rp-postgrest 3.0](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
 
-## Overview
+```toml
+[dependencies]
+rp-supabase-client = "0.8"
+```
 
-rp-supabase-client simplifies making authenticated requests to Supabase’s PostgREST API. It handles authentication, token refresh, and provides a straightforward API for querying data.
+Use [rp-supabase-codegen](../supabase-codegen/README.md) in a build script to generate relation, column, relationship, payload, and function markers. The snippets below assume the generated `database` module from the [complete example](../supabase-codegen-example/README.md). Substitute your own generated names and value types.
 
-Features
+## Shared projections and typed reads
 
-- 	Easy authentication with Supabase.
-- 	Automatic token refresh using rp-supabase-auth.
-- 	Simple methods for querying and manipulating data.
+A projection defines both the selection and response field types. `Projection<R>` is parameterized by the relation, so one DTO can implement several relation contracts:
+
+```rust,ignore
+use database::public::tables::{adapters, skills};
+use rp_supabase_client::projection;
+use rp_supabase_client::schema::{Count, Nulls, Order};
+
+projection! {
+    struct Artifact for [database::public::tables::skills, database::public::tables::adapters] {
+        id,
+        name,
+        owner_id,
+    }
+}
+
+let names = ["search", "storage"];
+let page = skills::query(client.clone())
+    .select::<Artifact>()
+    .in_(skills::columns::name, names)
+    .order_with_nulls(skills::columns::name, Order::Asc, Nulls::Last)
+    .order(skills::columns::id, Order::Desc)
+    .json_text_eq(skills::columns::manifest, &["fingerprint"], "abc123")?
+    .range(0, 24)
+    .fetch_with_count(Count::Exact)
+    .await?;
+let same_dto = adapters::query(client.clone())
+    .select::<Artifact>()
+    .limit(10)
+    .fetch()
+    .await?;
+println!("{} rows, {} total", page.data.len(), page.count);
+```
+
+The shared macro emits one DTO and a `Projection<R>` implementation for each relation. Every selected field must exist on each relation with exactly the same Rust value type and SQL response key. Unselected fields need not match. Selection preserves exact SQL response keys, including renamed identifiers. Missing selected fields are decoding errors even when their type allows null; extra fields are ignored.
+
+Column markers enforce relation ownership and scalar filter types. String columns accept borrowed `str`; nullable comparisons take a non-null value. `is_null(column)` requires a nullable column. Typed `in_` accepts borrowed scalar values and quotes/escapes them in list context. `order` composes multiple terms; `order_with_nulls` accepts `Nulls::First` or `Last`. `json_text_eq` requires a JSON/JSONB column and a nonempty key path. It escapes path identifiers and leaves the scalar value literal; an empty path returns a configuration error.
+
+`limit` and inclusive `range` transition a read into `Paged`. Paged queries retain selection, filters, ordering, fetch, and counts, but have no insert/update/delete methods. This prevents response pagination from being mistaken for a safe mutation limiter. Ordering alone does not prohibit writes. `limit(0)` requests zero rows.
+
+`fetch()` returns `Vec<P>`. `fetch_one()` returns `P` and requests PostgREST's single-object cardinality semantics, not the first row of an array. Read and Paged queries expose `.count(Count::Exact).await?` for a body-free total. `fetch_with_count` returns `Counted<Vec<P>>` with `.data` and `.count`. Planned and estimated count modes are also available. Missing or invalid server totals are errors, not zero. Counts preserve requested pagination.
+
+## Minimal writes and raw decoding
+
+```rust,ignore
+use database::public::tables::skills;
+use rp_supabase_client::schema::Count;
+
+// `patch` is this generated table's Update payload.
+let affected = skills::query(client.clone())
+    .eq(skills::columns::name, "search")
+    .update(&patch)
+    .execute_with_count(Count::Exact)
+    .await?;
+
+skills::query(client.clone())
+    .eq(skills::columns::name, "obsolete")
+    .delete()
+    .execute()
+    .await?;
+
+let rows = skills::query(client.clone())
+    .select::<Artifact>()
+    .into_raw()
+    .fetch::<Vec<Artifact>>()
+    .await?;
+```
+
+Write `.execute()` requests minimal return and does not decode a row body. `.execute_with_count(Count)` returns the affected-row total without fetching identifiers. Write `.fetch()` still requests and decodes representations. Generated insert/update payloads retain exact table ownership. Only base tables support typed writes; views support typed reads. A query can choose only one mutation.
+
+`into_raw()` returns the owned `rp_postgrest::Builder` directly, applies the final projection, and drops typed guarantees. Use its public `fetch::<Vec<P>>()` for checked raw decoding; no separate raw decoder is needed. Use the raw builder for arbitrary expressions, unsupported relationships, or array/composite comparisons without `Display`. Raw `in_` takes grammar fragments; raw `in_values` takes literal list elements. Raw pagination does not promise safely limited mutations.
+
+`schema::Field<Option<T>>` distinguishes omission, explicit null, and a value. `schema::Array<T>` preserves nullable elements and nested PostgreSQL arrays. The default `client` feature enables `serde_json/arbitrary_precision` for exact generated PostgreSQL numerics. With default features disabled, explicitly enable `serde_json/arbitrary_precision` when decoding numeric fields. Do not convert exact numeric fields through `f64` if their precision matters.
+
+## Pure parameters for another HTTP client
+
+`schema::params` needs no `Postgrest` instance. It produces unencoded `QueryPair` values with the same typed ownership and grammar as query methods:
+
+```rust,ignore
+use database::public::tables::skills;
+use rp_supabase_client::schema::{Order, params};
+
+let pairs = [
+    params::projection::<skills::Row, Artifact>(),
+    params::eq(skills::columns::name, "search"),
+    params::in_(skills::columns::name, ["search", "storage"]),
+    params::order(skills::columns::name, Order::Asc),
+    params::json_text_eq(skills::columns::manifest, &["fingerprint"], "abc123")?,
+];
+let response = http.get("https://example.supabase.co/rest/v1/skills")
+    .query(&pairs)
+    .send()
+    .await?;
+```
+
+This example uses another Reqwest request directly; callers can pass pairs to another HTTP serializer. Do not percent-encode them first. The module also provides `neq`, `gt`, `gte`, `lt`, `lte`, nullable `is_null`, and `order_with_nulls`. Separate order pairs remain separate pairs; combine their terms into one order value if your transport/server requires multiple ordering terms. These helpers do not send requests, add auth/schema headers, or check responses.
+
+## Typed RPC returns
+
+```rust,ignore
+use database::public::functions::echo_message;
+use rp_supabase_client::schema::rpc;
+
+let args = echo_message::Args { message: Some("rpc example".into()) };
+let result = rpc::<echo_message::Function>(client.clone(), &args).fetch().await?;
+```
+
+`args` is the generated function's `Args`; `result` is inferred as its `Returns`. Generated scalar, set-returning, composite, and void contracts decode their corresponding server representations. RPC does not require a relation projection or automatically add `select`/`single`. Serialization errors are deferred to execution. `Rpc::into_raw()` returns the builder and intentionally drops function identity. HTTP 204 can decode `()`; an empty HTTP 200 is a JSON decoding error, not a synthetic void result. Use your generated function marker instead of the illustrative name above.
+
+## Configured authentication
+
+The default `anonymous_client` and `new_authenticated` constructors build a fallible default transport. Their `_with_client` variants reuse a caller's pool and policies. The authenticated stream shares that transport for REST, login, and every refresh.
 
 ```rust
 use std::time::Duration;
-use clap::Parser;
-use futures::StreamExt;
-use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
-use rp_supabase_auth::types::LoginCredentials;
-use rp_supabase_client::{new_authenticated, PostgerstResponse};
-use tracing_subscriber::EnvFilter;
+use rp_supabase_client::{anonymous_client_with_client, new_authenticated_with_client};
+use rp_supabase_client::rp_postgrest::reqwest;
+use rp_supabase_client::rp_supabase_auth::{
+    jwt_stream::SupabaseAuthConfig, types::LoginCredentials, url::Url,
+};
 
-#[derive(Parser, Debug)]
-struct Args {
-    supabase_api_url: url::Url,
-    anon_key: String,
-    email: String,
-    password: String,
-    table: String,
-}
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
-
-    let args = Args::parse();
-
+fn configured() -> Result<(), Box<dyn std::error::Error>> {
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()?;
+    let url = Url::parse("https://example.supabase.co/")?;
+    let _anonymous = anonymous_client_with_client("public-key".into(), &url, http.clone())?;
     let config = SupabaseAuthConfig {
-        api_key: args.anon_key,
-        url: args.supabase_api_url,
+        api_key: "public-key".into(), url,
         max_reconnect_attempts: 5,
         reconnect_interval: Duration::from_secs(3),
     };
-
-    let login_credentials = LoginCredentials::builder()
-        .email(args.email)
-        .password(args.password)
+    let credentials = LoginCredentials::builder()
+        .email("user@example.com".to_owned())
+        .password("password".to_owned())
         .build();
-
-    let mut client_stream = new_authenticated(config, login_credentials).unwrap();
-
-    while let Some(client_result) = client_stream.next().await {
-        if let Ok((client, _token_response)) = client_result {
-            let res = client
-                .from(&args.table)
-                .select("*")
-                .build()
-                .send()
-                .await
-                .map(PostgerstResponse::<serde_json::Value>::new)
-                .unwrap()
-                .json()
-                .await;
-
-            println!("Response: {:?}", res);
-        }
-    }
+    let _stream = new_authenticated_with_client(config, credentials, http)?;
+    Ok(())
 }
 ```
 
-## Generated schema bindings
+Each authenticated stream item is a `Result<(Postgrest, AccessTokenResponseSchema), SupabaseClientError>`. Consume it with `futures::StreamExt` to receive refreshed clients. API-key, JSON, and bearer headers coexist with caller default headers. Auth credentials apply per request rather than replacing shared bearer defaults. `SupabaseAuthConfig` has no HTTP-client field.
 
-Use [rp-supabase-codegen](../supabase-codegen/README.md) as a build dependency.
-It generates Rust bindings from PostgreSQL catalogs or a committed offline snapshot.
-No external generator CLI is required.
+The crate reexports `rp_postgrest`, `Postgrest`, and `Error`. The default `client` feature includes authentication; `default-features = false` retains the generated-schema/query runtime without auth helpers. That is not a no-HTTP or `no_std` mode. See the raw crate's [TLS policy](../postgrest/README.md#install-and-configure) for transport feature configuration.
 
-Generated relation modules expose `query(client)`. Queries retain the relation and response type.
-`fetch()` returns decoded rows. `fetch_one()` requests exactly one row through PostgREST.
-Both methods check HTTP status before decoding successful JSON.
+## Relationships, RLS, and errors
 
-```rust,ignore
-use database::public::tables::messages;
-use rp_supabase_client::projection;
+Single-relation `projection!` continues to support `alias: embed(RelationshipMarker, Child)` and its `inner` form. `alias: empty(RelationshipMarker)` selects a predicate-only embed. Generated direct, reverse, unique, composite, and nested FK relationships preserve source/target ownership. Selected handles compose with `.then(...)` only when the selected child and relation chain match. A shared DTO does not loosen these checks.
 
-projection! {
-    struct MessageSummary for database::public::tables::messages {
-        id,
-        body,
-    }
-}
+`embedded(handle, |child| { ... })` scopes filters to the selected relationship. `exists` and `not_exists` test related-row existence, including empty embeds. Embedded predicates lock the projection, so choose `.select::<P>()` first. Root filters and one mutation remain available on non-paged locked queries.
 
-let rows = messages::query(client.clone())
-    .select::<MessageSummary>()
-    .eq(messages::columns::id, &message_id)
-    .fetch()
-    .await?;
-```
+To-one embeds decode as `Option<Child>` and to-many embeds as `Vec<Child>`. These types remain conservative with `inner`, because RLS and filters can hide rows. Ordinary child filters preserve parent rows; `inner` filters at the embed's parent level. For UPDATE and DELETE, constrain affected rows with root filters. Child filters shape returned representations. PostgREST 16.2 rejects embed-alias existence predicates on DELETE; the client reports the canonical server error and does not rewrite them into FK null checks. See [generated relationship contracts](../supabase-codegen/README.md#typed-relationships) for edge and naming rules.
 
-The projection supplies both the selection and the field types. It preserves exact SQL response
-keys, including renamed identifiers. Every selected field must exist, even when its value is null.
-Extra response fields are ignored.
+Typed fetch, RPC, raw fetch, and count methods return the same flat `rp_postgrest::Error`. `error.postgrest_body()` exposes decoded code/message/details/hint; `postgrest_error()` exposes the canonical structured source. `status()`, `url()`, and `response_metadata()` retain observed HTTP metadata, including on successful-response decoding failures. HTTP 300 is an error for checked execution. Ambiguous embedding PGRST201 details can be a typed array of relationship descriptions, not only text. Malformed error-envelope bytes remain in the Decode source. See the [raw error guide](../postgrest/README.md#one-error-result).
 
-Column markers check filter ownership and scalar value types. String columns accept `&str`.
-Nullable scalar comparisons take a non-null value. Use `is_null(column)` to test for SQL null.
-`insert(&Insert)` and `update(&Update)` require the generated table payloads.
-Only base tables support writes. A query cannot select a second mutation.
+## Migration from 0.7
 
-### Typed relationships
+- Replace the old `postgrest` reexport with `rp_postgrest`, or use the direct `Postgrest`/`Error` exports. The owned dependency is rp-postgrest 3.0, with the normal `rp_postgrest` library name.
+- Remove `PostgerstResponse`, `ResponseError`, `schema::QueryError`, and manual response-wrapper/nested-result decoding. Fetch now returns `Result<T, Error>` directly. Replace old execution-wrapper pattern matches with canonical `Error` handling and its getters. No old exports or aliases remain.
+- Replace `query.into_raw()?` with `query.into_raw()`. Use `builder.fetch::<Vec<P>>().await?` for raw typed decoding instead of the removed raw-result/response helpers. Raw `execute` deliberately remains unchecked.
+- Add `?` to direct `Postgrest::new`, client auth/header setters, and raw `.build()`. JSON serialization failures now live in the builder and emerge at build/execution.
+- Implement custom projections as `Projection<R>` instead of using an associated `Relation`. Preserve `SELECT_LEN`, `write_selection`, and exact response-key decoding. Regenerate bindings with codegen 0.8. Custom embed paths must supply their `Source` relation.
+- Use `schema::rpc::<Function>(client, &args).fetch().await?`; the generated `Returns` is inferred, and no relation-specific projection/single or separate response decode is required.
+- Count preferences no longer force a one-row range. Add pagination explicitly or use typed `.count(Count)`/raw `.execute_count(Count)` for body-free totals.
+- A paged typed read cannot become a write. Start a separate root-filtered mutation rather than treating read pagination as a mutation limit.
+- Builders are not `Clone`; recreate queries from `Postgrest::clone()`. Pass literal resource names, not percent-encoded strings. Dot-only resources return an explicit configuration error.
 
-Use generated FK markers inside the same `projection!` macro:
-
-```rust,ignore
-projection! {
-    struct AddressSummary for database::public::tables::addresses { id, label }
-}
-projection! {
-    struct OrderSummary for database::public::tables::orders {
-        id,
-        billing: embed(database::public::tables::orders::relationships::orders_billing, AddressSummary),
-        shipping: embed(database::public::tables::orders::relationships::orders_shipping, AddressSummary, inner),
-    }
-}
-
-let rows = database::public::tables::orders::query(client.clone())
-    .select::<OrderSummary>()
-    .embedded(OrderSummary::billing, |address| {
-        address.eq(database::public::tables::addresses::columns::label, "Main");
-    })
-    .exists(OrderSummary::billing)
-    .fetch()
-    .await?;
-```
-
-The field name is the response alias. Each handle checks its owning projection and target relation.
-Compose selected child handles with `.then(...)` for nested filter paths.
-Use `alias: empty(RelationshipMarker)` for a predicate-only embed, without a decoded field.
-`exists(handle)` and `not_exists(handle)` test related-row existence, including empty embeds.
-
-To-one embeds decode as `Option<Child>`. To-many embeds decode as `Vec<Child>`.
-These types remain conservative with `inner`, because filters and RLS can hide related rows.
-Normal child filters preserve parent rows. `inner` filters rows at the embed's parent level.
-Embedded filters and existence predicates lock the selection. Choose `.select::<P>()` before them.
-Root filters and one typed mutation remain available after locking.
-
-For UPDATE and DELETE, use root column filters to constrain affected rows. Child filters shape returned representations.
-PostgREST 16.2 rejects embed-alias existence predicates on DELETE. These remain native `QueryError::Execution` errors.
-The runtime does not replace relationship predicates with FK null checks.
-
-See the [generator relationship contracts](../supabase-codegen/README.md#typed-relationships)
-for marker naming, reverse uniqueness, supported edges, and a nested example.
-
-
-`into_raw()?` exposes the native PostgREST builder and drops typed guarantees.
-Use it for arbitrary expressions, unsupported relationships, or array/composite comparisons without `Display`.
-Generated RPC markers retain `schema::rpc::<Function>(client.clone(), &args)`.
-
-Insert and update payloads distinguish omitted fields from explicit null.
-`schema::Field<Option<T>>` represents omission, null, or a value.
-`schema::Array<T>` preserves nullable elements and nested PostgreSQL arrays.
-`schema::prelude` exports these helpers and the `include_schema!` macro.
-
-Typed fetch methods return `schema::QueryError`. Its `Execution` variant retains the native
-PostgREST error, HTTP status, headers, and URL. Other variants report request serialization,
-successful response body reads, or selected-shape decoding failures.
-
-Typed queries work without default features. Enable `serde_json/arbitrary_precision` when
-decoding generated numeric fields through a schema-only dependency. The default `client`
-feature already enables it. `PostgerstResponse::json` retains its existing nested error results.
-
-Run the [complete build-script example](../supabase-codegen-example/README.md)
-to exercise offline generation or live CRUD and RPC calls.
+The [raw 2.1 migration guide](../postgrest/README.md#migration-from-21) covers the remaining protocol changes.

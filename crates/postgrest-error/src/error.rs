@@ -6,12 +6,85 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Authentication, ErrorCode, ErrorKind};
 
+/// Additional error information returned by `PostgREST`.
+///
+/// Database errors use text. Ambiguous relationships use structured candidates.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(untagged)]
+pub enum ErrorDetails {
+    /// A database or server diagnostic.
+    Text(String),
+    /// Relationships which could satisfy an ambiguous embed.
+    AmbiguousEmbeddings(Vec<EmbeddingDetail>),
+}
+
+// Select the JSON shape directly, without buffering and cloning untagged candidates.
+impl<'de> Deserialize<'de> for ErrorDetails {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct DetailsVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for DetailsVisitor {
+            type Value = ErrorDetails;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("diagnostic text or an array of relationship candidates")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(ErrorDetails::Text(value.into()))
+            }
+
+            fn visit_string<E: serde::de::Error>(self, value: String) -> Result<Self::Value, E> {
+                Ok(ErrorDetails::Text(value))
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut sequence: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut candidates = Vec::with_capacity(sequence.size_hint().unwrap_or(0));
+                while let Some(candidate) = sequence.next_element()? {
+                    candidates.push(candidate);
+                }
+                Ok(ErrorDetails::AmbiguousEmbeddings(candidates))
+            }
+        }
+
+        deserializer.deserialize_any(DetailsVisitor)
+    }
+}
+
+/// A candidate relationship in a `PGRST201` ambiguity error.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+pub struct EmbeddingDetail {
+    /// Relationship cardinality reported by the server.
+    pub cardinality: EmbeddingCardinality,
+    /// Resources being embedded.
+    pub embedding: String,
+    /// Constraint and column description identifying this relationship.
+    pub relationship: String,
+}
+
+/// Relationship cardinality reported in an ambiguous embedding error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EmbeddingCardinality {
+    /// One source row has at most one target row.
+    OneToOne,
+    /// One source row can have several target rows.
+    OneToMany,
+    /// Several source rows can refer to one target row.
+    ManyToOne,
+    /// Both resources can have several matching rows through a join table.
+    ManyToMany,
+}
+
 /// Structured error body returned by `PostgREST`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct ErrorResponse {
     pub code: ErrorCode,
     pub message: String,
-    pub details: Option<String>,
+    pub details: Option<ErrorDetails>,
     pub hint: Option<String>,
 }
 

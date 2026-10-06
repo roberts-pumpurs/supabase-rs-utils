@@ -1,6 +1,6 @@
 # rp-postgrest-error
 
-Strongly typed, lossless error responses for `PostgREST` clients.
+Typed error responses for `PostgREST` clients, with exact error codes and malformed-body evidence.
 
 The crate combines the authoritative HTTP status with `PostgREST`'s structured
 JSON error body while remaining independent of any HTTP client. It preserves
@@ -16,7 +16,7 @@ the exact wire error code and provides typed classifications for `PostgreSQL`,
 - Future `PostgREST` and `PostgreSQL` codes remain usable without a crate update.
 - Unknown PostgREST and custom codes do not receive invented statuses;
   unrecognized valid SQLSTATEs follow PostgREST's documented HTTP 400 fallback.
-- Malformed response errors retain the observed status and original body.
+- Malformed response errors retain the observed status and exact supplied body bytes.
 - The crate depends on `http`, `serde`, and `serde_json`, but not `reqwest` or
   an async runtime.
 
@@ -24,8 +24,10 @@ the exact wire error code and provides typed classifications for `PostgreSQL`,
 
 ```toml
 [dependencies]
-rp-postgrest-error = "0.4"
+rp-postgrest-error = "0.8"
 ```
+
+Requires Rust 1.85 or later.
 
 ## Decode an HTTP error response
 
@@ -57,6 +59,34 @@ a Reqwest-based client can pass `response.status()` and
 `response.bytes().await?.as_ref()` to `PostgrestError::from_slice`. Adapters
 that own a `Vec<u8>` can use `PostgrestError::from_vec` so malformed evidence
 is retained without another body copy.
+
+`DecodeError::body()` returns the exact bytes supplied to the decoder when the body cannot be decoded as an `ErrorResponse`. Valid structured errors retain their decoded fields, not the original JSON whitespace or byte representation. This crate does not read HTTP streams and cannot preserve bytes an adapter never supplied, including partial bytes lost during a failed response read.
+
+## Typed diagnostic details
+
+`ErrorResponse::details` is `Option<ErrorDetails>`. Ordinary string diagnostics decode as `ErrorDetails::Text(String)`. Ambiguous embedding errors such as PostgREST 16.2's `PGRST201` decode their candidate array as `ErrorDetails::AmbiguousEmbeddings(Vec<EmbeddingDetail>)`. Null or absent details decode as `None`.
+
+Each `EmbeddingDetail` contains `cardinality`, `embedding`, and `relationship`. `EmbeddingCardinality` has `OneToOne`, `OneToMany`, `ManyToOne`, and `ManyToMany` variants, serialized as PostgREST's kebab-case strings. Callers do not need to inspect an untyped JSON value:
+
+```rust
+use rp_postgrest_error::{ErrorDetails, PostgrestError};
+
+fn print_candidates(error: &PostgrestError) {
+    if let Some(ErrorDetails::AmbiguousEmbeddings(candidates)) =
+        &error.response().details
+    {
+        for candidate in candidates {
+            println!("{}: {}", candidate.embedding, candidate.relationship);
+        }
+    }
+}
+```
+
+The observed status remains authoritative for either detail shape. For example, an HTTP 300 ambiguous embedding response remains HTTP 300, regardless of any code-derived fallback.
+
+## Migration to 0.8
+
+`ErrorResponse::details` now holds `Option<ErrorDetails>` rather than `Option<String>`. Match `ErrorDetails::Text` for ordinary diagnostics and `ErrorDetails::AmbiguousEmbeddings` for relationship candidates. Constructors, exact error codes, and observed-status access remain unchanged.
 
 ## Match `PostgREST` and custom-status errors
 

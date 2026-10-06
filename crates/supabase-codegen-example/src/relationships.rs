@@ -1,5 +1,5 @@
 use crate::{public::tables, relationship_projections::*};
-use rp_supabase_client::{postgrest::Postgrest, schema::Field};
+use rp_supabase_client::{rp_postgrest::Postgrest, schema::Field};
 
 type Result<T, E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
 

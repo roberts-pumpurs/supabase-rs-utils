@@ -114,9 +114,9 @@ pub fn offline() -> Result<(), Box<dyn std::error::Error>> {
     let _: &Option<DetailSummary> = &customer.orders[0].detail;
     let predicate: CustomerPredicates = serde_json::from_value(serde_json::json!({"id": 1}))?;
     assert_eq!(predicate.id, customer.id);
-    let request = tables::customers::query(rp_supabase_client::postgrest::Postgrest::new(
+    let request = tables::customers::query(rp_supabase_client::rp_postgrest::Postgrest::new(
         "http://localhost",
-    ))
+    )?)
     .select::<CustomerSummary>()
     .embedded(
         CustomerSummary::orders.then(OrderSummary::billing),
@@ -125,7 +125,7 @@ pub fn offline() -> Result<(), Box<dyn std::error::Error>> {
         },
     )
     .exists(CustomerSummary::orders)
-    .into_raw()?;
+    .into_raw();
     // Constructing the typed request does not contact the server.
     drop(request);
     println!(

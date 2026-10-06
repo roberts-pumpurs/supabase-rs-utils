@@ -4,7 +4,7 @@ Research date: 2026-10-05. Three subagents inspected generator alternatives, Sup
 
 ## Decision
 
-Implement `rp-supabase-codegen` as a build dependency. Read PostgreSQL catalogs directly or load a versioned snapshot. Generate one Rust file under `OUT_DIR`. Keep the existing `rp-postgrest` query builder and response errors.
+Implement `rp-supabase-codegen` as a build dependency. Read PostgreSQL catalogs directly or load a versioned snapshot. Generate one Rust file under `OUT_DIR`. The original decision retained the existing registry `rp-postgrest` builder. The 2026-10-06 release replaces it with workspace-owned `rp-postgrest` 3.0 and canonical `rp-postgrest-error` 0.8.
 
 Committed snapshots make ordinary builds reproducible. Live introspection is explicit. A failed connection must fail the build, not select a stale snapshot. Cargo cannot detect remote DDL, so live builds must track migrations or an explicit refresh input.
 
@@ -49,7 +49,7 @@ An optional nullable write needs three states: omission, SQL null, and a value. 
 
 [Domains](https://www.postgresql.org/docs/current/catalog-pg-type.html) can supply defaults and not-null constraints. Resolve their base types recursively while preserving qualified domain names for custom Rust mappings. Referenced enums and composites can belong to schemas outside the exposed selection.
 
-[Function metadata](https://www.postgresql.org/docs/current/catalog-pg-proc.html) has separate input and output modes. Defaults apply to the last input arguments, not the last positions of the combined argument list. SQL arguments and scalar returns can be null. [PostgREST's response encoder](https://github.com/PostgREST/postgrest/blob/v12.2.12/src/PostgREST/Query/SqlFragment.hs) returns a JSON object for non-set composite and OUT results, and an array for set results. A live PostgreSQL 17 and PostgREST 12.2.12 check confirms the non-set composite object. Classify output modes as well as the declared return type.
+[Function metadata](https://www.postgresql.org/docs/current/catalog-pg-proc.html) has separate input and output modes. Defaults apply to the last input arguments, not the last positions of the combined argument list. SQL arguments and scalar returns can be null. [PostgREST's response encoder](https://github.com/PostgREST/postgrest/blob/v12.2.12/src/PostgREST/Query/SqlFragment.hs) returns a JSON object for non-set composite and OUT results, and an array for set results. The 2026-10-05 live PostgreSQL 17 and PostgREST 12.2.12 check confirmed the non-set composite object. Classify output modes as well as the declared return type.
 
 Unknown SQL types must require an explicit mapping. JSON columns intentionally use `serde_json::Value`. Numeric values need exact JSON-number handling, not `f64` or a decimal serializer that emits strings.
 
@@ -59,7 +59,7 @@ Use global derives and attributes for shared behavior. Use a generated-type path
 
 Generate schema modules rather than flatten names across schemas. Preserve SQL spelling with Serde renames. Reject normalized-name collisions. Allow a prelude to supply imports for custom mappings, and supply an `include_schema!` macro for `OUT_DIR` inclusion.
 
-The client re-exports `postgrest::Postgrest`. Typed relation queries now retain generated column and projection types. They reuse the native builder and checked transport internally. `into_raw()` drops typed guarantees for expressions outside this interface. RPCs still return the native builder.
+As of 2026-10-06, the client re-exports `rp_postgrest::Postgrest`. Typed relation queries retain generated column and projection types and delegate execution and decoding to the owned builder. `into_raw()` drops typed guarantees for expressions outside this interface. `rpc::<F>(client, &args)` returns a typed `Rpc<F>` whose `fetch()` decodes `F::Returns`; its `into_raw()` returns the owned builder.
 
 Follow [Cargo's build-script contract](https://doc.rust-lang.org/cargo/reference/build-scripts.html): write generated source into `OUT_DIR`, register input paths and environment variables, and never rewrite committed snapshots during ordinary builds.
 
@@ -69,17 +69,17 @@ View bindings are read-only, including views PostgreSQL marks writable. Their wr
 
 Bulk inserts can change missing-property behavior. Review [PostgREST's missing/default preference](https://docs.postgrest.org/en/stable/references/api/preferences.html#missing) before sending rows with different omitted keys. Omission in a Rust struct alone does not force defaults for every bulk request.
 
-## Implementation verification
+## Historical implementation verification
 
-The implementation compiles and runs on Rust 1.85.1. The workspace test command passes 84 tests. Workspace Clippy passes with all features, all targets, and warnings denied. The workspace formatting check passes.
+These results were recorded on 2026-10-05, before the 0.8 / 3.0 cutover. They do not establish the current release's workspace test or lint status. The implementation compiled and ran on Rust 1.85.1. The workspace test command passed 84 tests. Workspace Clippy passed with all features, all targets, and warnings denied. The workspace formatting check passed.
 
 The offline example uses a real `build.rs`, generated output, custom type imports, and a targeted `TypedBuilder` derive. A separate compiled consumer verifies primitive-name collisions, prelude alias collisions, composite and singleton OUT/INOUT result shapes, and percent-encoded relation and RPC names.
 
-Live checks use PostgreSQL 17.11 and PostgREST 12.2.12. They exercise CRUD, views, scalar and composite RPCs, TABLE results, input defaults interspersed with OUT arguments, cross-schema enums, recursive domain defaults, generated columns, nullable multidimensional arrays, and exact numeric decoding. Snapshot export reloads as identical typed metadata.
+The 2026-10-05 live checks used PostgreSQL 17.11 and PostgREST 12.2.12. They exercised CRUD, views, scalar and composite RPCs, TABLE results, input defaults interspersed with OUT arguments, cross-schema enums, recursive domain defaults, generated columns, nullable multidimensional arrays, and exact numeric decoding. Snapshot export reloaded as identical typed metadata.
 
 Introspection also succeeds for a foreign table whose backing file does not exist, proving that the extraction does not need to read that table. A connection without explicit plaintext permission fails against the TLS-disabled local database. Failed authentication diagnostics omit the supplied password.
 
-The workspace documentation build succeeds. It retains an existing unresolved `SupabaseAuth` link in the auth crate.
+On 2026-10-05, the workspace documentation build succeeded. It retained an existing unresolved `SupabaseAuth` link in the auth crate.
 
 ## Typed relationship selections
 
@@ -171,7 +171,7 @@ Keep network errors, authorization, schema-cache drift, and response-shape failu
 Typed selections check captured relation identities and result shapes. They do not prove current
 server availability or row visibility.
 
-Live verification uses PostgreSQL 17.11 and PostgREST 16.2 with a non-superuser API role.
+The 2026-10-06 relationship verification used PostgreSQL 17.11 and PostgREST 16.2 with a non-superuser API role.
 It covers ambiguous FK aliases, reverse uniqueness, ordered composite joins, nested child filters,
 left versus inner behavior, empty embeds, existence predicates, and projected CRUD/view/RPC calls.
 A separate RLS check hides a non-null FK target and decodes `None` without removing its parent.
@@ -180,3 +180,20 @@ Grammar checks cover reserved resource, hint, alias, and column names with liter
 Projected insert, update, and delete also succeed after scoped child filters lock selection.
 PostgREST 16.2 rejects embed-alias existence predicates as DELETE row conditions.
 Use root column predicates for mutation conditions. The runtime preserves native execution errors rather than rewriting FK predicates.
+
+## Owned-client and gap acceptance on 2026-10-06
+
+The 0.8 workspace release uses the workspace-owned `rp-postgrest` 3.0 crate and requires Rust 1.85. Live acceptance on Rust 1.85, PostgreSQL 17, and PostgREST 16.2 passed for direct, reverse, unique, composite, and nested relationships, existence predicates, and projection-locked relationship filters. CRUD, view reads, and typed RPC execution also passed.
+
+The same live acceptance covered all six reported product gaps:
+
+- A single DTO implementing `Projection<R>` for multiple relations.
+- Typed ordering, literal-value IN lists, JSON text paths, and pagination.
+- Raw-builder decoding through `Builder::fetch::<T>()`.
+- Read counts, counted responses, minimal writes, and affected-row counts.
+- Canonical decoded error-body access through `Error::postgrest_body()` and `Error::postgrest_error()`. PostgREST 16.2 returned `PGRST201` with typed relationship candidates and HTTP 300.
+- Pure typed query-pair rendering through `schema::params`, without constructing an HTTP client.
+
+`Projection<R>` keeps shared DTO contracts relation-specific. Paged read queries cannot transition into writes. Counts preserve requested pagination, and minimal writes do not decode a fabricated row array. The owned client retains observed status, response headers, and effective URL for response failures. Malformed error envelopes retain the exact body bytes read successfully; valid structured errors do not retain original JSON bytes, and failed body reads do not promise partial-byte retention.
+
+Release checks passed on Rust 1.85.1. The workspace passed 134 tests and 9 documentation tests. Standalone no-default-feature runs passed 36 owned-client tests and 8 schema-runtime tests. Strict all-feature/all-target Clippy and stable formatting passed. The final live program passed every scenario listed above after the fixes. Registry-only consumer verification follows publication.

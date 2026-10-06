@@ -2,6 +2,29 @@
 /// Define a named result shape from generated columns and typed relationships.
 #[macro_export]
 macro_rules! projection {
+    ($(#[$attribute:meta])* $visibility:vis struct $name:ident for [$($first:ident)::+ $(, $($other:ident)::+)* $(,)?] { $($field:ident),* $(,)? }) => {
+        $crate::projection!($(#[$attribute])* $visibility struct $name for $($first)::+ { $($field),* });
+        $crate::projection!(@shared [$name] [$($first)::+] [$($field),*] $([$($other)::+])*);
+    };
+    (@shared [$name:ident] [$($first:ident)::+] $fields:tt [$($next:ident)::+] $($remaining:tt)*) => {
+        $crate::projection!(@shared_impl [$name] [$($first)::+] [$($next)::+] $fields);
+        $crate::projection!(@shared [$name] [$($first)::+] $fields $($remaining)*);
+    };
+    (@shared [$name:ident] $first:tt $fields:tt) => {};
+    (@shared_impl [$name:ident] $first:tt $next:tt [$($field:ident),*]) => {
+        const _: () = {
+            $($crate::projection!(@same_column $first $next $field);)*
+        };
+        impl $crate::schema::Projection<$crate::projection!(@row $next)> for $name {
+            const SELECT_LEN: usize = <Self as $crate::schema::Projection<$crate::projection!(@row $first)>>::SELECT_LEN;
+            fn write_selection(__output: &mut ::std::string::String) {
+                <Self as $crate::schema::Projection<$crate::projection!(@row $first)>>::write_selection(__output);
+            }
+        }
+    };
+    (@same_column [$($first:ident)::+] [$($next:ident)::+] $field:ident) => {
+        $crate::schema::__private::assert_same_column::<$($first)::+::columns::$field, $($next)::+::columns::$field>()
+    };
     ($(#[$attribute:meta])* $visibility:vis struct $name:ident for $($table:ident)::+ { $($input:tt)* }) => {
         $crate::projection!(@parse [$(#[$attribute])*] [$visibility] [$name] [$($table)::+] [] [] [] [] $($input)* ,);
     };
@@ -37,8 +60,7 @@ macro_rules! projection {
             $($checks)*
             $crate::schema::__private::assert_distinct(&[$($crate::projection!(@key $selection)),*]);
         };
-        impl $crate::schema::Projection for $name {
-            type Relation = $crate::projection!(@row $table);
+        impl $crate::schema::Projection<$crate::projection!(@row $table)> for $name {
             const SELECT_LEN: usize = (0usize $(+ $crate::projection!(@len $selection) + 1usize)*).saturating_sub(1);
             fn write_selection(__output: &mut ::std::string::String) {
                 let __start = __output.len();
@@ -97,7 +119,7 @@ macro_rules! projection {
     (@inner_write $output:ident [inner]) => { $output.push_str("!inner"); };
     (@len (scalar [$column:path])) => { <$column as $crate::schema::Column>::SELECT.len() };
     (@len (embed $field:ident [$edge:path] [$child:ty] $inner:tt)) => {
-        $crate::schema::__private::identifier_len($crate::schema::__private::alias(stringify!($field))) + <$edge as $crate::schema::Relationship>::RESOURCE.len() + <$edge as $crate::schema::Relationship>::HINT.len() + <$child as $crate::schema::Projection>::SELECT_LEN + 4usize + $crate::projection!(@inner_len $inner)
+        $crate::schema::__private::identifier_len($crate::schema::__private::alias(stringify!($field))) + <$edge as $crate::schema::Relationship>::RESOURCE.len() + <$edge as $crate::schema::Relationship>::HINT.len() + <$child as $crate::schema::Projection<<$edge as $crate::schema::Relationship>::Target>>::SELECT_LEN + 4usize + $crate::projection!(@inner_len $inner)
     };
     (@len (empty $field:ident [$edge:path])) => {
         $crate::schema::__private::identifier_len($crate::schema::__private::alias(stringify!($field))) + <$edge as $crate::schema::Relationship>::RESOURCE.len() + <$edge as $crate::schema::Relationship>::HINT.len() + 4usize
@@ -106,7 +128,7 @@ macro_rules! projection {
     (@write $output:ident (embed $field:ident [$edge:path] [$child:ty] $inner:tt)) => {
         $crate::projection!(@head $output $field [$edge]);
         $crate::projection!(@inner_write $output $inner);
-        $output.push('('); <$child as $crate::schema::Projection>::write_selection($output); $output.push(')');
+        $output.push('('); <$child as $crate::schema::Projection<<$edge as $crate::schema::Relationship>::Target>>::write_selection($output); $output.push(')');
     };
     (@write $output:ident (empty $field:ident [$edge:path])) => { $crate::projection!(@head $output $field [$edge]); $output.push_str("()"); };
     (@head $output:ident $field:ident [$edge:path]) => {

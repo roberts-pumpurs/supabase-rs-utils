@@ -2,6 +2,10 @@
 
 `build.rs` generates bindings from `schema.json` by default. It adds a prelude type alias, a text mapping, `PartialEq`, and a targeted `TypedBuilder` derive. `src/main.rs` includes the output with `include_schema!`.
 
+This example uses codegen and client 0.8 with the owned `rp-postgrest` 3.0 runtime.
+Generated rows implement `Projection<Row>`; regenerate Rust output when upgrading from 0.7.
+The committed version 2 snapshot still works without credentials or a generator CLI.
+
 Run without a database:
 
 ```sh
@@ -17,7 +21,19 @@ Typed column markers check filters. Generated payloads check insert and update f
 
 `src/relationship_projections.rs` contains mixed scalar, nested, inner, and predicate-only projections.
 Relationship handles check child columns and selected projection ownership.
-Compile-fail consumers cover wrong edges, wrong child types, duplicate aliases, and selection changes after embedded predicates.
+Compile-fail consumers cover wrong edges, wrong child types, duplicate aliases, selection changes after embedded predicates, shared DTO field type/key/missing-column mismatches, and paged-read mutation rejection.
+
+`src/gaps.rs` defines one `Artifact` DTO for both generated `skills` and `adapters` relations.
+Its permanent live scenario covers typed ordering, borrowed IN values with commas/quotes/backslashes,
+JSON text paths, inclusive pagination, server counts, minimal writes, and raw `Vec<Artifact>` decoding.
+It also renders `schema::params` pairs without constructing a typed query and feeds them to the
+owned builder. An application can pass those unencoded pairs to its own HTTP query serializer.
+JSON/JSONB markers implement `JsonColumn`; unrelated columns do not.
+
+Typed RPC `.fetch()` infers the generated return type and returns the canonical owned REST error.
+HTTP 204 supports unit-valued void RPCs, not arbitrary empty-body JSON results. Consumer response
+tests cover this contract; the live executable calls `echo_message`, not a void function.
+The example retains numeric values as arbitrary-precision `serde_json::Number`, without an `f64` conversion.
 
 
 Run consumer behavior and compiler rejection checks:
@@ -28,7 +44,10 @@ cargo test -p rp-supabase-codegen-example --offline
 
 ## Live scenario
 
-Apply `smoke.sql` to a disposable PostgreSQL database. It creates message and relationship fixtures and grants access for verification. Do not apply it to the repository's existing Supabase database or a production project.
+Apply `smoke.sql` to a disposable PostgreSQL database. It creates message, relationship, `skills`,
+`adapters`, and `artifact_links` fixtures, plus deliberately mismatched artifact tables for compiler
+contracts. It grants access for verification. Do not apply it to the repository's existing Supabase
+database or a production project.
 
 Expose `public` through PostgREST. Set these environment variables:
 
@@ -37,15 +56,26 @@ Expose `public` through PostgREST. Set these environment variables:
 - `SUPABASE_CODEGEN_API_KEY`, optional Supabase API key.
 - `SUPABASE_CODEGEN_ACCESS_TOKEN`, optional bearer access token.
 
-Then run the same Cargo command. Live introspection never falls back to the snapshot after an error.
+Then run `cargo run -p rp-supabase-codegen-example`. Live introspection never falls back to the snapshot after an error.
 The executable first checks direct and reverse FK relationships, billing/shipping ambiguity,
 PK/UNIQUE reverse to-one shapes, ordered composite FKs, nested filters, and empty-embed existence predicates.
 It compares left and inner behavior. Run-specific cleanup removes relationship fixtures after recoverable errors.
 Projected insert, update, and delete also run after scoped child filters lock the selection.
 
+`gaps::live` runs next. It inserts run-specific skills and adapters with minimal return, reads the
+same shared DTO through both relations, checks exact counts and parameter rendering, and attempts
+both cleanup deletes even after a recoverable scenario error. The skill cleanup checks its affected
+row count; the adapter cleanup requests minimal return.
+
 It then inserts a projected message, reads it with a typed filter, updates its nullable field,
 reads the view, calls the RPC, and deletes the row. It checks numeric precision through typed fetches.
 
 The scenario uses a 30-second timeout. A panic or timeout can leave inserted rows. Use a disposable database.
+
+The fixtures grant access to `PUBLIC` and do not define production RLS policies. The scenario
+requires visibility and write access to its inserted rows. It does not prove application RLS
+correctness; RLS or permissions can change embed visibility and counts.
+Live acceptance ran on Rust 1.85 with PostgreSQL 17 and PostgREST 16.2. Offline decoding and
+HTTP-fixture tests are separate checks and are not evidence of a live server run.
 
 Remote DDL does not trigger Cargo change detection. Change the tracked database environment variable, or register your migrations in `build.rs`, to request another introspection. Remove the database variable to return to the committed snapshot.

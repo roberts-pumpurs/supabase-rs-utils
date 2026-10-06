@@ -6,4 +6,6 @@ mod code;
 mod error;
 
 pub use code::{Authentication, ErrorCode, ErrorKind, PostgresErrorCode, PostgrestErrorCode};
-pub use error::{DecodeError, ErrorResponse, PostgrestError};
+pub use error::{
+    DecodeError, EmbeddingCardinality, EmbeddingDetail, ErrorDetails, ErrorResponse, PostgrestError,
+};

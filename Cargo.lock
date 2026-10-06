@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "examples"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "color-eyre",
  "eyre",
@@ -1943,28 +1943,20 @@ dependencies = [
 
 [[package]]
 name = "rp-postgrest"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66863dcc78469430f1936a42bc12766e01919b7130f54c674127ca535fdd9659"
+version = "3.0.0"
 dependencies = [
  "reqwest",
- "rp-postgrest-error 0.4.0",
-]
-
-[[package]]
-name = "rp-postgrest-error"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a952e76a88b6268d297e57219ea4f3f3ffbb759b335bf86095addd542504ddc"
-dependencies = [
- "http",
+ "rp-postgrest-error",
  "serde",
  "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "url",
 ]
 
 [[package]]
 name = "rp-postgrest-error"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "http",
  "serde",
@@ -1973,7 +1965,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-auth"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "futures",
@@ -1996,24 +1988,22 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-client"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "futures",
  "mockito",
- "percent-encoding",
  "rp-postgrest",
- "rp-postgrest-error 0.7.0",
+ "rp-postgrest-error",
  "rp-supabase-auth",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "rp-supabase-codegen"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "heck",
  "native-tls",
@@ -2030,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-codegen-example"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "mockito",
@@ -2044,7 +2034,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-mock"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "jsonwebtoken",
@@ -2057,7 +2047,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-realtime"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bytes",
  "fastwebsockets",
@@ -3455,7 +3445,7 @@ checksum = "32ac00cd3f8ec9c1d33fb3e7958a82df6989c42d747bd326c822b1d625283547"
 
 [[package]]
 name = "xtask"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "clap",
  "color-eyre",

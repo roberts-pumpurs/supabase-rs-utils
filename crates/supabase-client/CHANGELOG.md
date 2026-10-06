@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-06
+
+### Added
+
+- Shared projection DTOs over several generated relations with compile-time selected-field type and exact response-key checks.
+- Typed multi-column ordering, explicit null placement, literal IN lists, and JSON text-path equality.
+- Read pagination with a Paged state that retains read operations but cannot become a mutation.
+- Data-plus-total fetches, body-free read counts, minimal-return writes, and affected-row counts.
+- Pure typed query-pair rendering through `schema::params`, without constructing an HTTP client or request.
+- Typed RPC fetches that infer generated return types and share the owned client's success decoder.
+- Configured anonymous and authenticated constructors sharing a supplied transport for REST, login, and token refresh.
+
+### Changed
+
+- Breaking: use the workspace-owned rp-postgrest 3.0 and its `rp_postgrest` library/reexport. Remove `postgrest`, `PostgerstResponse`, `ResponseError`, and `schema::QueryError`; checked fetches return one canonical `Error` rather than nested response results.
+- Breaking: projections implement `Projection<R>` instead of declaring an associated relation. Generated bindings must be regenerated with codegen 0.8; embed paths now retain their source relation.
+- Breaking: `into_raw()` returns the owned Builder directly, without `?`. Decode raw rows with `fetch::<Vec<P>>()`; obsolete raw-result/response decode helpers are removed.
+- Breaking: direct client construction, client auth/header configuration, and raw build are fallible. Builders are not Clone; recreate requests from a shared Postgrest client.
+- Breaking: count preferences retain caller pagination instead of forcing Range 0-0. Paged typed reads cannot transition into writes.
+- Pass literal resource names for one-time encoding; dot-only resources now fail explicitly.
+- Preserve canonical error body access, HTTP 300 ambiguous-relationship details, response metadata, exact numeric decoding, relationship cardinality, RLS behavior, projection locks, and server-native DELETE limitations.
+
 ## [0.7.0] - 2026-10-06
 
 ### Added

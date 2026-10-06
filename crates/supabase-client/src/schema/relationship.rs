@@ -1,5 +1,5 @@
 //! Typed relationship selections and scoped filter paths.
-use super::{Projection, Relation};
+use super::{Column, Projection, Relation};
 use core::marker::PhantomData;
 use serde::de::DeserializeOwned;
 
@@ -25,7 +25,7 @@ pub trait Relationship: Copy {
     /// Source relation.
     type Source: Relation;
     /// Target relation.
-    type Target: Relation + Projection<Relation = Self::Target>;
+    type Target: Relation + Projection<Self::Target>;
     /// Conservative response cardinality.
     type Cardinality: Cardinality;
     /// Escaped target resource.
@@ -37,6 +37,8 @@ pub trait Relationship: Copy {
 pub trait EmbedPath {
     /// Exact owning projection.
     type Owner;
+    /// Source relation of the first selected relationship.
+    type Source: Relation;
     /// Selected child projection (or a predicate-only marker).
     type Selected;
     /// Final target relation.
@@ -77,12 +79,13 @@ impl<O, P, E: Relationship> Embed<O, P, E> {
         }
     }
     /// Compose with a handle belonging to this exact selected child.
-    pub const fn then<H: EmbedPath<Owner = P>>(self, next: H) -> Path<Self, H> {
+    pub const fn then<H: EmbedPath<Owner = P, Source = E::Target>>(self, next: H) -> Path<Self, H> {
         Path { first: self, next }
     }
 }
 impl<O, P, E: Relationship> EmbedPath for Embed<O, P, E> {
     type Owner = O;
+    type Source = E::Source;
     type Selected = P;
     type Target = E::Target;
     fn path_len(&self) -> usize {
@@ -98,14 +101,18 @@ pub struct Path<A, B> {
     first: A,
     next: B,
 }
-impl<A: EmbedPath, B: EmbedPath<Owner = A::Selected>> Path<A, B> {
+impl<A: EmbedPath, B: EmbedPath<Owner = A::Selected, Source = A::Target>> Path<A, B> {
     /// Compose another handle from the final selected child.
-    pub const fn then<H: EmbedPath<Owner = B::Selected>>(self, next: H) -> Path<Self, H> {
+    pub const fn then<H: EmbedPath<Owner = B::Selected, Source = B::Target>>(
+        self,
+        next: H,
+    ) -> Path<Self, H> {
         Path { first: self, next }
     }
 }
-impl<A: EmbedPath, B: EmbedPath<Owner = A::Selected>> EmbedPath for Path<A, B> {
+impl<A: EmbedPath, B: EmbedPath<Owner = A::Selected, Source = A::Target>> EmbedPath for Path<A, B> {
     type Owner = A::Owner;
+    type Source = A::Source;
     type Selected = B::Selected;
     type Target = B::Target;
     #[expect(
@@ -252,12 +259,15 @@ pub const fn assert_distinct(keys: &[&str]) {
 }
 /// Validate source and selected target identities without runtime work.
 #[doc(hidden)]
-pub const fn check_embed<
-    R: Relation,
-    E: Relationship<Source = R>,
-    P: Projection<Relation = E::Target>,
->() {
-}
+pub const fn check_embed<R: Relation, E: Relationship<Source = R>, P: Projection<E::Target>>() {}
 /// Validate a predicate-only source identity.
 #[doc(hidden)]
 pub const fn check_empty<R: Relation, E: Relationship<Source = R>>() {}
+/// Validate exact selected value types and SQL response keys without runtime work.
+#[doc(hidden)]
+pub const fn assert_same_column<A: Column, B: Column<Value = A::Value>>() {
+    assert!(
+        equal(A::NAME, B::NAME),
+        "shared projection response keys differ"
+    );
+}

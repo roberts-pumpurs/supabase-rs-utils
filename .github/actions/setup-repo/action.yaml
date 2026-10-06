@@ -2,14 +2,14 @@ name: "Setup Repo Action"
 description: "A reusable composite action that setups rust and other common tasks"
 inputs:
   toolchain:
-    description: "An example input parameter"
+    description: "Rust toolchain used for workspace verification"
     required: false
-    default: "nightly-2024-08-25"
+    default: "1.85.1"
 
 runs:
   using: "composite"
   steps:
-    - name: Install nightly
+    - name: Install Rust
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ inputs.toolchain }}

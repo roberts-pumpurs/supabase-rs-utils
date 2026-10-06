@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-06
+
+### Added
+
+- Configured-client constructors for auth API clients and authenticated streams.
+- `JwtStream::sign_in_with_client` for login and token refresh through a caller-supplied HTTP transport.
+
+### Changed
+
+- Reuse the configured transport for login, refresh, and emitted auth clients.
+- Apply API-key, JSON, and bearer headers per request without changing shared transport defaults or implicitly overriding compression policy.
+
 ## [0.7.0] - 2026-10-06
 
 ### Changed

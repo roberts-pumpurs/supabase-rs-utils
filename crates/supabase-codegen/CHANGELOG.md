@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-06
+
+### Changed
+
+- **Breaking:** generated rows implement relation-parameterized `Projection<Row>`. Regenerate Rust bindings with codegen 0.8 for runtime 0.8; snapshots remain version 2.
+- Emit `JsonColumn` markers for JSON and JSONB columns, including domains over those types.
+- Update usage for shared projection DTOs, pure typed query pairs, typed pagination and counts, minimal writes, and raw checked DTO decoding.
+- Document inferred typed RPC returns, HTTP 204 unit responses, canonical REST errors, and exact numeric decoding.
+
 ## [0.7.0] - 2026-10-06
 
 ### Added

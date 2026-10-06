@@ -539,6 +539,19 @@ impl Emitter<'_> {
     }
 }
 
+fn is_json_column_type(ty: &PgType) -> bool {
+    match ty {
+        PgType::Builtin(name) => {
+            matches!(
+                name.strip_prefix("pg_catalog.").unwrap_or(name),
+                "json" | "jsonb"
+            )
+        }
+        PgType::Domain { base, .. } => is_json_column_type(base),
+        PgType::Named { .. } | PgType::Array(_) => false,
+    }
+}
+
 fn references(ty: &PgType, config: &Config, output: &mut BTreeSet<String>) {
     match ty {
         PgType::Named { schema, name } => {
@@ -790,6 +803,11 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 } else {
                     TokenStream::new()
                 };
+                let json_impl = if is_json_column_type(&column.ty) {
+                    quote!(impl #runtime::JsonColumn for #column_name {})
+                } else {
+                    TokenStream::new()
+                };
                 column_markers.extend(quote!(
                     #[allow(non_camel_case_types)]
                     #[derive(::core::marker::Copy, ::core::clone::Clone)]
@@ -802,6 +820,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                         const SELECT: &'static ::core::primitive::str = #selection;
                     }
                     #nullable_impl
+                    #json_impl
                 ));
             }
             if table.kind == TableKind::Table {
@@ -835,8 +854,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                         const SCHEMA: &'static ::core::primitive::str = #schema_name;
                         const NAME: &'static ::core::primitive::str = #wire_name;
                     }
-                    impl #runtime::Projection for Row {
-                        type Relation = Self;
+                    impl #runtime::Projection<Row> for Row {
                         const SELECT_LEN: ::core::primitive::usize = 1;
                         fn write_selection(output: &mut ::std::string::String) {
                             output.push('*');

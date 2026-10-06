@@ -1,8 +1,8 @@
-# Supabase Utils Examples
+# Supabase utils examples
 
-This directory contains example applications demonstrating various features of the Supabase Utils Rust library. Each example focuses on a specific functionality and shows how to use it in practice.
+These applications use workspace 0.8 and the owned `rp-postgrest` 3.0 REST client.
 
-## Prerequisites
+## Local Supabase prerequisites
 
 - Rust toolchain installed
 - Supabase CLI installed
@@ -13,7 +13,7 @@ cd supabase
 supabase start
 ```
 
-## Running the Examples
+## Running the examples
 
 All examples can be run using Cargo. For example:
 
@@ -21,7 +21,7 @@ All examples can be run using Cargo. For example:
 cargo run --bin auth-example
 ```
 
-## Available Examples
+## Available examples
 
 | Example | File | Description | Use Cases |
 |---------|------|-------------|-----------|
@@ -32,9 +32,37 @@ cargo run --bin auth-example
 | Database Updates Example | [`cargo run --bin db-updates-example`](./src/db_updates_example.rs) | Demonstrates real-time database change listening | - Real-time data synchronization<br>- Live updates<br>- Database change notifications |
 | Client Example | [`cargo run --bin client-example`](./src/client_example.rs) | Shows basic database operations with Supabase client | - Database queries<br>- CRUD operations<br>- Authenticated database requests |
 
-## Common Features
+## Generated schema example
 
-All examples share some common features:
-- Logging setup with `tracing`
-- Configuration management
-- Authentication handling
+The [schema bindings example](../crates/supabase-codegen-example) builds from a committed snapshot
+without a database or Supabase CLI:
+
+```sh
+cargo run -p rp-supabase-codegen-example --offline
+```
+
+Dependencies must already be cached for Cargo's offline mode. The generator runs in host-side
+`build.rs`; it needs no separate generator CLI. Generated 0.8 rows implement `Projection<Row>`
+and JSON/JSONB column markers implement `JsonColumn`. Regenerate older Rust output for runtime 0.8.
+
+Its `smoke.sql` and permanent `src/gaps.rs` scenario exercise shared skills/adapters DTOs, typed
+order, IN, JSON text paths, pagination, counts, minimal writes, raw DTO decoding, and pure
+`schema::params` pairs. The runner also checks relationship projections and message CRUD/view/RPC.
+Typed RPC fetches infer their return type. HTTP 204 unit-valued void behavior belongs to consumer
+response tests; the live runner's RPC is `echo_message`.
+
+For live execution, apply `smoke.sql` only to a disposable database, expose `public` through
+PostgREST, and set `SUPABASE_CODEGEN_DATABASE_URL` and `SUPABASE_CODEGEN_API_URL`.
+`SUPABASE_CODEGEN_API_KEY` and `SUPABASE_CODEGEN_ACCESS_TOKEN` are optional API credentials.
+Remote introspection verifies TLS; use `sslmode=disable` only for a trusted local database.
+See the example README for cleanup and Cargo change-detection details.
+
+The fixtures grant access to `PUBLIC` and do not test production RLS policies. Cleanup attempts
+to remove run-specific rows after recoverable errors; panics or the 30-second timeout can leave
+rows behind. Live acceptance ran with Rust 1.85, PostgreSQL 17, and PostgREST 16.2.
+Offline and HTTP-fixture checks are not live-server verification.
+
+REST operations return the canonical owned error, with structured PostgREST body accessors and
+response metadata. Exact numerics remain arbitrary-precision `serde_json::Number`, not `f64`.
+Configured auth/REST constructors reuse a supplied HTTP client for login, refresh, and emitted
+clients, with request-local API-key and bearer headers and no implicit compression override.

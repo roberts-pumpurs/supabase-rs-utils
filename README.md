@@ -8,23 +8,28 @@ A collection of Rust crates for interacting with Supabase APIs, including Authen
 
 This repository is a Cargo workspace containing multiple Rust crates that provide clients and utilities for working with Supabase services in Rust. The crates included are:
 
+- [rp-postgrest](./crates/postgrest/README.md): The workspace-owned raw PostgREST HTTP client, with checked execution and typed decoding.
 - [rp-supabase-auth](./crates/supabase-auth/README.md): A client library for Supabase's Authentication API.
 - [rp-postgrest-error](./crates/postgrest-error/README.md): Error parsing and handling for PostgREST and PostgreSQL responses.
 - [rp-supabase-realtime](./crates/supabase-realtime/README.md): A client library for Supabase's Realtime API.
 - [rp-supabase-client](./crates/supabase-client/README.md): A client for Supabase's PostgREST API with authenticated requests.
 - [rp-supabase-codegen](./crates/supabase-codegen/README.md): Generate Rust schema bindings in `build.rs`, with offline snapshots and custom derives, attributes, and preludes.
 
-## Getting Started
+## Getting started
 
-To use any of these crates, add them as dependencies in your Cargo.toml file:
+The workspace crates require Rust 1.85 or later. Add the crates you need to `Cargo.toml`:
 
 ```toml
 [dependencies]
-rp-supabase-auth = "0.1.0"
-rp-postgrest-error = "0.1.0"
-rp-supabase-realtime = "0.1.0"
-rp-supabase-client = "0.1.0"
+rp-postgrest = "3.0"
+rp-supabase-auth = "0.8"
+rp-postgrest-error = "0.8"
+rp-supabase-realtime = "0.8"
+rp-supabase-client = "0.8"
+rp-supabase-codegen = "0.8"
 ```
+
+`rp-postgrest` is implemented in this workspace. `rp-supabase-client` builds typed queries on it and re-exports it as `rp_postgrest`. Both use the canonical `rp-postgrest-error` response model. See the [typed client documentation](./crates/supabase-client/README.md) for projections, shared DTOs, typed ordering and filters, pagination, counts, minimal writes, and typed RPCs. Raw builders support checked decoding through `fetch::<T>()`.
 
 ## Examples
 
@@ -42,10 +47,13 @@ Each example is self-contained and includes detailed documentation about its use
 
 ## Development guide
 
-1. [Install Rust](https://rustup.rs/)
-2. All tasks and actions are managed by `cargo xtask`. Try running `cargo xtask --help` to see all the available commands.
-3. `cargo xtask fmt` -- format the code
-4. `cargo xtask test -- my_test_name` -- run specific tests
+1. Install Rust 1.85 or later.
+2. Run `cargo fmt --all --check`.
+3. Run `cargo clippy --workspace --all-features --all-targets --locked -- -D warnings`.
+4. Run `cargo test --workspace --all-features --all-targets --locked`.
+5. Run `cargo test --workspace --all-features --doc --locked` for documentation examples.
+
+`cargo xtask check` runs Clippy and formatting checks. `cargo xtask fmt` also applies compiler and Clippy fixes.
 
 ## Supabase instance for local development
 

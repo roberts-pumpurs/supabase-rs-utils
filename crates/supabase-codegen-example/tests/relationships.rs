@@ -4,7 +4,7 @@ mod database {
 }
 use database::public;
 use public::tables;
-use rp_supabase_client::{postgrest::Postgrest, schema::Projection};
+use rp_supabase_client::{rp_postgrest::Postgrest, schema::Projection};
 use serde_json::json;
 
 #[allow(dead_code)]
@@ -151,7 +151,7 @@ async fn nested_scoped_filters_preserve_literal_values_and_alias_paths() {
         .with_body(r#"[{"id":1,"name":"customer","orders":[],"preference":null}]"#)
         .create_async()
         .await;
-    let rows = tables::customers::query(Postgrest::new(server.url()))
+    let rows = tables::customers::query(Postgrest::new(server.url()).unwrap())
         .select::<CustomerSummary>()
         .eq(tables::customers::columns::id, &1)
         .embedded(
@@ -191,7 +191,7 @@ async fn reserved_alias_filters_are_encoded_once_and_independent() {
         .with_body(r#"[{"id":1,"select":null,"type":null}]"#)
         .create_async()
         .await;
-    let rows = tables::orders::query(Postgrest::new(server.url()))
+    let rows = tables::orders::query(Postgrest::new(server.url()).unwrap())
         .select::<Aliases>()
         .embedded(Aliases::r#select, |address| {
             address.eq(tables::addresses::columns::id, &10);
@@ -224,7 +224,7 @@ async fn empty_exists_and_anti_exists_work_at_root_and_in_children() {
             .with_body(r#"[{"id":1}]"#)
             .create_async()
             .await;
-        let query = tables::customers::query(Postgrest::new(server.url()))
+        let query = tables::customers::query(Postgrest::new(server.url()).unwrap())
             .select::<CustomerPredicates>()
             .embedded(CustomerPredicates::matching_orders, |orders| {
                 orders.eq(tables::orders::columns::id, &7);
@@ -252,7 +252,7 @@ async fn empty_exists_and_anti_exists_work_at_root_and_in_children() {
         .with_body(r#"[{"id":1,"orders":[{"id":7}]}]"#)
         .create_async()
         .await;
-    let rows = tables::customers::query(Postgrest::new(server.url()))
+    let rows = tables::customers::query(Postgrest::new(server.url()).unwrap())
         .select::<OrdersWithPredicates>()
         .embedded(OrdersWithPredicates::orders, |orders| {
             orders.not_exists(OrderPredicates::matching_details);
@@ -277,7 +277,7 @@ async fn locked_selection_retains_embedded_filters_when_choosing_a_write() {
         .with_body(r#"[{"id":7,"label":"deleted","billing":null,"shipping":null,"detail":null}]"#)
         .create_async()
         .await;
-    let rows = tables::orders::query(Postgrest::new(server.url()))
+    let rows = tables::orders::query(Postgrest::new(server.url()).unwrap())
         .select::<OrderSummary>()
         .embedded(OrderSummary::billing, |address| {
             address.eq(tables::addresses::columns::id, &8);
@@ -319,14 +319,14 @@ async fn fetch_rejects_missing_optional_and_duplicate_children() {
             .with_body(body)
             .create_async()
             .await;
-        let error = tables::orders::query(Postgrest::new(server.url()))
+        let error = tables::orders::query(Postgrest::new(server.url()).unwrap())
             .select::<OrderSummary>()
             .fetch()
             .await
             .unwrap_err();
         assert!(matches!(
             error,
-            rp_supabase_client::schema::QueryError::Decode(_)
+            rp_supabase_client::rp_postgrest::Error::ResponseDecode { .. }
         ));
         request.assert_async().await;
     }
@@ -348,7 +348,7 @@ async fn insert_and_update_preserve_selection_lock_and_child_predicates() {
         .with_body(body)
         .create_async()
         .await;
-    let rows = tables::orders::query(Postgrest::new(server.url()))
+    let rows = tables::orders::query(Postgrest::new(server.url()).unwrap())
         .select::<OrderSummary>()
         .embedded(OrderSummary::billing, |address| {
             address.eq(tables::addresses::columns::id, &8);
@@ -376,7 +376,7 @@ async fn insert_and_update_preserve_selection_lock_and_child_predicates() {
         .with_body(body)
         .create_async()
         .await;
-    let rows = tables::orders::query(Postgrest::new(server.url()))
+    let rows = tables::orders::query(Postgrest::new(server.url()).unwrap())
         .select::<OrderSummary>()
         .exists(OrderSummary::billing)
         .insert(&tables::orders::Insert {

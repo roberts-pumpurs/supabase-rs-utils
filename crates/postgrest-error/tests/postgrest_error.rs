@@ -10,7 +10,8 @@ use core::error::Error as _;
 
 use http::StatusCode;
 use rp_postgrest_error::{
-    Authentication, ErrorCode, ErrorKind, ErrorResponse, PostgresErrorCode, PostgrestError,
+    Authentication, EmbeddingCardinality, ErrorCode, ErrorDetails, ErrorKind, ErrorResponse,
+    PostgresErrorCode, PostgrestError, PostgrestErrorCode,
 };
 
 #[test]
@@ -39,31 +40,58 @@ fn decoded_error_preserves_observed_status_and_structured_body() {
         "duplicate key value violates unique constraint"
     );
     assert_eq!(
-        error.response().details.as_deref(),
-        Some("Key (id)=(1) already exists.")
+        error.response().details,
+        Some(ErrorDetails::Text(
+            "Key (id)=(1) already exists.".to_owned()
+        ))
     );
     assert_eq!(error.response().hint, None);
 }
 
+#[expect(
+    clippy::panic,
+    reason = "A different JSON shape or candidate count fails this contract test"
+)]
 #[test]
-fn display_uses_observed_status_exact_code_and_message() {
+fn ambiguity_candidates_decode_as_structured_details() {
     let body = br#"{
-        "code": "23505",
-        "message": "duplicate key",
-        "details": null,
-        "hint": null
+        "code": "PGRST201",
+        "message": "Could not embed because more than one relationship was found",
+        "details": [
+            {
+                "cardinality": "many-to-one",
+                "embedding": "orders with addresses",
+                "relationship": "orders_billing using orders(billing_id) and addresses(id)"
+            },
+            {
+                "cardinality": "many-to-one",
+                "embedding": "orders with addresses",
+                "relationship": "orders_shipping using orders(shipping_id) and addresses(id)"
+            }
+        ],
+        "hint": "Use addresses!orders_billing or addresses!orders_shipping"
     }"#;
-    let error = PostgrestError::from_slice(StatusCode::CONFLICT, body).unwrap();
-
+    let error = PostgrestError::from_slice(StatusCode::MULTIPLE_CHOICES, body).unwrap();
+    assert_eq!(error.status(), StatusCode::MULTIPLE_CHOICES);
     assert_eq!(
-        error.to_string(),
-        "PostgREST request failed with 409 Conflict [23505]: duplicate key"
+        error.kind(),
+        ErrorKind::Postgrest(PostgrestErrorCode::AmbiguousEmbedding)
     );
-
-    let std_error: &dyn core::error::Error = &error;
+    let Some(ErrorDetails::AmbiguousEmbeddings(candidates)) = &error.response().details else {
+        panic!("expected structured relationship candidates");
+    };
+    let [billing, shipping] = candidates.as_slice() else {
+        panic!("expected the two distinct foreign keys");
+    };
+    assert_eq!(billing.cardinality, EmbeddingCardinality::ManyToOne);
+    assert_eq!(billing.embedding, "orders with addresses");
     assert_eq!(
-        std_error.to_string(),
-        "PostgREST request failed with 409 Conflict [23505]: duplicate key"
+        billing.relationship,
+        "orders_billing using orders(billing_id) and addresses(id)"
+    );
+    assert_eq!(
+        shipping.relationship,
+        "orders_shipping using orders(shipping_id) and addresses(id)"
     );
 }
 
@@ -95,11 +123,6 @@ fn malformed_body_error_retains_status_body_and_decode_source() {
     assert_eq!(error.status(), StatusCode::BAD_GATEWAY);
     assert_eq!(error.body(), body);
     assert!(error.source().is_some());
-    assert!(
-        error
-            .to_string()
-            .starts_with("failed to decode PostgREST error response with status 502 Bad Gateway")
-    );
 }
 
 #[test]

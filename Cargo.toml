@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "xtask", "examples"]
 
 [workspace.package]
-version = "0.7.0"
+version = "0.8.0"
 authors = [
   "Roberts Pumpurs <roberts@pumpurlabs.com>",
 ]
@@ -65,15 +65,13 @@ mod_module_files = "allow"
 
 [workspace.dependencies]
 # our cretes
-rp-supabase-mock = { path = "crates/supabase-mock", version = "0" }
-rp-supabase-auth = { path = "crates/supabase-auth", version = "0" }
-rp-supabase-client = { path = "crates/supabase-client", version = "0" }
-rp-postgrest-error = { path = "crates/postgrest-error", version = "0" }
-rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0" }
-rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0" }
-
-# fork of postgrest-rs; its library crate is named `postgrest`
-postgrest = { package = "rp-postgrest", version = "2.1" }
+rp-supabase-mock = { path = "crates/supabase-mock", version = "0.8" }
+rp-supabase-auth = { path = "crates/supabase-auth", version = "0.8" }
+rp-supabase-client = { path = "crates/supabase-client", version = "0.8" }
+rp-postgrest-error = { path = "crates/postgrest-error", version = "0.8" }
+rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.8" }
+rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.8" }
+rp-postgrest = { path = "crates/postgrest", version = "3.0" }
 
 # Async
 futures-concurrency = "7.4"

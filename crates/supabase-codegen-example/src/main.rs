@@ -4,13 +4,13 @@
 //! SUPABASE_CODEGEN_DATABASE_URL in the build environment. Optional API credentials
 //! come only from SUPABASE_CODEGEN_API_KEY and SUPABASE_CODEGEN_ACCESS_TOKEN.
 
-use rp_supabase_client::postgrest::{Builder, Postgrest};
+use rp_supabase_client::rp_postgrest::Postgrest;
 use rp_supabase_client::schema::{Array, Field, rpc};
-use serde::de::DeserializeOwned;
 use serde_json::json;
 
 rp_supabase_client::include_schema!("database.rs");
 
+mod gaps;
 #[allow(dead_code)]
 mod relationship_projections;
 mod relationships;
@@ -65,15 +65,9 @@ fn offline() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn decode<T: DeserializeOwned>(request: Builder) -> Result<T, Box<dyn std::error::Error>> {
-    let response = request.execute().await?;
-    Ok(rp_supabase_client::PostgerstResponse::<T>::new(response)
-        .json()
-        .await??)
-}
-
 async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
     relationships::live(client.clone()).await?;
+    gaps::live(client.clone()).await?;
     let rows = messages::query(client.clone())
         .select::<Message>()
         .insert(&insert("live example"))
@@ -113,8 +107,9 @@ async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
         let args = echo_message::Args {
             message: Some("rpc example".into()),
         };
-        let echoed: <echo_message::Function as rp_supabase_client::schema::Function>::Returns =
-            decode(rpc::<echo_message::Function>(client.clone(), &args)?).await?;
+        let echoed = rpc::<echo_message::Function>(client.clone(), &args)
+            .fetch()
+            .await?;
         assert_eq!(echoed.as_deref(), Some("rpc example"));
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -134,12 +129,12 @@ async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     offline()?;
     if let Ok(url) = std::env::var("SUPABASE_CODEGEN_API_URL") {
-        let mut client = Postgrest::new(url.trim_end_matches('/'));
+        let mut client = Postgrest::new(url.trim_end_matches('/'))?;
         if let Ok(key) = std::env::var("SUPABASE_CODEGEN_API_KEY") {
-            client = client.insert_header("apikey", key);
+            client = client.insert_header("apikey", key)?;
         }
         if let Ok(token) = std::env::var("SUPABASE_CODEGEN_ACCESS_TOKEN") {
-            client = client.auth(token);
+            client = client.auth(token)?;
         }
         tokio::time::timeout(std::time::Duration::from_secs(30), live(client)).await??;
     }

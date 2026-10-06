@@ -11,9 +11,10 @@ pub mod schema;
 
 #[cfg(feature = "client")]
 pub use client::{
-    PostgerstResponse, ResponseError, SUPABASE_KEY, SupabaseClientError, anonymous_client,
-    new_authenticated,
+    SUPABASE_KEY, SupabaseClientError, anonymous_client, anonymous_client_with_client,
+    new_authenticated, new_authenticated_with_client,
 };
-pub use postgrest;
+pub use rp_postgrest;
+pub use rp_postgrest::{Error, Postgrest};
 #[cfg(feature = "client")]
 pub use {rp_postgrest_error, rp_supabase_auth};

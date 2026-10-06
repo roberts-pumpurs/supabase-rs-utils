@@ -4,7 +4,7 @@ use examples::get_supabase_credentials;
 use rp_supabase_auth::futures::StreamExt as _;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
-use rp_supabase_client::{PostgerstResponse, new_authenticated};
+use rp_supabase_client::new_authenticated;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -45,12 +45,8 @@ async fn main() -> eyre::Result<()> {
         let res = client
             .from("messages")
             .select("*")
-            .build()
-            .send()
-            .await
-            .map(PostgerstResponse::<simd_json::OwnedValue>::new)?
-            .json()
-            .await;
+            .fetch::<simd_json::OwnedValue>()
+            .await?;
 
         tracing::info!(?res, "postgrest response");
     }

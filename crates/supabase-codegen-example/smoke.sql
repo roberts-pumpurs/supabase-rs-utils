@@ -65,6 +65,29 @@ CREATE TABLE public.composite_children (
     CONSTRAINT composite_parent FOREIGN KEY (parent_id, tenant_id)
         REFERENCES public.composite_parents(id, tenant_id)
 );
+CREATE TABLE public.skills (
+    id bigint PRIMARY KEY, name text NOT NULL, owner_id bigint NOT NULL, manifest jsonb NOT NULL
+);
+CREATE TABLE public.adapters (
+    id bigint PRIMARY KEY, name text NOT NULL, owner_id bigint NOT NULL, manifest jsonb NOT NULL
+);
+CREATE TABLE public.artifact_wrong_type (
+    id bigint PRIMARY KEY, name text NOT NULL, owner_id text NOT NULL, manifest jsonb NOT NULL
+);
+CREATE TABLE public.artifact_wrong_key (
+    id bigint PRIMARY KEY, name text NOT NULL, "owner.id" bigint NOT NULL, manifest jsonb NOT NULL
+);
+CREATE TABLE public.artifact_missing (
+    id bigint PRIMARY KEY, name text NOT NULL, manifest jsonb NOT NULL
+);
+CREATE TABLE public.artifact_links (
+    id bigint PRIMARY KEY, skill_id bigint NOT NULL, adapter_id bigint NOT NULL,
+    CONSTRAINT links_skill FOREIGN KEY (skill_id) REFERENCES public.skills(id),
+    CONSTRAINT links_adapter FOREIGN KEY (adapter_id) REFERENCES public.adapters(id)
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.artifact_links TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.skills, public.adapters,
+    public.artifact_wrong_type, public.artifact_wrong_key, public.artifact_missing TO PUBLIC;
 -- These grants are for a disposable smoke database only, not a production policy.
 GRANT USAGE ON SCHEMA public TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.messages TO PUBLIC;

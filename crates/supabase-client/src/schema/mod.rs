@@ -1,11 +1,6 @@
 //! Serialization and `PostgREST` integration for generated database bindings.
 
-use alloc::borrow::Cow;
-use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
-
 use serde::{Deserialize, Serialize, Serializer};
-
-const PATH_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'_').remove(b'~');
 
 /// A write field that distinguishes an absent key from an explicit value.
 /// Use `Field<Option<T>>` when the database permits an explicit JSON null.
@@ -67,37 +62,64 @@ pub trait Function {
     const NAME: &'static str;
 }
 
+pub mod params;
 mod projection;
+pub use params::{Nulls, Order, QueryPair};
 mod query;
 mod relationship;
-pub use postgrest::Postgrest;
 pub use query::{
-    Column, Locked, NullableColumn, Projection, Query, QueryError, Read, ScopedFilters, Unlocked,
-    WritableRelation, Write, query,
+    Column, JsonColumn, Locked, NullableColumn, Paged, Projection, Query, Read, ScopedFilters,
+    Unlocked, WritableRelation, Write, query,
 };
 pub use relationship::{
     Cardinality, Embed, EmbedPath, EmptySelection, Path, Relationship, ToMany, ToOne,
 };
+pub use rp_postgrest::{Count, Counted, Postgrest};
 
 #[doc(hidden)]
 pub mod __private {
     pub use super::relationship::{
-        alias, assert_distinct, check_embed, check_empty, identifier_len, write_identifier,
+        alias, assert_distinct, assert_same_column, check_embed, check_empty, identifier_len,
+        write_identifier,
     };
     pub use serde;
 }
 
-/// Start an RPC request, preserving omitted arguments and explicit nulls.
-///
-/// # Errors
-/// Returns the argument serialization error, including an unskipped omitted field.
-pub fn rpc<F: Function>(
-    client: postgrest::Postgrest,
-    args: &F::Args,
-) -> Result<postgrest::Builder, serde_json::Error> {
-    let body = serde_json::to_string(args)?;
-    let name: Cow<'_, str> = utf8_percent_encode(F::NAME, PATH_SEGMENT).into();
-    Ok(client.schema(F::SCHEMA).rpc(name, body))
+/// A typed RPC request with no relation projection or cardinality constraints.
+#[must_use]
+pub struct Rpc<F: Function> {
+    builder: rp_postgrest::Builder,
+    marker: core::marker::PhantomData<fn() -> F>,
+}
+
+impl<F: Function> Rpc<F> {
+    /// Drop the function's return-type guarantee for raw protocol composition.
+    pub fn into_raw(self) -> rp_postgrest::Builder {
+        self.builder
+    }
+
+    /// Execute and decode the generated function's return type.
+    ///
+    /// # Errors
+    /// Preserves serialization, transport and response failures.
+    pub async fn fetch(self) -> Result<F::Returns, rp_postgrest::Error>
+    where
+        F::Returns: serde::de::DeserializeOwned,
+    {
+        self.builder.fetch().await
+    }
+}
+
+/// Start an RPC request, deferring argument serialization failures to execution.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "RPC construction uses the same consuming client convention as generated queries"
+)]
+pub fn rpc<F: Function>(client: rp_postgrest::Postgrest, args: &F::Args) -> Rpc<F> {
+    Rpc {
+        builder: client.rpc_json(F::NAME, args).schema(F::SCHEMA),
+        marker: core::marker::PhantomData,
+    }
 }
 
 /// Include bindings produced by a consumer's build script in `OUT_DIR`.
@@ -111,8 +133,8 @@ macro_rules! include_schema {
 /// Common generated binding runtime imports.
 pub mod prelude {
     pub use super::{
-        Array, Column, Field, Function, NullableColumn, Projection, Query, QueryError, Relation,
-        WritableRelation, query, rpc,
+        Array, Column, Count, Field, Function, JsonColumn, NullableColumn, Nulls, Order, Paged,
+        Projection, Query, Relation, Rpc, WritableRelation, query, rpc,
     };
     pub use crate::{include_schema, projection};
 }

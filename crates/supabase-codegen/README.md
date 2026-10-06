@@ -10,7 +10,7 @@ Keep a schema snapshot in source control. Ordinary builds need no database or cr
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.7"
+rp-supabase-client = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 # Add these when your schema has UUID or temporal columns.
@@ -18,12 +18,12 @@ uuid = { version = "1", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]
-rp-supabase-codegen = "0.7"
+rp-supabase-codegen = "0.8"
 ```
 
-Generated bindings only need the `schema` runtime. Applications with their own `postgrest` client and
-response handling can use `rp-supabase-client = { version = "0.7", default-features = false }`. That
-leaves out authentication and does not enable `serde_json/arbitrary_precision`.
+Generated bindings only need the `schema` runtime. Applications with their own HTTP client and
+response handling can use `rp-supabase-client = { version = "0.8", default-features = false }`.
+That leaves out authentication and does not enable `serde_json/arbitrary_precision`.
 
 ```rust
 // build.rs
@@ -51,7 +51,7 @@ Enable the `database` build-dependency feature. Database and TLS dependencies do
 
 ```toml
 [build-dependencies]
-rp-supabase-codegen = { version = "0.7", features = ["database"] }
+rp-supabase-codegen = { version = "0.8", features = ["database"] }
 ```
 
 ```rust
@@ -97,9 +97,11 @@ For `public.messages`, the generator emits:
 - `public::tables::messages::Insert`, with required fields and omittable default or nullable fields.
 - `public::tables::messages::Update`, with omittable writable fields and `Default`.
 
-Rows implement `schema::Relation` and `schema::Projection`. Each relation module exposes
+Rows implement `schema::Relation` and `schema::Projection<Row>`. Each relation module exposes
 `query(client)`. The query retains its relation and response type until decoding.
-It consumes the client, so cloning remains explicit.
+It consumes the client, so cloning remains explicit. Regenerate previously emitted Rust bindings
+with codegen 0.8 before using runtime 0.8. The snapshot format remains version 2.
+JSON and JSONB column markers, including domains over those types, implement `schema::JsonColumn`.
 
 ```rust,ignore
 use database::public::tables::messages;
@@ -143,9 +145,47 @@ String columns accept `&str` without a caller allocation. Generated enums displa
 Use `is_null(column)` for nullable fields, not `eq(column, &None)`.
 The runtime escapes column identifiers and lets the HTTP client encode scalar values once.
 
-`fetch()` infers `Vec<Projection>`. `fetch_one()` infers the projection itself and uses PostgREST's
-single-row response semantics. Both methods check HTTP status before decoding JSON.
-`schema::QueryError::Execution` preserves native PostgREST errors and response metadata.
+`fetch()` infers `Vec<P>` for `P: Projection<R>`. `fetch_one()` infers `P` and uses PostgREST's
+single-row response semantics. Both methods return the owned `rp_postgrest::Error` directly.
+`Error::postgrest_body()` exposes the decoded code, message, details, and hint.
+`postgrest_error()` exposes the canonical structured error. Response metadata retains the observed
+status, headers, and effective URL. Malformed error envelopes and successful JSON decoding failures
+have separate error variants.
+
+One DTO can implement the projection contract for several relations:
+
+```rust,ignore
+rp_supabase_client::projection! {
+    struct Artifact for [database::public::tables::skills, database::public::tables::adapters] {
+        id, name, owner_id
+    }
+}
+```
+
+The selected columns must exist in every relation with identical Rust value types and exact SQL
+response keys. Unselected columns may differ. Relationship handles still enforce their source,
+target, and selected child projection.
+
+Typed queries support `order(column, Order::Asc)`, `order_with_nulls`, borrowed literal `in_`
+values, and `json_text_eq(json_column, &["fingerprint"], value)?`. JSON path keys are escaped
+identifiers. Scalar comparison values remain literal; IN values use list-specific quoting.
+`limit` and inclusive `range` produce a paged read query that cannot become a typed mutation.
+`fetch_with_count(Count::Exact)` returns rows and the server total; `count(Count::Exact)` reads
+the total without decoding rows. Missing or invalid totals are errors, never an invented zero.
+
+`schema::params` renders the same unencoded query pairs without a `Postgrest` instance:
+
+```rust,ignore
+use rp_supabase_client::schema::params;
+let pairs = [
+    params::projection::<messages::Row, MessageSummary>(),
+    params::eq(messages::columns::id, &message_id),
+];
+let request = http.get(endpoint).query(&pairs);
+```
+
+It also provides typed comparison, null, IN, order, and JSON text-path helpers. Pass pairs directly
+to your HTTP client's query serializer. Do not percent-encode them first.
 
 ### Typed relationships
 
@@ -207,8 +247,8 @@ For UPDATE and DELETE, use root column predicates to constrain affected rows. Ch
 PostgREST 16.2 rejects embed-alias existence predicates as DELETE row conditions.
 The runtime reports the native execution error; it does not translate an embed into an FK null check.
 
-Nested selections append into one parent buffer using `Projection::SELECT_LEN` and `write_selection`.
-Custom projection implementations must supply both.
+Nested selections append into one parent buffer using `Projection<R>::SELECT_LEN` and
+`write_selection`. Custom `Projection<R>` implementations must supply both for each relation.
 
 
 ### Typed writes and raw queries
@@ -217,10 +257,13 @@ Pass generated payloads to `insert(&Insert)` or `update(&Update)`.
 The builder handles serialization and reports failures when executing the query.
 Only base tables implement `schema::WritableRelation`. Views do not expose typed writes.
 A query can choose only one mutation. Projections also control returned write representations.
+Write `fetch()` requests a representation. Write `execute()` requests minimal return without JSON
+decoding, and `execute_with_count(Count::Exact)` returns the affected-row count.
 
-Call `into_raw()?` for arbitrary expressions, relationships outside the captured FK graph,
+Call `into_raw()` for arbitrary expressions, relationships outside the captured FK graph,
 bulk writes, or comparisons whose mapped types do not implement `Display`.
-This drops typed guarantees. RPCs retain their raw builder and nested response results.
+This drops typed guarantees. The owned builder's `fetch::<Vec<MessageSummary>>()` still checks
+HTTP status and decodes the named DTO through the same canonical error path.
 
 ### Omission and null
 
@@ -242,7 +285,7 @@ Bulk inserts with different omitted keys require care. PostgREST's `Prefer: miss
 
 Integer widths match PostgreSQL. UUID and temporal columns use `uuid` and `chrono`. Timestamps with time zones use `DateTime<FixedOffset>`. JSON columns use `serde_json::Value`.
 
-Numeric columns use `serde_json::Number`. Enable `arbitrary_precision` for schema-only runtime use or decoding outside the client. The default client feature enables it for typed fetches and `PostgerstResponse::json`. Non-finite numeric values need a custom mapping because they are not ordinary JSON numbers.
+Numeric columns use `serde_json::Number`. Enable `arbitrary_precision` for schema-only runtime use or decoding outside the client. The default client feature enables it for typed fetches. Do not convert exact numerics through `f64`. Non-finite numeric values need a custom mapping because they are not ordinary JSON numbers.
 
 Bytea, network, interval, range, geometric, and text-search columns use their JSON string representation. SQL bytea does not map to a JSON byte array.
 
@@ -257,13 +300,18 @@ Named-object RPCs emit `public::functions::<name>::Args`, `Returns`, and `Functi
 Required arguments use `Option<T>` because PostgreSQL functions can accept null. Default arguments use `Field<Option<T>>`, distinguishing omission from null. Scalar results are nullable. Set results use vectors. Non-set composite and OUT results use a single struct. OUT and TABLE fields have a generated `Record` type, including singleton OUT and INOUT results.
 
 ```rust,ignore
-let request = schema::rpc::<database::public::functions::echo_message::Function>(
+let echoed = schema::rpc::<database::public::functions::echo_message::Function>(
     client.clone(),
     &database::public::functions::echo_message::Args {
         message: Some("hello".to_owned()),
     },
-)?;
+).fetch().await?;
 ```
+
+The generated function marker determines the return type, so no manual decode or result annotation
+is needed. RPC construction defers argument serialization errors until execution and does not add
+relation selection or single-row semantics. PostgreSQL `void` emits `Returns = ()`; an actual
+HTTP 204 decodes as unit. Empty bodies are not treated as successful row or scalar JSON.
 
 PostgREST cannot distinguish every SQL overload by its JSON argument names. Generated overload types do not change that server limitation.
 

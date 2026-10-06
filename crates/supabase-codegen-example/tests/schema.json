@@ -606,6 +606,18 @@
       ],
       "functions": [
         {
+          "name": "void_action",
+          "arguments": [],
+          "returns": {
+            "kind": "type",
+            "value": {
+              "kind": "builtin",
+              "value": "void"
+            }
+          },
+          "returns_set": false
+        },
+        {
           "name": "enum_record",
           "arguments": [],
           "returns": {

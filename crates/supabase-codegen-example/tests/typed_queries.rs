@@ -3,7 +3,7 @@ mod bindings {
     rp_supabase_client::include_schema!("contract_bindings.rs");
 }
 use bindings::public::tables::{a_b, typed_probe};
-use rp_supabase_client::{postgrest::Postgrest, schema::Field};
+use rp_supabase_client::{rp_postgrest::Postgrest, schema::Field};
 use serde_json::json;
 
 rp_supabase_client::projection! {
@@ -47,7 +47,7 @@ async fn inferred_projection_filter_and_mutation_smoke() {
         .with_body(r#"[{"id":7,"display.name":null}]"#)
         .create_async()
         .await;
-    let client = Postgrest::new(server.url());
+    let client = Postgrest::new(server.url()).unwrap();
     let rows = typed_probe::query(client.clone())
         .select::<Identity>()
         .select::<Probe>()
@@ -151,25 +151,22 @@ async fn typed_fetch_rejects_http_errors_and_invalid_success_bodies() {
             .with_body(body)
             .create_async()
             .await;
-        let error = typed_probe::query(Postgrest::new(server.url()))
+        let error = typed_probe::query(Postgrest::new(server.url()).unwrap())
             .select::<Probe>()
             .fetch()
             .await
             .expect_err("invalid response must fail");
         match (status, error) {
+            (403, rp_supabase_client::rp_postgrest::Error::Postgrest { metadata, .. }) => {
+                assert_eq!(usize::from(metadata.status().as_u16()), status)
+            }
+            (502, rp_supabase_client::rp_postgrest::Error::Decode { metadata, .. }) => {
+                assert_eq!(usize::from(metadata.status().as_u16()), status)
+            }
             (
-                403,
-                rp_supabase_client::schema::QueryError::Execution(
-                    rp_supabase_client::postgrest::ExecuteError::Postgrest { metadata, .. },
-                ),
-            ) => assert_eq!(usize::from(metadata.status().as_u16()), status),
-            (
-                502,
-                rp_supabase_client::schema::QueryError::Execution(
-                    rp_supabase_client::postgrest::ExecuteError::Decode { metadata, .. },
-                ),
-            ) => assert_eq!(usize::from(metadata.status().as_u16()), status),
-            (200, rp_supabase_client::schema::QueryError::Decode(error)) => {
+                200,
+                rp_supabase_client::rp_postgrest::Error::ResponseDecode { source: error, .. },
+            ) => {
                 let expected = if body == "not json" {
                     serde_json::error::Category::Syntax
                 } else {
@@ -193,7 +190,7 @@ async fn fetch_one_decodes_a_single_representation() {
         .with_body(r#"{"id":7,"body":"single","active":true}"#)
         .create_async()
         .await;
-    let row = a_b::query(Postgrest::new(server.url()))
+    let row = a_b::query(Postgrest::new(server.url()).unwrap())
         .fetch_one()
         .await
         .unwrap();
@@ -214,7 +211,7 @@ async fn reserved_text_filter_preserves_literal_value() {
         .with_body(r#"[{"id":7}]"#)
         .create_async()
         .await;
-    let rows = typed_probe::query(Postgrest::new(server.url()))
+    let rows = typed_probe::query(Postgrest::new(server.url()).unwrap())
         .select::<Identity>()
         .eq(typed_probe::columns::display_name, value)
         .fetch()
@@ -226,7 +223,7 @@ async fn reserved_text_filter_preserves_literal_value() {
 
 #[tokio::test]
 async fn failed_payload_serialization_survives_projection_changes_without_sending() {
-    use rp_supabase_client::schema::{Projection, QueryError, Relation, WritableRelation, query};
+    use rp_supabase_client::schema::{Projection, Relation, WritableRelation, query};
 
     #[derive(serde::Deserialize)]
     struct FailingRow;
@@ -234,8 +231,7 @@ async fn failed_payload_serialization_survives_projection_changes_without_sendin
         const SCHEMA: &'static str = "public";
         const NAME: &'static str = "failing";
     }
-    impl Projection for FailingRow {
-        type Relation = Self;
+    impl Projection<Self> for FailingRow {
         const SELECT_LEN: usize = 1;
         fn write_selection(output: &mut String) {
             output.push('*');
@@ -262,13 +258,16 @@ async fn failed_payload_serialization_survives_projection_changes_without_sendin
         .expect(0)
         .create_async()
         .await;
-    let error = query::<FailingRow>(Postgrest::new(server.url()))
+    let error = query::<FailingRow>(Postgrest::new(server.url()).unwrap())
         .insert(&FailingPayload)
         .select::<FailingRow>()
         .fetch()
         .await
         .err()
         .unwrap();
-    assert!(matches!(error, QueryError::Serialization(_)));
+    assert!(matches!(
+        error,
+        rp_supabase_client::rp_postgrest::Error::Serialization(_)
+    ));
     request.assert_async().await;
 }

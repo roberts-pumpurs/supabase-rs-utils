@@ -31,12 +31,92 @@ typed-builder = "0.21"
     )
     .unwrap();
     let header = format!(
-        "#![allow(dead_code)]\nmod bindings {{ include!({:?}); }}\nmod database {{ include!({:?}); }}\nuse bindings::public::tables;\nuse database::public;\nuse database::public::tables as rel;\nuse rp_supabase_client::postgrest::Postgrest;\n#[path = {:?}] mod relationship_projections;\nuse relationship_projections::*;\nrp_supabase_client::projection! {{ struct Id for bindings::public::tables::a_b {{ id }} }}\nrp_supabase_client::projection! {{ struct OtherOrder for database::public::tables::orders {{ id, billing: embed(database::public::tables::orders::relationships::orders_billing, AddressSummary) }} }}\n",
+        "#![allow(dead_code)]\nmod bindings {{ include!({:?}); }}\nmod database {{ include!({:?}); }}\nuse bindings::public::tables;\nuse database::public;\nuse database::public::tables as rel;\nuse rp_supabase_client::rp_postgrest::Postgrest;\n#[path = {:?}] mod relationship_projections;\nuse relationship_projections::*;\nrp_supabase_client::projection! {{ struct Id for bindings::public::tables::a_b {{ id }} }}\nrp_supabase_client::projection! {{ struct OtherOrder for database::public::tables::orders {{ id, billing: embed(database::public::tables::orders::relationships::orders_billing, AddressSummary) }} }}\n",
         PathBuf::from(env!("OUT_DIR")).join("contract_bindings.rs"),
         PathBuf::from(env!("OUT_DIR")).join("database.rs"),
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/relationship_projections.rs"),
     );
     let cases = [
+        (
+            "shared_artifact",
+            "rp_supabase_client::projection! { struct Artifact for [database::public::tables::skills, database::public::tables::adapters] { id, name, owner_id } } fn consumer(c: Postgrest) { let _ = rel::skills::query(c.clone()).select::<Artifact>(); let _ = rel::adapters::query(c).select::<Artifact>(); }",
+            true,
+        ),
+        (
+            "shared_unselected_columns_need_not_match",
+            "rp_supabase_client::projection! { struct SharedId for [database::public::tables::skills, database::public::tables::artifact_wrong_type, database::public::tables::artifact_missing] { id } } fn consumer(c: Postgrest) { let _ = rel::skills::query(c.clone()).select::<SharedId>(); let _ = rel::artifact_wrong_type::query(c.clone()).select::<SharedId>(); let _ = rel::artifact_missing::query(c).select::<SharedId>(); }",
+            true,
+        ),
+        (
+            "shared_type_mismatch",
+            "rp_supabase_client::projection! { struct Invalid for [database::public::tables::skills, database::public::tables::artifact_wrong_type] { id, owner_id } }",
+            false,
+        ),
+        (
+            "shared_key_mismatch",
+            "rp_supabase_client::projection! { struct Invalid for [database::public::tables::skills, database::public::tables::artifact_wrong_key] { id, owner_id } }",
+            false,
+        ),
+        (
+            "shared_missing_field",
+            "rp_supabase_client::projection! { struct Invalid for [database::public::tables::skills, database::public::tables::artifact_missing] { id, owner_id } }",
+            false,
+        ),
+        (
+            "shared_missing_binding",
+            "rp_supabase_client::projection! { struct Artifact for [database::public::tables::skills, database::public::tables::adapters] { id, name, owner_id } } fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<Artifact>(); }",
+            false,
+        ),
+        (
+            "explicit_embed_source",
+            "impl rp_supabase_client::schema::Projection<rel::customers::Row> for OrderSummary { const SELECT_LEN: usize = 2; fn write_selection(s: &mut String) { s.push_str(\"id\"); } } fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<OrderSummary>().embedded(OrderSummary::billing, |_| {}); }",
+            false,
+        ),
+        (
+            "valid_typed_read_operations",
+            "fn consumer(c: Postgrest) { use rp_supabase_client::schema::Order; let _ = rel::skills::query(c).order(rel::skills::columns::id, Order::Desc).in_(rel::skills::columns::id, [&1i64, &2]).json_text_eq(rel::skills::columns::manifest, &[\"fingerprint\"], \"value\").unwrap().limit(2).range(0, 1); }",
+            true,
+        ),
+        (
+            "paged_delete",
+            "fn consumer(c: Postgrest) { let _ = rel::skills::query(c).limit(1).delete(); }",
+            false,
+        ),
+        (
+            "ranged_update",
+            "fn consumer(c: Postgrest, p: rel::skills::Update) { let _ = rel::skills::query(c).range(0, 1).update(&p); }",
+            false,
+        ),
+        (
+            "paged_insert",
+            "fn consumer(c: Postgrest, p: rel::skills::Insert) { let _ = rel::skills::query(c).limit(1).insert(&p); }",
+            false,
+        ),
+        (
+            "wrong_order_owner",
+            "fn consumer(c: Postgrest) { let _ = rel::skills::query(c).order(rel::adapters::columns::id, rp_supabase_client::schema::Order::Asc); }",
+            false,
+        ),
+        (
+            "wrong_in_owner",
+            "fn consumer(c: Postgrest) { let _ = rel::skills::query(c).in_(rel::adapters::columns::id, [&1i64]); }",
+            false,
+        ),
+        (
+            "wrong_in_value",
+            "fn consumer(c: Postgrest) { let _ = rel::skills::query(c).in_(rel::skills::columns::id, [\"one\"]); }",
+            false,
+        ),
+        (
+            "wrong_json_owner",
+            "fn consumer(c: Postgrest) { let _ = rel::skills::query(c).json_text_eq(rel::adapters::columns::manifest, &[\"fingerprint\"], \"value\"); }",
+            false,
+        ),
+        (
+            "non_json_path",
+            "fn consumer(c: Postgrest) { let _ = rel::skills::query(c).json_text_eq(rel::skills::columns::name, &[\"fingerprint\"], \"value\"); }",
+            false,
+        ),
         (
             "valid",
             "fn consumer(c: Postgrest) { let _ = tables::a_b::query(c).select::<Id>().eq(tables::a_b::columns::id, &7); }",
@@ -205,6 +285,36 @@ typed-builder = "0.21"
         (
             "to_many_is_not_optional",
             "fn consumer(row: CustomerSummary) { let _: Option<OrderSummary> = row.orders; }",
+            false,
+        ),
+        (
+            "valid_inferred_rpc",
+            "async fn consumer(c: Postgrest) -> Result<(), rp_supabase_client::rp_postgrest::Error> { let value = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).fetch().await?; let _: Option<String> = value; Ok(()) }",
+            true,
+        ),
+        (
+            "valid_rpc_raw_escape",
+            "fn consumer(c: Postgrest) { let _: rp_supabase_client::rp_postgrest::Builder = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).into_raw(); }",
+            true,
+        ),
+        (
+            "rpc_wrong_args",
+            "fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::payload_rpc::Args { label: None }); }",
+            false,
+        ),
+        (
+            "rpc_cannot_override_return",
+            "async fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).fetch::<Vec<String>>().await; }",
+            false,
+        ),
+        (
+            "rpc_has_no_relation_projection",
+            "fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).select::<Id>(); }",
+            false,
+        ),
+        (
+            "rpc_has_no_relation_cardinality",
+            "async fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).fetch_one().await; }",
             false,
         ),
     ];

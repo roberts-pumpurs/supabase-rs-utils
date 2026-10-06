@@ -614,6 +614,347 @@
             }
           ],
           "is_partition": false
+        },
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "owner_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "manifest",
+              "ty": {
+                "kind": "builtin",
+                "value": "pg_catalog.jsonb"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false,
+          "name": "skills"
+        },
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "owner_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "manifest",
+              "ty": {
+                "kind": "builtin",
+                "value": "jsonb"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false,
+          "name": "adapters"
+        },
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "owner_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "manifest",
+              "ty": {
+                "kind": "builtin",
+                "value": "jsonb"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false,
+          "name": "artifact_wrong_type"
+        },
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "owner.id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "manifest",
+              "ty": {
+                "kind": "builtin",
+                "value": "jsonb"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false,
+          "name": "artifact_wrong_key"
+        },
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "name",
+              "ty": {
+                "kind": "builtin",
+                "value": "text"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "manifest",
+              "ty": {
+                "kind": "builtin",
+                "value": "jsonb"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [],
+          "is_partition": false,
+          "name": "artifact_missing"
+        },
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "name": "id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "skill_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            },
+            {
+              "name": "adapter_id",
+              "ty": {
+                "kind": "builtin",
+                "value": "int8"
+              },
+              "nullable": false,
+              "has_default": false,
+              "generated": false,
+              "identity": "none"
+            }
+          ],
+          "primary_key": [
+            "id"
+          ],
+          "unique_keys": [],
+          "foreign_keys": [
+            {
+              "name": "links_skill",
+              "columns": [
+                "skill_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "skills"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            },
+            {
+              "name": "links_adapter",
+              "columns": [
+                "adapter_id"
+              ],
+              "referenced_relation": {
+                "schema": "public",
+                "name": "adapters"
+              },
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "is_partition": false,
+          "name": "artifact_links"
         }
       ],
       "functions": [

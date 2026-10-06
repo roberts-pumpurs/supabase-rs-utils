@@ -20,16 +20,13 @@ client = [
     "dep:rp-postgrest-error",
     "dep:rp-supabase-auth",
     "dep:thiserror",
-    "dep:tracing",
     "serde_json/arbitrary_precision",
 ]
 
 [dependencies]
-postgrest.workspace = true
+rp-postgrest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-percent-encoding = "2"
-tracing = { workspace = true, optional = true }
 rp-postgrest-error = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
