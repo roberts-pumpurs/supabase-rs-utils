@@ -131,6 +131,8 @@ pub struct Argument {
     pub name: String,
     pub ty: PgType,
     pub has_default: bool,
+    /// Explicit SQL comment contract allowing null even with strict arguments.
+    pub nullable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,24 +178,34 @@ pub(crate) fn apply_not_null(snapshot: &mut Snapshot, targets: &std::collections
     for (target, fields) in targets {
         let mut found = false;
         for schema in &mut snapshot.schemas {
+            let schema_name = crate::emitter::ident(&schema.name, false)?.to_string();
             for table in &mut schema.tables {
-                if target == &format!("{}.tables.{}.Row", schema.name, table.name) && table.kind != TableKind::Table {
+                if target == &format!("{}.tables.{}.Row", schema_name, crate::emitter::ident(&table.name, false)?) && table.kind != TableKind::Table {
                     set_not_null(&mut table.columns, fields, target)?;
                     found = true;
                 }
             }
             for composite in &mut schema.composites {
-                use heck::ToUpperCamelCase as _;
-                if target == &format!("{}.composites.{}", schema.name, composite.name.to_upper_camel_case()) {
+                if target == &format!("{}.composites.{}", schema_name, crate::emitter::ident(&composite.name, true)?) {
                     set_not_null(&mut composite.fields, fields, target)?;
                     found = true;
                 }
             }
+            let mut groups: std::collections::BTreeMap<String, Vec<&mut Function>> = std::collections::BTreeMap::new();
             for function in &mut schema.functions {
-                if target == &format!("{}.functions.{}.Record", schema.name, function.name) {
-                    if let ReturnType::Record(columns) = &mut function.returns {
-                        set_not_null(columns, fields, target)?;
-                        found = true;
+                groups.entry(function.name.clone()).or_default().push(function);
+            }
+            for (name, mut functions) in groups {
+                functions.sort_by_key(|function| function.arguments.iter().map(|argument| format!("{}:{:?}", argument.name, argument.ty)).collect::<Vec<_>>());
+                let count = functions.len();
+                let base = crate::emitter::ident(&name, false)?.to_string();
+                for (index, function) in functions.into_iter().enumerate() {
+                    let name = if count == 1 { base.clone() } else { format!("{}_{index}", base.strip_prefix("r#").unwrap_or(&base)) };
+                    if target == &format!("{schema_name}.functions.{name}.Record") {
+                        if let ReturnType::Record(columns) = &mut function.returns {
+                            set_not_null(columns, fields, target)?;
+                            found = true;
+                        }
                     }
                 }
             }
@@ -219,6 +231,7 @@ pub(crate) fn view_columns(sql: &str) -> Option<(Vec<String>, Vec<Option<String>
     let [from] = select.from.as_slice() else { return None };
     if !from.joins.is_empty() { return None; }
     let TableFactor::Table { name, alias, args: None, .. } = &from.relation else { return None };
+    if alias.as_ref().is_some_and(|alias| !alias.columns.is_empty()) { return None; }
     let relation: Vec<String> = name.0.iter().map(|part| part.as_ident().map(|name| name.value.clone())).collect::<Option<_>>()?;
     let qualifier = alias.as_ref().map(|alias| alias.name.value.as_str()).or_else(|| relation.last().map(String::as_str))?;
     let columns = select.projection.iter().map(|item| {

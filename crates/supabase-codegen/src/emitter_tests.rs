@@ -406,3 +406,9 @@ fn relationship_aliases_reject_unknown_edges_and_collisions() {
         assert!(crate::Generator::new().relationship_alias(target, alias).from_metadata(metadata.clone()).is_err());
     }
 }
+
+#[test]
+fn strict_function_targets_are_checked() {
+    assert!(crate::Generator::new().strict_args_for("public.functions.missing").from_metadata(snapshot()).is_err());
+    assert!(crate::Generator::new().strict_args().from_metadata(snapshot()).is_ok());
+}

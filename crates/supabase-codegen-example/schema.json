@@ -967,7 +967,8 @@
                 "kind": "builtin",
                 "value": "text"
               },
-              "has_default": false
+              "has_default": false,
+              "nullable": false
             }
           ],
           "returns": {

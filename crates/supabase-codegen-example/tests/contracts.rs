@@ -375,3 +375,15 @@ fn relationship_aliases_keep_marker_identity_and_wire_hints() {
     assert_eq!(CustomerEdge::RESOURCE, "customers");
     assert_eq!(ReverseEdge::RESOURCE, "orders");
 }
+
+#[test]
+fn strict_inputs_preserve_nullable_opt_out_default_omission_and_custom_types() {
+    use bindings::{InviteOutcome, public::functions::strict_probe::Args};
+    use rp_supabase_client::schema::Field;
+    let args = Args { label: "required".into(), version: None, manifest: Field::Omit, payload: InviteOutcome { ok: true } };
+    assert_eq!(serde_json::to_value(args).unwrap(), serde_json::json!({"label":"required","version":null,"payload":{"ok":true}}));
+    let args = Args { label: "required".into(), version: Some(3), manifest: Field::Value(None), payload: InviteOutcome { ok: false } };
+    assert_eq!(serde_json::to_value(args).unwrap(), serde_json::json!({"label":"required","version":3,"manifest":null,"payload":{"ok":false}}));
+    let args = Args { label: "required".into(), version: None, manifest: Field::Value(Some(InviteOutcome { ok: true })), payload: InviteOutcome { ok: true } };
+    assert_eq!(serde_json::to_value(args).unwrap()["manifest"], serde_json::json!({"ok":true}));
+}

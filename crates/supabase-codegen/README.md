@@ -337,7 +337,7 @@ Use `.json_type("public.functions.invite_org_member.Returns", "crate::InviteOutc
 
 Named-object RPCs emit `public::functions::<name>::Args`, `Returns`, and `Function`. Overloads use deterministic numbered modules, such as `lookup_0` and `lookup_1`, while retaining the original RPC name.
 
-Required arguments use `Option<T>` because PostgreSQL functions can accept null. Default arguments use `Field<Option<T>>`, distinguishing omission from null. Scalar results are nullable. Set results use vectors. Non-set composite and OUT results use a single struct. OUT and TABLE fields have a generated `Record` type, including singleton OUT and INOUT results.
+By default, non-default arguments use `Option<T>` because PostgreSQL functions can accept null. `.strict_args()` makes them `T` globally; `.strict_args_for("public.functions.finalize_flow_publish")` does so for one generated function module. A function comment such as `@nullable p_version` opts an argument back into `Option<T>` and persists that contract in the snapshot. Unknown annotation argument names fail introspection. Default arguments always use `Field<Option<T>>`, preserving omission versus explicit null. Custom JSON and SQL type mappings follow the same policy. Scalar results are nullable. Set results use vectors. Non-set composite and OUT results use a single struct. OUT and TABLE fields have a generated `Record` type, including singleton OUT and INOUT results.
 
 ```rust,ignore
 let echoed = schema::rpc::<database::public::functions::echo_message::Function>(

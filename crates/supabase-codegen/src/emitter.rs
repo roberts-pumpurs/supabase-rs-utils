@@ -33,7 +33,7 @@ fn selection_identifier(name: &str) -> String {
     }
 }
 
-fn ident(name: &str, camel: bool) -> Result<Ident, Error> {
+pub(crate) fn ident(name: &str, camel: bool) -> Result<Ident, Error> {
     let mut normalized = if camel {
         name.to_upper_camel_case()
     } else {
@@ -952,6 +952,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         }
     }
     let mut modules = TokenStream::new();
+    let mut used_strict_functions = BTreeSet::new();
     let mut used_relationship_aliases = BTreeSet::new();
     for schema_name in included {
         let schema = schemas
@@ -1148,6 +1149,8 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 let name =
                     syn::parse_str::<Ident>(&generated).map_err(|e| invalid(e.to_string()))?;
                 let target = format!("{schema_ident}.functions.{name}");
+                let strict = config.strict_args || config.strict_functions.contains(&target);
+                used_strict_functions.insert(target.clone());
                 unique(
                     function.arguments.iter().map(|a| a.name.as_str()),
                     false,
@@ -1170,6 +1173,8 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                             quote!(#runtime).to_string().replace(' ', "")
                         );
                         args.extend(quote!(#[serde(rename = #wire, skip_serializing_if = #skip)] pub #field: #runtime::Field<::std::option::Option<#base>>,));
+                    } else if strict && !argument.nullable {
+                        args.extend(quote!(#[serde(rename = #wire)] pub #field: #base,));
                     } else {
                         args.extend(quote!(#[serde(rename = #wire)] pub #field: ::std::option::Option<#base>,));
                     }
@@ -1180,6 +1185,11 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             }
         }
         modules.extend(quote!(pub mod #schema_ident { #[allow(unused_imports)] use super::*; pub mod enums { #[allow(unused_imports)] use super::*; #enums } pub mod composites { #[allow(unused_imports)] use super::*; #composites } pub mod tables { #[allow(unused_imports)] use super::*; #tables } pub mod functions { #[allow(unused_imports)] use super::*; #functions } }));
+    }
+    for target in &config.strict_functions {
+        if !used_strict_functions.contains(target) {
+            return Err(invalid(format!("unknown strict_args_for target {target:?}")));
+        }
     }
     for target in emitter.config.type_attributes.keys() {
         if !emitter.used_targets.contains(target) {

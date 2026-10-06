@@ -464,7 +464,14 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
                 name,
                 ty: catalog.resolve(oid, &mut BTreeSet::new())?,
                 has_default,
+                nullable: false,
             });
+        }
+        let nullable = crate::model::annotation(row.get("comment"), "@nullable")?;
+        for name in nullable {
+            let argument = arguments.iter_mut().find(|argument| argument.name == name)
+                .ok_or_else(|| Error::Invalid(format!("unknown @nullable argument {}.{name}", row.get::<_, &str>("name"))))?;
+            argument.nullable = true;
         }
         let mut returns = if outputs.is_empty() {
             ReturnType::Type(catalog.resolve(return_oid, &mut BTreeSet::new())?)

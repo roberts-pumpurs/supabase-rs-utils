@@ -46,6 +46,8 @@ struct Config {
     pub json_types: BTreeMap<String, String>,
     pub reexport_macros: bool,
     pub relationship_aliases: BTreeMap<String, String>,
+    pub strict_args: bool,
+    pub strict_functions: std::collections::BTreeSet<String>,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -88,6 +90,8 @@ impl Generator {
                 json_types: BTreeMap::new(),
                 reexport_macros: false,
                 relationship_aliases: BTreeMap::new(),
+                strict_args: false,
+                strict_functions: std::collections::BTreeSet::new(),
             },
         }
     }
@@ -205,6 +209,20 @@ impl Generator {
     #[must_use]
     pub fn relationship_alias(mut self, target: impl Into<String>, alias: impl Into<String>) -> Self {
         self.config.relationship_aliases.insert(target.into(), alias.into());
+        self
+    }
+
+    /// Require non-default RPC inputs unless explicitly marked nullable.
+    #[must_use]
+    pub fn strict_args(mut self) -> Self {
+        self.config.strict_args = true;
+        self
+    }
+
+    /// Apply strict RPC input contracts to one generated function module.
+    #[must_use]
+    pub fn strict_args_for(mut self, target: impl Into<String>) -> Self {
+        self.config.strict_functions.insert(target.into());
         self
     }
 
