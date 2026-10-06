@@ -1,0 +1,14 @@
+[workspace]
+release_always = false
+
+[[package]]
+name = "rp-supabase-client"
+version_group = "query-selection"
+
+[[package]]
+name = "rp-supabase-codegen"
+version_group = "query-selection"
+
+[[package]]
+name = "rp-supabase-client-macros"
+version_group = "query-selection"

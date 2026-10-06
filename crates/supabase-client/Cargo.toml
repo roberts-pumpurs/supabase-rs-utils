@@ -9,7 +9,9 @@ repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 edition.workspace = true
+rust-version = "1.85"
 readme = "README.md"
+documentation = "https://docs.rs/rp-supabase-client"
 
 [features]
 default = ["client"]

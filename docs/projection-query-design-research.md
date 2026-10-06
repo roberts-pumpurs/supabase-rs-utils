@@ -362,3 +362,11 @@ All registry entries are non-yanked. Their SHA-256 checksums match the uploaded 
 
 Direct same-schema base-table relationship capabilities remain unchanged. The release adds no inferred view, cross-schema, partition, self, or computed relationships. Static types still do not certify RLS isolation. No editor-completion, compile-time, or allocation benchmark is claimed.
 
+### Release provenance correction
+
+The initial 0.9.0 publication bypassed the existing release-plz workflow. All three archives record commit `21630f4` with `dirty: true`. Their implementation passes the checks above, but that commit does not contain the released changes.
+
+Commit `84954d6` records the matching production source. The backfilled 0.9.0 tags disclose the original dirty publication. They do not rewrite its archive provenance.
+
+`release-plz.toml` now requires a merged release PR before publication and groups the query-selection packages. The client declares Rust 1.85 support. The package manifests link their API documentation. The next release must come from a clean committed checkout through release-plz.
+

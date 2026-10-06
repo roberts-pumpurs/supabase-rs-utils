@@ -8,6 +8,7 @@ repository.workspace = true
 authors.workspace = true
 homepage.workspace = true
 description = "Constructor-checked query-local selections for rp-supabase-client"
+documentation = "https://docs.rs/rp-supabase-client-macros"
 
 [lib]
 proc-macro = true
