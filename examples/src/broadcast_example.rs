@@ -9,6 +9,10 @@ use rp_supabase_realtime::message::phx_join;
 use rp_supabase_realtime::realtime;
 use tracing_subscriber::EnvFilter;
 
+#[expect(
+    clippy::unwrap_in_result,
+    reason = "Tokio's main macro expects runtime construction to succeed."
+)]
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt()
@@ -59,5 +63,5 @@ async fn main() -> eyre::Result<()> {
     }
     tracing::error!("realtime connection exited");
 
-    eyre::bail!("unexpected realtime exit")
+    Err(eyre::eyre!("unexpected realtime exit"))
 }

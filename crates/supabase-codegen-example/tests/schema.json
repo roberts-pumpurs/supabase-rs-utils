@@ -795,7 +795,19 @@
         }
       ],
       "composites": [],
-      "tables": [],
+      "tables": [{
+        "name": "typed.probe",
+        "kind": "table",
+        "columns": [
+          {"name":"id","ty":{"kind":"builtin","value":"text"},"nullable":false,"has_default":false,"generated":false,"identity":"none"},
+          {"name":"type","ty":{"kind":"builtin","value":"text"},"nullable":false,"has_default":false,"generated":false,"identity":"none"},
+          {"name":"café","ty":{"kind":"builtin","value":"text"},"nullable":false,"has_default":false,"generated":false,"identity":"none"}
+        ],
+        "primary_key": null,
+        "unique_keys": [],
+        "foreign_keys": [],
+        "is_partition": false
+      }],
       "functions": []
     }
   ]

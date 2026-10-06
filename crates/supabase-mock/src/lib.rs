@@ -154,10 +154,10 @@ pub struct Claims {
     exp: u64,
 }
 
-/// Parse JWT
+/// Parse JWT.
 ///
 /// # Errors
-/// if the JWT cannot be parsed or the claims are invalid
+/// Returns an error if the JWT cannot be parsed or the claims are invalid.
 pub fn parse_jwt(token: &str) -> Result<Claims, JwtParseError> {
     // Accept only HS256 and require exp to be in the future.
     let mut validation = Validation::new(Algorithm::HS256);

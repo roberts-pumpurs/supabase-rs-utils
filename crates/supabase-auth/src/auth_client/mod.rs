@@ -55,21 +55,19 @@ pub fn new_authenticated_stream_with_client(
             let url = url.clone();
             let api_key = api_key.clone();
 
-            let res = item
-                .map(|item| {
-                    if let Some(access_token) = item.access_token.as_ref() {
-                        let client = ApiClient::new_authenticated_with_client(
-                            &url,
-                            &api_key,
-                            access_token,
-                            http.clone(),
-                        );
-                        return Some(client);
-                    }
-                    None
-                })
-                .transpose();
-            res
+            item.map(|item| {
+                if let Some(access_token) = item.access_token.as_ref() {
+                    let client = ApiClient::new_authenticated_with_client(
+                        &url,
+                        &api_key,
+                        access_token,
+                        http.clone(),
+                    );
+                    return Some(client);
+                }
+                None
+            })
+            .transpose()
         })
         .filter_map(futures::future::ready);
 

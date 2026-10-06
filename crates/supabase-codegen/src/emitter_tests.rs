@@ -159,7 +159,6 @@ fn direct_relationships_have_stable_identity_and_conservative_cardinality() {
     assert!(
         generated.contains("const HINT: &'static ::core::primitive::str = \"orders_customer\";")
     );
-    assert!(generated.contains("const SELECT_LEN: ::core::primitive::usize = 1;"));
     metadata.schemas[0].tables.reverse();
     assert_eq!(generated, generate(&metadata, &config).unwrap());
     metadata.schemas[0].tables[1]

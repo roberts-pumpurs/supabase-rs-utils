@@ -108,11 +108,11 @@ pub enum PgType {
         schema: String,
         name: String,
     },
-    Array(Box<PgType>),
+    Array(Box<Self>),
     Domain {
         schema: String,
         name: String,
-        base: Box<PgType>,
+        base: Box<Self>,
     },
 }
 

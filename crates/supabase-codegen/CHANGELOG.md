@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-06
+
+### Added
+
+- Direct finite column and FK lookup implementations for query-first selections on exact schema-qualified rows.
+- Lossless character-type names from the actual emitted Rust identifiers, preserving original SQL keys and FK hints.
+
+### Changed
+
+- Regenerate Rust output for client 0.9. Snapshot version 2 and existing relationship capability limits remain unchanged.
+
 ## [0.8.0] - 2026-10-06
 
 ### Changed

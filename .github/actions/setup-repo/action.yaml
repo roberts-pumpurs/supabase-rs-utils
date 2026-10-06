@@ -4,7 +4,7 @@ inputs:
   toolchain:
     description: "Rust toolchain used for workspace verification"
     required: false
-    default: "1.85.1"
+    default: "1.99.0"
 
 runs:
   using: "composite"

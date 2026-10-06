@@ -97,11 +97,28 @@ impl<O, P, E: Relationship> EmbedPath for Embed<O, P, E> {
 }
 /// A composed selected relationship path.
 #[must_use]
+#[derive(Clone, Copy)]
 pub struct Path<A, B> {
     first: A,
     next: B,
 }
 impl<A: EmbedPath, B: EmbedPath<Owner = A::Selected, Source = A::Target>> Path<A, B> {
+    /// Construct a composed selected path.
+    #[doc(hidden)]
+    pub const fn new(first: A, next: B) -> Self {
+        Self { first, next }
+    }
+    /// Resolve a column on the final target relation.
+    #[expect(
+        clippy::unused_self,
+        reason = "The fluent path supplies the final target type for column inference."
+    )]
+    pub fn column<K>(self, _: super::Key<K>) -> <B::Target as super::ColumnByKey<K>>::Column
+    where
+        B::Target: super::ColumnByKey<K>,
+    {
+        <B::Target as super::ColumnByKey<K>>::COLUMN
+    }
     /// Compose another handle from the final selected child.
     pub const fn then<H: EmbedPath<Owner = B::Selected, Source = B::Target>>(
         self,
@@ -131,6 +148,10 @@ impl<A: EmbedPath, B: EmbedPath<Owner = A::Selected, Source = A::Target>> EmbedP
 /// Remove the Rust raw-identifier prefix without allocating.
 #[doc(hidden)]
 #[must_use]
+#[expect(
+    clippy::panic,
+    reason = "Removing an ASCII prefix from a valid str preserves its UTF-8 boundary."
+)]
 pub const fn alias(name: &'static str) -> &'static str {
     match name.as_bytes() {
         [b'r', b'#', alias @ ..] => match core::str::from_utf8(alias) {

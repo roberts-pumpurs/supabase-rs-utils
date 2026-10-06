@@ -39,7 +39,7 @@ pub enum Array<T> {
     /// A one-dimensional array, including null elements.
     Elements(Vec<Option<T>>),
     /// A higher-dimensional array.
-    Nested(Vec<Array<T>>),
+    Nested(Vec<Self>),
 }
 
 /// A generated relation's exact database identity.
@@ -67,6 +67,42 @@ mod projection;
 pub use params::{Nulls, Order, QueryPair};
 mod query;
 mod relationship;
+pub mod selection;
+pub use selection::{Selection, named};
+/// One Unicode scalar in a lossless generated identifier key.
+pub struct Character<const C: char>;
+/// A zero-sized identifier key, independent of the selected value.
+pub struct Key<Name>(core::marker::PhantomData<fn() -> Name>);
+impl<Name> Copy for Key<Name> {}
+impl<Name> Clone for Key<Name> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<Name> Key<Name> {
+    /// Construct a zero-sized identifier key.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self(core::marker::PhantomData)
+    }
+}
+impl<Name> Default for Key<Name> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+/// Resolve a normalized column identifier on this exact relation.
+pub trait ColumnByKey<Name>: Relation {
+    /// Generated column marker.
+    type Column: Column<Relation = Self>;
+    /// Zero-sized column value.
+    const COLUMN: Self::Column;
+}
+/// Resolve a normalized relationship identifier on this exact relation.
+pub trait RelationshipByKey<Name>: Relation {
+    /// Generated relationship marker.
+    type Edge: Relationship<Source = Self>;
+}
 pub use query::{
     Column, JsonColumn, Locked, NullableColumn, Paged, Projection, Query, Read, ScopedFilters,
     Unlocked, WritableRelation, Write, query,
@@ -134,9 +170,9 @@ macro_rules! include_schema {
 pub mod prelude {
     pub use super::{
         Array, Column, Count, Field, Function, JsonColumn, NullableColumn, Nulls, Order, Paged,
-        Projection, Query, Relation, Rpc, WritableRelation, query, rpc,
+        Projection, Query, Relation, Rpc, Selection, WritableRelation, named, query, rpc,
     };
-    pub use crate::{include_schema, projection};
+    pub use crate::{include_schema, key, projection, select};
 }
 
 #[cfg(test)]

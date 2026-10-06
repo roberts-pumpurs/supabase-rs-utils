@@ -49,8 +49,8 @@ async fn inferred_projection_filter_and_mutation_smoke() {
         .await;
     let client = Postgrest::new(server.url()).unwrap();
     let rows = typed_probe::query(client.clone())
-        .select::<Identity>()
-        .select::<Probe>()
+        .select(rp_supabase_client::schema::named::<_, Identity>())
+        .select(rp_supabase_client::schema::named::<_, Probe>())
         .eq(typed_probe::columns::id, &7)
         .is_null(typed_probe::columns::display_name)
         .fetch()
@@ -76,7 +76,7 @@ async fn inferred_projection_filter_and_mutation_smoke() {
         .create_async()
         .await;
     let rows = typed_probe::query(client.clone())
-        .select::<Probe>()
+        .select(rp_supabase_client::schema::named::<_, Probe>())
         .insert(&typed_probe::Insert {
             id: 7,
             display_name: Field::Omit,
@@ -97,7 +97,7 @@ async fn inferred_projection_filter_and_mutation_smoke() {
         .create_async()
         .await;
     let rows = typed_probe::query(client.clone())
-        .select::<Probe>()
+        .select(rp_supabase_client::schema::named::<_, Probe>())
         .update(&typed_probe::Update {
             display_name: Field::Value(None),
             ..Default::default()
@@ -118,7 +118,7 @@ async fn inferred_projection_filter_and_mutation_smoke() {
         .create_async()
         .await;
     let rows = typed_probe::query(client)
-        .select::<Identity>()
+        .select(rp_supabase_client::schema::named::<_, Identity>())
         .delete()
         .eq(typed_probe::columns::id, &7)
         .fetch()
@@ -152,7 +152,7 @@ async fn typed_fetch_rejects_http_errors_and_invalid_success_bodies() {
             .create_async()
             .await;
         let error = typed_probe::query(Postgrest::new(server.url()).unwrap())
-            .select::<Probe>()
+            .select(rp_supabase_client::schema::named::<_, Probe>())
             .fetch()
             .await
             .expect_err("invalid response must fail");
@@ -212,7 +212,7 @@ async fn reserved_text_filter_preserves_literal_value() {
         .create_async()
         .await;
     let rows = typed_probe::query(Postgrest::new(server.url()).unwrap())
-        .select::<Identity>()
+        .select(rp_supabase_client::schema::named::<_, Identity>())
         .eq(typed_probe::columns::display_name, value)
         .fetch()
         .await
@@ -260,7 +260,7 @@ async fn failed_payload_serialization_survives_projection_changes_without_sendin
         .await;
     let error = query::<FailingRow>(Postgrest::new(server.url()).unwrap())
         .insert(&FailingPayload)
-        .select::<FailingRow>()
+        .select(rp_supabase_client::schema::named::<_, FailingRow>())
         .fetch()
         .await
         .err()

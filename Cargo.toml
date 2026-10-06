@@ -62,16 +62,30 @@ exhaustive_structs = "allow"
 future_not_send = "allow"
 separated_literal_suffix = "allow"
 mod_module_files = "allow"
+# Keep the repository's existing inline generic bounds; this is a style preference.
+inline_trait_bounds = "allow"
+# Match only relevant fields, without listing ignored fields in every pattern.
+rest_pattern_accessible_field = "allow"
+# Keep definitions in existing module roots and retain established test names.
+definition_in_module_root = "allow"
+redundant_test_prefix = "allow"
+# Keep small helper, prelude, and protocol modules inline.
+inline_modules = "allow"
+# Existing API docs include short labels as well as complete sentences.
+doc_paragraphs_missing_punctuation = "allow"
+# Keep existing empty-result assertions instead of rewriting test style.
+assert_is_empty = "allow"
 
 [workspace.dependencies]
 # our cretes
 rp-supabase-mock = { path = "crates/supabase-mock", version = "0.8" }
 rp-supabase-auth = { path = "crates/supabase-auth", version = "0.8" }
-rp-supabase-client = { path = "crates/supabase-client", version = "0.8" }
+rp-supabase-client = { path = "crates/supabase-client", version = "0.9" }
 rp-postgrest-error = { path = "crates/postgrest-error", version = "0.8" }
 rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.8" }
-rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.8" }
+rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.9" }
 rp-postgrest = { path = "crates/postgrest", version = "3.0" }
+rp-supabase-client-macros = { path = "crates/supabase-client-macros", version = "=0.9.0" }
 
 # Async
 futures-concurrency = "7.4"

@@ -1,13 +1,56 @@
 # rp-supabase-client
 
-Supabase authentication and a typed query runtime for generated PostgreSQL bindings. Version 0.8 uses the workspace-owned [rp-postgrest 3.0](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
+Supabase authentication and query-first typed PostgreSQL queries. Version 0.9 uses the workspace-owned [rp-postgrest 3.0](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.8"
+rp-supabase-client = "0.9"
 ```
 
 Use [rp-supabase-codegen](../supabase-codegen/README.md) in a build script to generate relation, column, relationship, payload, and function markers. The snippets below assume the generated `database` module from the [complete example](../supabase-codegen-example/README.md). Substitute your own generated names and value types.
+
+## Query-first selections
+
+Regenerate bindings with codegen 0.9. Describe the fields at the query instead of declaring a DTO for every local result:
+
+```rust,ignore
+use rp_supabase_client::{key, select};
+use rp_supabase_client::schema::Selection;
+
+let selected = {
+    use database::public::tables::orders::Row as LocalOrder;
+    select!(LocalOrder => {
+        id, label,
+        billing: orders_billing {
+            label, country: address_country { name },
+        },
+        shipping: orders_shipping { label },
+    })
+};
+let country = selected.billing.then(selected.billing.child.country);
+let rows = selected.query(client.clone())
+    .embedded(selected.billing, |billing| {
+        billing.eq(selected.billing.column(key!(id)), &10);
+    })
+    .embedded(country, |child| {
+        child.eq(country.column(key!(name)), "UK");
+    })
+    .fetch().await?;
+```
+
+The FK determines each child relation. The result has ordinary named Rust fields with owned values. Filtering `billing.id` does not add that column to the response selection. `selected.billing.child.country` is relative to billing; `.then` composes a path from the root.
+
+Function-local imports, concrete aliases, and bounded generic root/DTO types work. `key!(type id)` supplies the lookup-name type for a generic `ColumnByKey` bound. Keys encode the complete Rust identifier without hashing. Lookup uses the exact generated row type, including its schema, and rendering retains the exact SQL name.
+
+Use `billing: inner(orders_billing) { label }` for an inner embed. `matching: empty(orders_billing)` creates a predicate-only handle without a decoded field. Named child reuse uses `billing: embed(orders_billing, AddressSummary)`, optionally with `inner` as the third argument.
+
+For a renamed Cargo dependency, pass `runtime = renamed_client;` before the root type. Use the same prefix in `key!`. Generated bindings use `Generator::runtime_path("::renamed_client::schema")`.
+
+Selections and inline handles are copyable zero-byte values. Each macro expansion has a distinct owner. Shared named child descendants use `selected.billing.then(AddressSummary::country)` or `AddressSummary::country` inside the billing filter scope. They do not expose `.child.country`. Paths containing named DTO handles retain their stored alias strings.
+
+Missing selected fields fail decoding, including nullable fields. Explicit null is accepted where the schema permits it. Duplicate selected keys fail; extra keys are ignored. Neither local selection nor named child reuse requires `Debug` or `Serialize`. Generated record implementations for those traits depend on the selected values.
+
+Keep named DTOs for reusable children and stable public return types. Move local result fields into an application DTO when needed; no JSON conversion is required.
 
 ## Shared projections and typed reads
 
@@ -16,7 +59,7 @@ A projection defines both the selection and response field types. `Projection<R>
 ```rust,ignore
 use database::public::tables::{adapters, skills};
 use rp_supabase_client::projection;
-use rp_supabase_client::schema::{Count, Nulls, Order};
+use rp_supabase_client::schema::{Count, Nulls, Order, named};
 
 projection! {
     struct Artifact for [database::public::tables::skills, database::public::tables::adapters] {
@@ -28,7 +71,7 @@ projection! {
 
 let names = ["search", "storage"];
 let page = skills::query(client.clone())
-    .select::<Artifact>()
+    .select(named::<_, Artifact>())
     .in_(skills::columns::name, names)
     .order_with_nulls(skills::columns::name, Order::Asc, Nulls::Last)
     .order(skills::columns::id, Order::Desc)
@@ -37,7 +80,7 @@ let page = skills::query(client.clone())
     .fetch_with_count(Count::Exact)
     .await?;
 let same_dto = adapters::query(client.clone())
-    .select::<Artifact>()
+    .select(named::<_, Artifact>())
     .limit(10)
     .fetch()
     .await?;
@@ -56,7 +99,7 @@ Column markers enforce relation ownership and scalar filter types. String column
 
 ```rust,ignore
 use database::public::tables::skills;
-use rp_supabase_client::schema::Count;
+use rp_supabase_client::schema::{Count, named};
 
 // `patch` is this generated table's Update payload.
 let affected = skills::query(client.clone())
@@ -72,7 +115,7 @@ skills::query(client.clone())
     .await?;
 
 let rows = skills::query(client.clone())
-    .select::<Artifact>()
+    .select(named::<_, Artifact>())
     .into_raw()
     .fetch::<Vec<Artifact>>()
     .await?;
@@ -159,11 +202,18 @@ The crate reexports `rp_postgrest`, `Postgrest`, and `Error`. The default `clien
 
 Single-relation `projection!` continues to support `alias: embed(RelationshipMarker, Child)` and its `inner` form. `alias: empty(RelationshipMarker)` selects a predicate-only embed. Generated direct, reverse, unique, composite, and nested FK relationships preserve source/target ownership. Selected handles compose with `.then(...)` only when the selected child and relation chain match. A shared DTO does not loosen these checks.
 
-`embedded(handle, |child| { ... })` scopes filters to the selected relationship. `exists` and `not_exists` test related-row existence, including empty embeds. Embedded predicates lock the projection, so choose `.select::<P>()` first. Root filters and one mutation remain available on non-paged locked queries.
+`embedded(handle, |child| { ... })` scopes filters to the selected relationship. `exists` and `not_exists` test related-row existence, including empty embeds. Embedded predicates lock the selection, so choose `.select(selection)` first. Root filters and one mutation remain available on non-paged locked queries.
 
 To-one embeds decode as `Option<Child>` and to-many embeds as `Vec<Child>`. These types remain conservative with `inner`, because RLS and filters can hide rows. Ordinary child filters preserve parent rows; `inner` filters at the embed's parent level. For UPDATE and DELETE, constrain affected rows with root filters. Child filters shape returned representations. PostgREST 16.2 rejects embed-alias existence predicates on DELETE; the client reports the canonical server error and does not rewrite them into FK null checks. See [generated relationship contracts](../supabase-codegen/README.md#typed-relationships) for edge and naming rules.
 
 Typed fetch, RPC, raw fetch, and count methods return the same flat `rp_postgrest::Error`. `error.postgrest_body()` exposes decoded code/message/details/hint; `postgrest_error()` exposes the canonical structured source. `status()`, `url()`, and `response_metadata()` retain observed HTTP metadata, including on successful-response decoding failures. HTTP 300 is an error for checked execution. Ambiguous embedding PGRST201 details can be a typed array of relationship descriptions, not only text. Malformed error-envelope bytes remain in the Decode source. See the [raw error guide](../postgrest/README.md#one-error-result).
+
+## Migration from 0.8
+
+- Regenerate Rust bindings with codegen 0.9. Snapshot version 2 remains supported.
+- Replace `.select::<Dto>()` with `.select(named::<_, Dto>())`. Import `schema::named`. The old type-only method is removed.
+- Prefer `select!(Row => { ... })` for local queries and use the returned selection's handles.
+- Keep `projection!` for named/shared DTOs. Existing DTO-owned relationship constants still compose with local selections.
 
 ## Migration from 0.7
 
@@ -171,7 +221,7 @@ Typed fetch, RPC, raw fetch, and count methods return the same flat `rp_postgres
 - Remove `PostgerstResponse`, `ResponseError`, `schema::QueryError`, and manual response-wrapper/nested-result decoding. Fetch now returns `Result<T, Error>` directly. Replace old execution-wrapper pattern matches with canonical `Error` handling and its getters. No old exports or aliases remain.
 - Replace `query.into_raw()?` with `query.into_raw()`. Use `builder.fetch::<Vec<P>>().await?` for raw typed decoding instead of the removed raw-result/response helpers. Raw `execute` deliberately remains unchecked.
 - Add `?` to direct `Postgrest::new`, client auth/header setters, and raw `.build()`. JSON serialization failures now live in the builder and emerge at build/execution.
-- Implement custom projections as `Projection<R>` instead of using an associated `Relation`. Preserve `SELECT_LEN`, `write_selection`, and exact response-key decoding. Regenerate bindings with codegen 0.8. Custom embed paths must supply their `Source` relation.
+- Implement custom projections as `Projection<R>` instead of using an associated `Relation`. Preserve `SELECT_LEN`, `write_selection`, and exact response-key decoding. Regenerate bindings with codegen 0.9. Custom embed paths must supply their `Source` relation.
 - Use `schema::rpc::<Function>(client, &args).fetch().await?`; the generated `Returns` is inferred, and no relation-specific projection/single or separate response decode is required.
 - Count preferences no longer force a one-row range. Add pagination explicitly or use typed `.count(Count)`/raw `.execute_count(Count)` for body-free totals.
 - A paged typed read cannot become a write. Start a separate root-filtered mutation rather than treating read pagination as a mutation limit.

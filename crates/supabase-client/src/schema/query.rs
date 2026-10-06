@@ -93,7 +93,10 @@ macro_rules! comparison {
 }
 impl<R: Relation, P: Projection<R>, State> Query<R, P, State, Unlocked> {
     /// Choose a result shape before embedded predicates lock selection.
-    pub fn select<Q: Projection<R>>(self) -> Query<R, Q, State, Unlocked> {
+    pub fn select<S: super::selection::Selection<Relation = R>>(
+        self,
+        _selection: S,
+    ) -> Query<R, S::Record, State, Unlocked> {
         Query {
             builder: self.builder,
             marker: PhantomData,

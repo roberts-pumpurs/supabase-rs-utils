@@ -117,7 +117,7 @@ pub fn offline() -> Result<(), Box<dyn std::error::Error>> {
     let request = tables::customers::query(rp_supabase_client::rp_postgrest::Postgrest::new(
         "http://localhost",
     )?)
-    .select::<CustomerSummary>()
+    .select(rp_supabase_client::schema::named::<_, CustomerSummary>())
     .embedded(
         CustomerSummary::orders.then(OrderSummary::billing),
         |address| {

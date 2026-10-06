@@ -16,5 +16,6 @@ pub use client::{
 };
 pub use rp_postgrest;
 pub use rp_postgrest::{Error, Postgrest};
+pub use rp_supabase_client_macros::{key, select};
 #[cfg(feature = "client")]
 pub use {rp_postgrest_error, rp_supabase_auth};

@@ -17,7 +17,7 @@ edition = "2024"
 [lib]
 path = "consumer.rs"
 [dependencies]
-rp-supabase-client = {{ path = {client:?} }}
+renamed = {{ package = "rp-supabase-client", path = {client:?} }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = {{ version = "1", features = ["arbitrary_precision"] }}
 chrono = {{ version = "0.4", default-features = false, features = ["serde", "clock", "std"] }}
@@ -31,20 +31,130 @@ typed-builder = "0.21"
     )
     .unwrap();
     let header = format!(
-        "#![allow(dead_code)]\nmod bindings {{ include!({:?}); }}\nmod database {{ include!({:?}); }}\nuse bindings::public::tables;\nuse database::public;\nuse database::public::tables as rel;\nuse rp_supabase_client::rp_postgrest::Postgrest;\n#[path = {:?}] mod relationship_projections;\nuse relationship_projections::*;\nrp_supabase_client::projection! {{ struct Id for bindings::public::tables::a_b {{ id }} }}\nrp_supabase_client::projection! {{ struct OtherOrder for database::public::tables::orders {{ id, billing: embed(database::public::tables::orders::relationships::orders_billing, AddressSummary) }} }}\n",
+        "#![allow(dead_code)]\nextern crate renamed as rp_supabase_client;\nmod bindings {{ include!({:?}); }}\nmod database {{ include!({:?}); }}\nuse bindings::public::tables;\nuse database::public;\nuse database::public::tables as rel;\nuse rp_supabase_client::rp_postgrest::Postgrest;\nuse rp_supabase_client::schema::Selection;\n#[path = {:?}] mod relationship_projections;\nuse relationship_projections::*;\nrp_supabase_client::projection! {{ struct Id for bindings::public::tables::a_b {{ id }} }}\nrp_supabase_client::projection! {{ struct OtherOrder for database::public::tables::orders {{ id, billing: embed(database::public::tables::orders::relationships::orders_billing, AddressSummary) }} }}\n",
         PathBuf::from(env!("OUT_DIR")).join("contract_bindings.rs"),
         PathBuf::from(env!("OUT_DIR")).join("database.rs"),
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/relationship_projections.rs"),
     );
     let cases = [
         (
+            "root_private_item_alias_hygiene",
+            "fn consumer() { use rel::orders::Row as __Record; let selected=rp_supabase_client::select!(__Record => { id }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "dto_alias_item_hygiene",
+            "fn consumer() { type __Alias0=AddressSummary; let selected=rp_supabase_client::select!(rel::orders::Row => { billing: embed(orders_billing,__Alias0) }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "dto_descriptor_item_hygiene",
+            "fn consumer() { type __Descriptor=AddressSummary; let selected=rp_supabase_client::select!(rel::orders::Row => { billing: embed(orders_billing,__Descriptor) }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "dto_visitor_item_hygiene",
+            "fn consumer() { type __Visitor=AddressSummary; let selected=rp_supabase_client::select!(rel::orders::Row => { billing: embed(orders_billing,__Visitor) }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "dto_key_visitor_item_hygiene",
+            "fn consumer() { type __KeyVisitor=AddressSummary; let selected=rp_supabase_client::select!(rel::orders::Row => { billing: embed(orders_billing,__KeyVisitor) }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "runtime_generic_name_alias_hygiene",
+            "fn consumer() { use rp_supabase_client as __R; let selected=__R::select!(runtime=__R; rel::orders::Row => { id }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "runtime_private_item_alias_hygiene",
+            "fn consumer() { use rp_supabase_client as __Descriptor; let selected=__Descriptor::select!(runtime=__Descriptor; rel::orders::Row => { id }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "bounded_outer_generic_name_hygiene",
+            "fn consumer<__R>() where __R: rp_supabase_client::schema::Relation + rp_supabase_client::schema::Projection<__R> + rp_supabase_client::schema::ColumnByKey<rp_supabase_client::key!(type id)> { let selected=rp_supabase_client::select!(__R => { id }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "primitive_str_hygiene",
+            "#[allow(non_camel_case_types)] fn consumer() { struct str; let selected=rp_supabase_client::select!(rel::orders::Row => { id, billing: orders_billing { label } }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "primitive_usize_hygiene",
+            "#[allow(non_camel_case_types)] fn consumer() { struct usize; let selected=rp_supabase_client::select!(rel::orders::Row => { id, billing: orders_billing { label } }); let _=selected.decode(\"[]\"); }",
+            true,
+        ),
+        (
+            "local_selection_positive",
+            "fn consumer(c: Postgrest) { use rel::orders::Row as Root; type LocalDto = AddressSummary; use rp_supabase_client::{select,key}; let s=select!(Root => { id, billing: embed(orders_billing,LocalDto), shipping: orders_shipping { label }, matched: empty(order_details_details_order,inner) }); let _=s.query(c).embedded(s.billing.then(AddressSummary::country), |country| { country.eq(rel::countries::columns::name,\"France\"); }).embedded(s.billing, |address| { address.embedded(AddressSummary::country, |_| {}); }).embedded(s.shipping, |address| { address.eq(rel::addresses::columns::id,&7); }).exists(s.matched).delete().eq(s.column(key!(id)),&7); }",
+            true,
+        ),
+        (
+            "generic_root_and_dto",
+            "fn consumer<R,P>(c: Postgrest) where R: rp_supabase_client::schema::Relation + rp_supabase_client::schema::Projection<R> + rp_supabase_client::schema::ColumnByKey<rp_supabase_client::key!(type id)> + rp_supabase_client::schema::RelationshipByKey<rp_supabase_client::key!(type orders_billing)>, P: rp_supabase_client::schema::Projection<<<R as rp_supabase_client::schema::RelationshipByKey<rp_supabase_client::key!(type orders_billing)>>::Edge as rp_supabase_client::schema::Relationship>::Target> { let s=rp_supabase_client::select!(R => { id, billing: embed(orders_billing,P) }); let _=s.query(c); }",
+            true,
+        ),
+        (
+            "runtime_alias_hygiene",
+            "fn consumer(c: Postgrest) { use rp_supabase_client as renamed; use rel::orders::Row as Root; struct Option; struct Result; struct String; struct Vec; let s=renamed::select!(runtime = renamed; Root => { id, r#type: orders_billing { label }, café: orders_shipping { id } }); let _=s.column(renamed::key!(runtime = renamed; id)); let _=s.query(c); }",
+            true,
+        ),
+        (
+            "same_table_schema_identity",
+            "fn consumer(c: Postgrest) { let a=rp_supabase_client::select!(bindings::public::tables::typed_probe::Row => { id }); let b=rp_supabase_client::select!(bindings::shared::tables::typed_probe::Row => { id, r#type, café }); let _=a.query(c.clone()).eq(a.column(rp_supabase_client::key!(id)),&7); let _=b.query(c).eq(b.column(rp_supabase_client::key!(id)),\"text\"); }",
+            true,
+        ),
+        (
+            "inline_nominal_owner",
+            "fn consumer(c: Postgrest) { let a=rp_supabase_client::select!(rel::orders::Row => { id, billing: orders_billing { id } }); let b=rp_supabase_client::select!(rel::orders::Row => { id, billing: orders_billing { id } }); let _=a.query(c).embedded(b.billing, |_| {}); }",
+            false,
+        ),
+        (
+            "inline_wrong_target",
+            "fn consumer(c: Postgrest) { let _=rp_supabase_client::select!(rel::orders::Row => { id, billing: embed(orders_billing,CountrySummary) }).query(c); }",
+            false,
+        ),
+        (
+            "inline_wrong_source",
+            "fn consumer(c: Postgrest) { let _=rp_supabase_client::select!(rel::customers::Row => { id, billing: orders_billing { id } }).query(c); }",
+            false,
+        ),
+        (
+            "inline_locked_reselect",
+            "fn consumer(c: Postgrest) { let s=rp_supabase_client::select!(rel::orders::Row => { id, billing: orders_billing { id } }); let _=s.query(c).embedded(s.billing, |_| {}).select(s); }",
+            false,
+        ),
+        (
+            "inline_empty_no_decoded_field",
+            "fn consumer() { let s=rp_supabase_client::select!(rel::orders::Row => { id, matched: empty(order_details_details_order) }); let rows=s.decode(\"[]\").unwrap(); let _=&rows[0].matched; }",
+            false,
+        ),
+        (
+            "inline_empty_no_descendant",
+            "fn consumer(c: Postgrest) { let s=rp_supabase_client::select!(rel::orders::Row => { id, matched: empty(orders_billing) }); let _=s.query(c).embedded(s.matched.then(AddressSummary::country), |_| {}); }",
+            false,
+        ),
+        (
+            "inline_unselected_column",
+            "fn consumer() { let s=rp_supabase_client::select!(rel::orders::Row => { id }); let rows=s.decode(\"[]\").unwrap(); let _=&rows[0].label; }",
+            false,
+        ),
+        (
+            "schema_key_wrong_value",
+            "fn consumer(c: Postgrest) { let s=rp_supabase_client::select!(bindings::shared::tables::typed_probe::Row => { id }); let _=s.query(c).eq(s.column(rp_supabase_client::key!(id)),&7); }",
+            false,
+        ),
+        (
             "shared_artifact",
-            "rp_supabase_client::projection! { struct Artifact for [database::public::tables::skills, database::public::tables::adapters] { id, name, owner_id } } fn consumer(c: Postgrest) { let _ = rel::skills::query(c.clone()).select::<Artifact>(); let _ = rel::adapters::query(c).select::<Artifact>(); }",
+            "rp_supabase_client::projection! { struct Artifact for [database::public::tables::skills, database::public::tables::adapters] { id, name, owner_id } } fn consumer(c: Postgrest) { let _ = rel::skills::query(c.clone()).select(rp_supabase_client::schema::named::<_, Artifact>()); let _ = rel::adapters::query(c).select(rp_supabase_client::schema::named::<_, Artifact>()); }",
             true,
         ),
         (
             "shared_unselected_columns_need_not_match",
-            "rp_supabase_client::projection! { struct SharedId for [database::public::tables::skills, database::public::tables::artifact_wrong_type, database::public::tables::artifact_missing] { id } } fn consumer(c: Postgrest) { let _ = rel::skills::query(c.clone()).select::<SharedId>(); let _ = rel::artifact_wrong_type::query(c.clone()).select::<SharedId>(); let _ = rel::artifact_missing::query(c).select::<SharedId>(); }",
+            "rp_supabase_client::projection! { struct SharedId for [database::public::tables::skills, database::public::tables::artifact_wrong_type, database::public::tables::artifact_missing] { id } } fn consumer(c: Postgrest) { let _ = rel::skills::query(c.clone()).select(rp_supabase_client::schema::named::<_, SharedId>()); let _ = rel::artifact_wrong_type::query(c.clone()).select(rp_supabase_client::schema::named::<_, SharedId>()); let _ = rel::artifact_missing::query(c).select(rp_supabase_client::schema::named::<_, SharedId>()); }",
             true,
         ),
         (
@@ -64,12 +174,12 @@ typed-builder = "0.21"
         ),
         (
             "shared_missing_binding",
-            "rp_supabase_client::projection! { struct Artifact for [database::public::tables::skills, database::public::tables::adapters] { id, name, owner_id } } fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<Artifact>(); }",
+            "rp_supabase_client::projection! { struct Artifact for [database::public::tables::skills, database::public::tables::adapters] { id, name, owner_id } } fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, Artifact>()); }",
             false,
         ),
         (
             "explicit_embed_source",
-            "impl rp_supabase_client::schema::Projection<rel::customers::Row> for OrderSummary { const SELECT_LEN: usize = 2; fn write_selection(s: &mut String) { s.push_str(\"id\"); } } fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<OrderSummary>().embedded(OrderSummary::billing, |_| {}); }",
+            "impl rp_supabase_client::schema::Projection<rel::customers::Row> for OrderSummary { const SELECT_LEN: usize = 2; fn write_selection(s: &mut String) { s.push_str(\"id\"); } } fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, OrderSummary>()).embedded(OrderSummary::billing, |_| {}); }",
             false,
         ),
         (
@@ -119,7 +229,7 @@ typed-builder = "0.21"
         ),
         (
             "valid",
-            "fn consumer(c: Postgrest) { let _ = tables::a_b::query(c).select::<Id>().eq(tables::a_b::columns::id, &7); }",
+            "fn consumer(c: Postgrest) { let _ = tables::a_b::query(c).select(rp_supabase_client::schema::named::<_, Id>()).eq(tables::a_b::columns::id, &7); }",
             true,
         ),
         (
@@ -139,7 +249,7 @@ typed-builder = "0.21"
         ),
         (
             "wrong_projection",
-            "fn consumer(c: Postgrest) { let _ = tables::bool::query(c).select::<Id>(); }",
+            "fn consumer(c: Postgrest) { let _ = tables::bool::query(c).select(rp_supabase_client::schema::named::<_, Id>()); }",
             false,
         ),
         (
@@ -184,12 +294,12 @@ typed-builder = "0.21"
         ),
         (
             "valid_nested_locked_write",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerSummary>().embedded(CustomerSummary::orders.then(OrderSummary::billing).then(AddressSummary::country), |child| { child.eq(rel::countries::columns::name, \"literal\"); }).exists(CustomerSummary::orders).delete().eq(rel::customers::columns::id, &7); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerSummary>()).embedded(CustomerSummary::orders.then(OrderSummary::billing).then(AddressSummary::country), |child| { child.eq(rel::countries::columns::name, \"literal\"); }).exists(CustomerSummary::orders).delete().eq(rel::customers::columns::id, &7); }",
             true,
         ),
         (
             "valid_empty_scoped_and_write_first",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerPredicates>().delete().embedded(CustomerPredicates::matching_orders, |child| { child.eq(rel::orders::columns::id, &7); }).not_exists(CustomerPredicates::matching_orders); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerPredicates>()).delete().embedded(CustomerPredicates::matching_orders, |child| { child.eq(rel::orders::columns::id, &7); }).not_exists(CustomerPredicates::matching_orders); }",
             true,
         ),
         (
@@ -204,12 +314,12 @@ typed-builder = "0.21"
         ),
         (
             "wrong_root_handle",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerSummary>().embedded(OrderSummary::billing, |_| {}); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerSummary>()).embedded(OrderSummary::billing, |_| {}); }",
             false,
         ),
         (
             "unselected_child_projection_handle",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerSummary>().embedded(CustomerSummary::orders.then(OtherOrder::billing), |_| {}); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerSummary>()).embedded(CustomerSummary::orders.then(OtherOrder::billing), |_| {}); }",
             false,
         ),
         (
@@ -219,37 +329,37 @@ typed-builder = "0.21"
         ),
         (
             "wrong_scoped_column",
-            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select::<OrderSummary>().embedded(OrderSummary::billing, |child| { child.eq(rel::countries::columns::id, &7); }); }",
+            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select(rp_supabase_client::schema::named::<_, OrderSummary>()).embedded(OrderSummary::billing, |child| { child.eq(rel::countries::columns::id, &7); }); }",
             false,
         ),
         (
             "wrong_scoped_value",
-            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select::<OrderSummary>().embedded(OrderSummary::billing, |child| { child.eq(rel::addresses::columns::id, \"seven\"); }); }",
+            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select(rp_supabase_client::schema::named::<_, OrderSummary>()).embedded(OrderSummary::billing, |child| { child.eq(rel::addresses::columns::id, \"seven\"); }); }",
             false,
         ),
         (
             "select_after_embedded",
-            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select::<OrderSummary>().embedded(OrderSummary::billing, |_| {}).select::<OrderInner>(); }",
+            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select(rp_supabase_client::schema::named::<_, OrderSummary>()).embedded(OrderSummary::billing, |_| {}).select(rp_supabase_client::schema::named::<_, OrderInner>()); }",
             false,
         ),
         (
             "select_after_exists",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerPredicates>().exists(CustomerPredicates::matching_orders).select::<CustomerSummary>(); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerPredicates>()).exists(CustomerPredicates::matching_orders).select(rp_supabase_client::schema::named::<_, CustomerSummary>()); }",
             false,
         ),
         (
             "select_after_not_exists",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerPredicates>().not_exists(CustomerPredicates::matching_orders).select::<CustomerSummary>(); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerPredicates>()).not_exists(CustomerPredicates::matching_orders).select(rp_supabase_client::schema::named::<_, CustomerSummary>()); }",
             false,
         ),
         (
             "select_after_locked_write",
-            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select::<OrderSummary>().embedded(OrderSummary::billing, |_| {}).delete().select::<OrderInner>(); }",
+            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select(rp_supabase_client::schema::named::<_, OrderSummary>()).embedded(OrderSummary::billing, |_| {}).delete().select(rp_supabase_client::schema::named::<_, OrderInner>()); }",
             false,
         ),
         (
             "wrong_exists_handle",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerPredicates>().exists(OrderSummary::billing); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerPredicates>()).exists(OrderSummary::billing); }",
             false,
         ),
         (
@@ -259,12 +369,12 @@ typed-builder = "0.21"
         ),
         (
             "empty_has_no_selected_child_handle",
-            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select::<CustomerPredicates>().embedded(CustomerPredicates::matching_orders.then(OrderSummary::billing), |_| {}); }",
+            "fn consumer(c: Postgrest) { let _ = rel::customers::query(c).select(rp_supabase_client::schema::named::<_, CustomerPredicates>()).embedded(CustomerPredicates::matching_orders.then(OrderSummary::billing), |_| {}); }",
             false,
         ),
         (
             "root_rejects_child_column",
-            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select::<OrderSummary>().eq(rel::addresses::columns::id, &7); }",
+            "fn consumer(c: Postgrest) { let _ = rel::orders::query(c).select(rp_supabase_client::schema::named::<_, OrderSummary>()).eq(rel::addresses::columns::id, &7); }",
             false,
         ),
         (
@@ -309,7 +419,7 @@ typed-builder = "0.21"
         ),
         (
             "rpc_has_no_relation_projection",
-            "fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).select::<Id>(); }",
+            "fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).select(rp_supabase_client::schema::named::<_, Id>()); }",
             false,
         ),
         (

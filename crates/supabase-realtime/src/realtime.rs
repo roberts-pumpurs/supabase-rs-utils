@@ -486,7 +486,7 @@ impl RealtimeBaseConnection {
                     return Poll::Ready(None);
                 }
                 Poll::Pending => {}
-            };
+            }
 
             match write_futures.poll_next_unpin(cx) {
                 Poll::Ready(Some(res)) => match res {
@@ -495,6 +495,10 @@ impl RealtimeBaseConnection {
                     }
                     Err(err) => {
                         tracing::warn!(?err, "Error sending message");
+                        #[expect(
+                            clippy::collapsible_if,
+                            reason = "Let-chains require Rust 1.88; retain Rust 1.85 support."
+                        )]
                         if let SupabaseRealtimeError::WebsocketError(err) = &err {
                             if let Err(err) = is_irrecoverable_ws_err(err) {
                                 tracing::error!(?err, "Irrecoverable error");
@@ -506,7 +510,7 @@ impl RealtimeBaseConnection {
                     }
                 },
                 Poll::Ready(None) | Poll::Pending => {}
-            };
+            }
 
             match rx.poll_next_unpin(cx) {
                 Poll::Ready(Some(item)) => {
@@ -556,7 +560,7 @@ async fn read_from_ws(
                 let repr = String::from_utf8_lossy(&frame.payload);
                 tracing::error!(?err, payload = ?repr, "Error deserializing data");
             }
-        };
+        }
     }
 }
 

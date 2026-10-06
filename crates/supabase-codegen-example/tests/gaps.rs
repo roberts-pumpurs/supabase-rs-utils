@@ -27,7 +27,7 @@ fn shared_child_retains_each_relationship_target_and_handle() {
     assert_eq!(row.skill.as_ref().unwrap().id, 1);
     assert_eq!(row.adapter.as_ref().unwrap().id, 2);
     let raw = artifact_links::query(Postgrest::new("http://localhost").unwrap())
-        .select::<Linked>()
+        .select(rp_supabase_client::schema::named::<_, Linked>())
         .embedded(Linked::skill, |child| {
             child.eq(skills::columns::owner_id, &9);
         })
@@ -61,7 +61,7 @@ async fn typed_operations_and_pure_pairs_share_wire_grammar() {
     let client = Postgrest::new(server.url()).unwrap();
     let values = ["comma,value", "quote\"slash\\", "plain"];
     let typed = skills::query(client)
-        .select::<Artifact>()
+        .select(rp_supabase_client::schema::named::<_, Artifact>())
         .order_with_nulls(skills::columns::name, Order::Asc, Nulls::Last)
         .order(skills::columns::id, Order::Desc)
         .in_(skills::columns::name, values)
@@ -161,7 +161,7 @@ async fn headers_supply_counts_and_minimal_writes_decode_no_rows() {
         .create_async()
         .await;
     let rows = adapters::query(client.clone())
-        .select::<Artifact>()
+        .select(rp_supabase_client::schema::named::<_, Artifact>())
         .limit(1)
         .fetch_with_count(Count::Exact)
         .await
@@ -216,7 +216,7 @@ async fn canonical_body_is_available_without_destructuring() {
         .match_query(mockito::Matcher::UrlEncoded("select".into(), "id,name,owner_id".into()))
         .with_body(r#"{"code":"PGRST100","message":"bad query","details":"parse detail","hint":"try again"}"#).create_async().await;
     let error = skills::query(Postgrest::new(server.url()).unwrap())
-        .select::<Artifact>()
+        .select(rp_supabase_client::schema::named::<_, Artifact>())
         .fetch()
         .await
         .unwrap_err();
@@ -242,7 +242,7 @@ async fn zero_limit_and_empty_in_are_literal_read_requests() {
         .create_async()
         .await;
     let rows = skills::query(Postgrest::new(server.url()).unwrap())
-        .select::<Artifact>()
+        .select(rp_supabase_client::schema::named::<_, Artifact>())
         .in_(skills::columns::id, core::iter::empty::<&i64>())
         .limit(0)
         .fetch()

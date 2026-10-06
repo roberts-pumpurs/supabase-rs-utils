@@ -27,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     bindings.write_to_out_dir("database.rs")?;
     // Compile consumer regressions using an alias that deliberately shares Row's name.
     Generator::new()
+        .schemas(["public", "shared"])
         .prelude("use ::std::string::String as Row;")
         .type_override("pg_catalog.text", "Row")
         .from_snapshot("tests/schema.json")?

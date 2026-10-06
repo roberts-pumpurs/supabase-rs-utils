@@ -25,11 +25,11 @@ rp-postgrest = "3.0"
 rp-supabase-auth = "0.8"
 rp-postgrest-error = "0.8"
 rp-supabase-realtime = "0.8"
-rp-supabase-client = "0.8"
-rp-supabase-codegen = "0.8"
+rp-supabase-client = "0.9"
+rp-supabase-codegen = "0.9"
 ```
 
-`rp-postgrest` is implemented in this workspace. `rp-supabase-client` builds typed queries on it and re-exports it as `rp_postgrest`. Both use the canonical `rp-postgrest-error` response model. See the [typed client documentation](./crates/supabase-client/README.md) for projections, shared DTOs, typed ordering and filters, pagination, counts, minimal writes, and typed RPCs. Raw builders support checked decoding through `fetch::<T>()`.
+`rp-postgrest` is implemented in this workspace. `rp-supabase-client` builds typed queries on it and re-exports it as `rp_postgrest`. Both use the canonical `rp-postgrest-error` response model. See the [typed client documentation](./crates/supabase-client/README.md) for query-first selections, shared DTOs, typed ordering and filters, pagination, counts, minimal writes, and typed RPCs. Raw builders support checked decoding through `fetch::<T>()`.
 
 ## Examples
 
@@ -47,7 +47,7 @@ Each example is self-contained and includes detailed documentation about its use
 
 ## Development guide
 
-1. Install Rust 1.85 or later.
+1. Install the pinned Rust 1.99.0 toolchain with `rustup show`. Development and CI use this stable release. The published crates retain Rust 1.85 support.
 2. Run `cargo fmt --all --check`.
 3. Run `cargo clippy --workspace --all-features --all-targets --locked -- -D warnings`.
 4. Run `cargo test --workspace --all-features --all-targets --locked`.

@@ -1,0 +1,21 @@
+[package]
+name = "rp-supabase-client-macros"
+version = "0.9.0"
+edition = "2024"
+rust-version = "1.85"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+homepage.workspace = true
+description = "Constructor-checked query-local selections for rp-supabase-client"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+
+[lints]
+workspace = true

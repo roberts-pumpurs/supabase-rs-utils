@@ -10,7 +10,7 @@ Keep a schema snapshot in source control. Ordinary builds need no database or cr
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.8"
+rp-supabase-client = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 # Add these when your schema has UUID or temporal columns.
@@ -18,11 +18,11 @@ uuid = { version = "1", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]
-rp-supabase-codegen = "0.8"
+rp-supabase-codegen = "0.9"
 ```
 
 Generated bindings only need the `schema` runtime. Applications with their own HTTP client and
-response handling can use `rp-supabase-client = { version = "0.8", default-features = false }`.
+response handling can use `rp-supabase-client = { version = "0.9", default-features = false }`.
 That leaves out authentication and does not enable `serde_json/arbitrary_precision`.
 
 ```rust
@@ -51,7 +51,7 @@ Enable the `database` build-dependency feature. Database and TLS dependencies do
 
 ```toml
 [build-dependencies]
-rp-supabase-codegen = { version = "0.8", features = ["database"] }
+rp-supabase-codegen = { version = "0.9", features = ["database"] }
 ```
 
 ```rust
@@ -100,7 +100,7 @@ For `public.messages`, the generator emits:
 Rows implement `schema::Relation` and `schema::Projection<Row>`. Each relation module exposes
 `query(client)`. The query retains its relation and response type until decoding.
 It consumes the client, so cloning remains explicit. Regenerate previously emitted Rust bindings
-with codegen 0.8 before using runtime 0.8. The snapshot format remains version 2.
+with codegen 0.9 before using runtime 0.9. The snapshot format remains version 2.
 JSON and JSONB column markers, including domains over those types, implement `schema::JsonColumn`.
 
 ```rust,ignore
@@ -112,20 +112,15 @@ let rows = messages::query(client.clone()).fetch().await?;
 
 ### Typed projections and filters
 
-Declare a projection by naming generated columns. Do not repeat their Rust types or a selection string.
+Use a query-first selection for local results. Do not repeat Rust field types or a selection string:
 
 ```rust,ignore
-rp_supabase_client::projection! {
-    #[derive(Debug)]
-    struct MessageSummary for database::public::tables::messages {
-        id,
-        body,
-        note,
-    }
-}
-
-let rows = messages::query(client.clone())
-    .select::<MessageSummary>()
+use rp_supabase_client::{select, schema::Selection};
+let selected = {
+    use database::public::tables::messages::Row as Message;
+    select!(Message => { id, body, note })
+};
+let rows = selected.query(client.clone())
     .eq(messages::columns::id, &message_id)
     .fetch()
     .await?;
@@ -135,9 +130,9 @@ Each generated `columns` marker records its owning relation, readable field type
 filter type, and exact SQL name. The compiler rejects unknown columns, columns from another
 relation, mismatched scalar values, and projections from another relation.
 
-`projection!` generates public fields with the schema's types and nullability.
-It uses exact SQL keys when decoding. A missing selected field is an error, including a nullable field.
-It rejects duplicate selected keys and ignores extra response keys.
+`select!` generates local records with the schema's types and nullability. Keep `projection!`
+for named public results and reusable children, selecting them with `.select(schema::named::<_, Dto>())`.
+Both use exact SQL keys, reject missing or duplicate selected fields, and ignore extra response keys.
 
 Scalar comparisons support `eq`, `neq`, `gt`, `gte`, `lt`, and `lte`.
 Values must implement `Display` and match the column's filter type through `Borrow`.
@@ -177,6 +172,9 @@ the total without decoding rows. Missing or invalid totals are errors, never an 
 
 ```rust,ignore
 use rp_supabase_client::schema::params;
+rp_supabase_client::projection! {
+    struct MessageSummary for database::public::tables::messages { id, body, note }
+}
 let pairs = [
     params::projection::<messages::Row, MessageSummary>(),
     params::eq(messages::columns::id, &message_id),
@@ -216,7 +214,7 @@ rp_supabase_client::projection! {
 }
 
 let rows = customers::query(client.clone())
-    .select::<CustomerSummary>()
+    .select(rp_supabase_client::schema::named::<_, CustomerSummary>())
     .embedded(CustomerSummary::orders.then(OrderSummary::billing), |address| {
         address.eq(addresses::columns::label, "Main");
     })
@@ -240,7 +238,7 @@ Every visible selected embed key is required, including one whose value is null.
 Child filters normally preserve parent rows. `inner` filters rows at the embed's parent level.
 Use `exists(handle)` or `not_exists(handle)` for relationship existence or anti-existence.
 Scoped filters support these predicates and further `.embedded(...)` scopes.
-Any embedded filter or existence predicate locks the projection. Choose `.select::<P>()` first.
+Any embedded filter or existence predicate locks the selection. Choose `.select(selection)` first.
 Root filters and one typed mutation remain available after locking.
 
 For UPDATE and DELETE, use root column predicates to constrain affected rows. Child filters shape returned representations.
@@ -249,6 +247,35 @@ The runtime reports the native execution error; it does not translate an embed i
 
 Nested selections append into one parent buffer using `Projection<R>::SELECT_LEN` and
 `write_selection`. Custom `Projection<R>` implementations must supply both for each relation.
+
+Local nested selections infer the child relation from the FK:
+
+```rust,ignore
+use rp_supabase_client::{key, select, schema::Selection};
+let selected = select!(customers::Row => {
+    id,
+    orders: orders_orders_customer {
+        id,
+        billing: orders_billing { label },
+        shipping: inner(orders_shipping) { label },
+    },
+    matching_orders: empty(orders_orders_customer),
+});
+let billing = selected.orders.then(selected.orders.child.billing);
+let rows = selected.query(client.clone())
+    .embedded(billing, |address| {
+        address.eq(billing.column(key!(label)), "Main");
+    })
+    .exists(selected.matching_orders)
+    .fetch().await?;
+```
+
+The generator emits finite `ColumnByKey` and `RelationshipByKey` implementations directly
+on each schema-qualified row. Keys encode the complete normalized Rust identifier as character types.
+No global key registry, identifier hashing, or parsing of generated Rust is needed.
+The resolved marker retains the original SQL response key, resource, and FK hint.
+For renamed dependencies, configure the generator's runtime path and pass `runtime = path;` to `select!` and `key!`.
+
 
 
 ### Typed writes and raw queries

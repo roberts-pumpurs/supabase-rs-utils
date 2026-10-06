@@ -66,6 +66,10 @@ impl fmt::Write for Escaped<'_> {
 /// # Panics
 /// Panics if a scalar's `Display` implementation returns a formatting error.
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "String writes cannot fail; retain the documented Display failure semantics."
+)]
 pub fn in_<'a, C, V, I>(_column: C, values: I) -> QueryPair
 where
     C: Column,

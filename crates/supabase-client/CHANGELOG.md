@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-06
+
+### Added
+
+- Query-first `select!` expressions with inferred scalar and FK child records, typed handles, and function-local/generic type support.
+- Lossless `key!` names and schema-qualified column/FK lookup contracts.
+- Inline inner and predicate-only empty embeds, named child reuse, and composed named DTO descendant paths.
+- Strict local record decoding and optional field-dependent `Debug`/`Serialize` implementations.
+
+### Changed
+
+- Breaking: `Query::select` takes a selection value. Replace `.select::<Dto>()` with `.select(named::<_, Dto>())`.
+- Regenerate Rust bindings with codegen 0.9. Snapshot version 2 and named `projection!` DTOs remain supported.
+
 ## [0.8.0] - 2026-10-06
 
 ### Added

@@ -59,6 +59,13 @@ fn ident(name: &str, camel: bool) -> Result<Ident, Error> {
         })
 }
 
+fn key_name(name: &Ident, runtime: &syn::Path) -> TokenStream {
+    let name = name.to_string();
+    let characters = name.strip_prefix("r#").unwrap_or(&name).chars();
+    let characters = characters.map(|character| quote!(#runtime::Character<#character>));
+    quote!((#(#characters,)*))
+}
+
 fn unique<'a>(
     names: impl IntoIterator<Item = &'a str>,
     camel: bool,
@@ -216,6 +223,7 @@ fn relationship_markers(
     let mut output = TokenStream::new();
     for (name, target, foreign_key, to_one) in edges {
         let name = ident(&name, false)?;
+        let key = key_name(&name, runtime);
         let target_name = ident(&target.name, false)?;
         let resource = selection_identifier(&target.name);
         let hint = selection_identifier(&foreign_key.name);
@@ -234,6 +242,9 @@ fn relationship_markers(
                 type Cardinality = #cardinality;
                 const RESOURCE: &'static ::core::primitive::str = #resource;
                 const HINT: &'static ::core::primitive::str = #hint;
+            }
+            impl #runtime::RelationshipByKey<#key> for super::Row {
+                type Edge = #name;
             }
         ));
     }
@@ -789,6 +800,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             let mut column_markers = TokenStream::new();
             for column in &table.columns {
                 let column_name = ident(&column.name, false)?;
+                let key = key_name(&column_name, &runtime);
                 let wire = &column.name;
                 let selection = selection_identifier(wire);
                 let base = emitter.ty(&column.ty, 4)?;
@@ -818,6 +830,10 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                         type Filter = #base;
                         const NAME: &'static ::core::primitive::str = #wire;
                         const SELECT: &'static ::core::primitive::str = #selection;
+                    }
+                    impl #runtime::ColumnByKey<#key> for super::Row {
+                        type Column = #column_name;
+                        const COLUMN: Self::Column = #column_name;
                     }
                     #nullable_impl
                     #json_impl

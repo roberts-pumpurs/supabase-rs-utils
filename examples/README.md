@@ -42,8 +42,8 @@ cargo run -p rp-supabase-codegen-example --offline
 ```
 
 Dependencies must already be cached for Cargo's offline mode. The generator runs in host-side
-`build.rs`; it needs no separate generator CLI. Generated 0.8 rows implement `Projection<Row>`
-and JSON/JSONB column markers implement `JsonColumn`. Regenerate older Rust output for runtime 0.8.
+`build.rs`; it needs no separate generator CLI. Generated 0.9 rows implement `Projection<Row>`
+and finite column/FK lookups. Regenerate older Rust output for runtime 0.9. JSON/JSONB markers retain `JsonColumn`.
 
 Its `smoke.sql` and permanent `src/gaps.rs` scenario exercise shared skills/adapters DTOs, typed
 order, IN, JSON text paths, pagination, counts, minimal writes, raw DTO decoding, and pure

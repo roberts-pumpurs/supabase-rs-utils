@@ -2,8 +2,8 @@
 
 `build.rs` generates bindings from `schema.json` by default. It adds a prelude type alias, a text mapping, `PartialEq`, and a targeted `TypedBuilder` derive. `src/main.rs` includes the output with `include_schema!`.
 
-This example uses codegen and client 0.8 with the owned `rp-postgrest` 3.0 runtime.
-Generated rows implement `Projection<Row>`; regenerate Rust output when upgrading from 0.7.
+This example uses codegen and client 0.9 with the owned `rp-postgrest` 3.0 runtime.
+Regenerate Rust bindings when upgrading. The generator emits schema-qualified finite field and FK lookups.
 The committed version 2 snapshot still works without credentials or a generator CLI.
 
 Run without a database:
@@ -13,15 +13,15 @@ cargo run -p rp-supabase-codegen-example --offline
 ```
 
 Cargo's offline flag requires cached dependencies. The executable checks omitted identity/default
-fields, explicit null, named projection decoding, exact numeric values, and nested relationship shapes.
+fields, explicit null, query-first decoding, exact numeric values, and nested relationship shapes.
 
-The example uses `projection!` to declare `Message` without repeating schema field types.
+The executable uses `select!` with a function-local row import instead of a local `Message` DTO.
 Typed column markers check filters. Generated payloads check insert and update fields.
-`fetch()` infers the projected response type and checks HTTP errors before decoding JSON.
+`fetch()` infers the selected response type and checks HTTP errors before decoding JSON.
 
 `src/relationship_projections.rs` contains mixed scalar, nested, inner, and predicate-only projections.
 Relationship handles check child columns and selected projection ownership.
-Compile-fail consumers cover wrong edges, wrong child types, duplicate aliases, selection changes after embedded predicates, shared DTO field type/key/missing-column mismatches, and paged-read mutation rejection.
+Compiler consumers cover local and generic selections, renamed runtime paths, identifier hygiene, strict nullable/duplicate keys, wrong edges/children/owners, inner and empty embeds, locked reselection, shared DTO contracts, and paged-read mutation rejection.
 
 `src/gaps.rs` defines one `Artifact` DTO for both generated `skills` and `adapters` relations.
 Its permanent live scenario covers typed ordering, borrowed IN values with commas/quotes/backslashes,

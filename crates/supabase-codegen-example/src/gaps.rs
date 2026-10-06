@@ -36,7 +36,7 @@ pub async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
             .execute()
             .await?;
         let skill = skills::query(client.clone())
-            .select::<Artifact>()
+            .select(rp_supabase_client::schema::named::<_, Artifact>())
             .in_(skills::columns::name, [name.as_str()])
             .json_text_eq(skills::columns::manifest, &["fingerprint"], &name)?
             .order(skills::columns::id, Order::Desc)
@@ -46,7 +46,7 @@ pub async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(skill.count, 1);
         assert_eq!(skill.data.len(), 1);
         let adapter: Vec<Artifact> = adapters::query(client.clone())
-            .select::<Artifact>()
+            .select(rp_supabase_client::schema::named::<_, Artifact>())
             .eq(adapters::columns::id, &id)
             .into_raw()
             .fetch()

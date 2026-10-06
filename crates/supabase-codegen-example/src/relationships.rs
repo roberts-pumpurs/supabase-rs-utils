@@ -97,7 +97,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             .await?;
 
         let customer = tables::customers::query(client.clone())
-            .select::<CustomerSummary>()
+            .select(rp_supabase_client::schema::named::<_, CustomerSummary>())
             .eq(tables::customers::columns::id, &base)
             .fetch_one()
             .await?;
@@ -127,7 +127,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "PK-backed reverse relation was not a to-one object",
         )?;
         let direct = tables::orders::query(client.clone())
-            .select::<OrderCustomer>()
+            .select(rp_supabase_client::schema::named::<_, OrderCustomer>())
             .eq(tables::orders::columns::id, &base)
             .fetch_one()
             .await?;
@@ -137,7 +137,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
         )?;
 
         let left = tables::orders::query(client.clone())
-            .select::<OrderSummary>()
+            .select(rp_supabase_client::schema::named::<_, OrderSummary>())
             .eq(tables::orders::columns::label, tag.as_str())
             .embedded(OrderSummary::billing, |address| {
                 address.eq(tables::addresses::columns::id, &base);
@@ -150,7 +150,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "left embed did not decode filtered/null children as None",
         )?;
         let inner = tables::orders::query(client.clone())
-            .select::<OrderInner>()
+            .select(rp_supabase_client::schema::named::<_, OrderInner>())
             .eq(tables::orders::columns::label, tag.as_str())
             .embedded(OrderInner::billing, |address| {
                 address.eq(tables::addresses::columns::id, &base);
@@ -163,7 +163,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
         )?;
 
         let left_many = tables::customers::query(client.clone())
-            .select::<CustomerSummary>()
+            .select(rp_supabase_client::schema::named::<_, CustomerSummary>())
             .eq(tables::customers::columns::name, tag.as_str())
             .embedded(CustomerSummary::orders, |orders| {
                 orders.eq(tables::orders::columns::id, &base);
@@ -175,7 +175,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "left reverse embed did not retain empty parent with []",
         )?;
         let inner_many = tables::customers::query(client.clone())
-            .select::<CustomerInner>()
+            .select(rp_supabase_client::schema::named::<_, CustomerInner>())
             .eq(tables::customers::columns::name, tag.as_str())
             .embedded(CustomerInner::orders, |orders| {
                 orders.eq(tables::orders::columns::id, &base);
@@ -188,7 +188,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
         )?;
 
         let aliases = tables::orders::query(client.clone())
-            .select::<OrderSummary>()
+            .select(rp_supabase_client::schema::named::<_, OrderSummary>())
             .eq(tables::orders::columns::id, &base)
             .embedded(OrderSummary::billing, |address| {
                 address.eq(tables::addresses::columns::id, &base);
@@ -214,7 +214,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "independent aliases or nested typed path failed",
         )?;
         let nested = tables::customers::query(client.clone())
-            .select::<CustomerSummary>()
+            .select(rp_supabase_client::schema::named::<_, CustomerSummary>())
             .eq(tables::customers::columns::id, &base)
             .embedded(CustomerSummary::orders, |orders| {
                 orders.embedded(OrderSummary::billing, |address| {
@@ -230,7 +230,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
         )?;
 
         let exists = tables::customers::query(client.clone())
-            .select::<CustomerPredicates>()
+            .select(rp_supabase_client::schema::named::<_, CustomerPredicates>())
             .eq(tables::customers::columns::name, tag.as_str())
             .embedded(CustomerPredicates::matching_orders, |orders| {
                 orders.eq(tables::orders::columns::id, &base);
@@ -239,7 +239,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             .fetch()
             .await?;
         let absent = tables::customers::query(client.clone())
-            .select::<CustomerPredicates>()
+            .select(rp_supabase_client::schema::named::<_, CustomerPredicates>())
             .eq(tables::customers::columns::name, tag.as_str())
             .not_exists(CustomerPredicates::matching_orders)
             .fetch()
@@ -252,7 +252,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "empty embed exists/anti-exists failed",
         )?;
         let no_detail = tables::orders::query(client.clone())
-            .select::<OrderPredicates>()
+            .select(rp_supabase_client::schema::named::<_, OrderPredicates>())
             .eq(tables::orders::columns::label, tag.as_str())
             .not_exists(OrderPredicates::matching_details)
             .fetch()
@@ -260,7 +260,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
         require(no_detail.len() == 2, "to-one anti-existence failed")?;
 
         let composite = tables::composite_children::query(client.clone())
-            .select::<CompositeChildSummary>()
+            .select(rp_supabase_client::schema::named::<_, CompositeChildSummary>())
             .eq(tables::composite_children::columns::id, &base)
             .fetch_one()
             .await?;
@@ -272,7 +272,10 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "composite FK column pairing failed",
         )?;
         let parents = tables::composite_parents::query(client.clone())
-            .select::<CompositeParentChildren>()
+            .select(rp_supabase_client::schema::named::<
+                _,
+                CompositeParentChildren,
+            >())
             .eq(tables::composite_parents::columns::label, tag.as_str())
             .fetch()
             .await?;
@@ -282,7 +285,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
         )?;
         let write_id = base + 9;
         let inserted = tables::orders::query(client.clone())
-            .select::<OrderSummary>()
+            .select(rp_supabase_client::schema::named::<_, OrderSummary>())
             .embedded(OrderSummary::billing, |address| {
                 address.eq(tables::addresses::columns::id, &base);
             })
@@ -309,7 +312,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "locked relationship insert representation failed",
         )?;
         let updated = tables::orders::query(client.clone())
-            .select::<OrderSummary>()
+            .select(rp_supabase_client::schema::named::<_, OrderSummary>())
             .eq(tables::orders::columns::id, &write_id)
             .embedded(OrderSummary::billing, |address| {
                 address.eq(tables::addresses::columns::id, &base);
@@ -325,7 +328,7 @@ pub async fn live(client: Postgrest) -> Result<()> {
             "locked relationship update failed to clear its FK",
         )?;
         let deleted = tables::orders::query(client.clone())
-            .select::<OrderSummary>()
+            .select(rp_supabase_client::schema::named::<_, OrderSummary>())
             .eq(tables::orders::columns::id, &write_id)
             .embedded(OrderSummary::billing, |address| {
                 address.eq(tables::addresses::columns::id, &base);

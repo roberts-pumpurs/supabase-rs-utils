@@ -5,7 +5,7 @@
 //! come only from SUPABASE_CODEGEN_API_KEY and SUPABASE_CODEGEN_ACCESS_TOKEN.
 
 use rp_supabase_client::rp_postgrest::Postgrest;
-use rp_supabase_client::schema::{Array, Field, rpc};
+use rp_supabase_client::schema::{Array, Field, Selection, rpc};
 use serde_json::json;
 
 rp_supabase_client::include_schema!("database.rs");
@@ -17,11 +17,6 @@ mod relationships;
 
 use public::functions::echo_message;
 use public::tables::messages::{self, Insert, Update};
-
-rp_supabase_client::projection! {
-    #[derive(Debug)]
-    struct Message for public::tables::messages { id, body, note, amount }
-}
 
 fn insert(body: &str) -> Insert {
     // The custom TypedBuilder derive is applied only to this generated struct.
@@ -43,14 +38,15 @@ fn insert(body: &str) -> Insert {
 }
 
 fn offline() -> Result<(), Box<dyn std::error::Error>> {
+    use public::tables::messages::Row as Root;
+    use rp_supabase_client::select;
+    let selected = select!(Root => { id, body, note, amount });
     let request = serde_json::to_value(insert("offline example"))?;
     assert_eq!(request["note"], json!(null));
     assert!(request.get("created_at").is_none());
     assert!(request.get("id").is_none());
-    let row: Message = serde_json::from_value(json!({
-        "id": 1, "body": "offline example", "note": null,
-        "amount": serde_json::from_str::<serde_json::Number>("123456789012345678901234567890.123456789")?
-    }))?;
+    let rows = selected.decode(r#"[{"id":1,"body":"offline example","note":null,"amount":123456789012345678901234567890.123456789}]"#)?;
+    let row = &rows[0];
     assert_eq!(row.note, None);
     assert_eq!(row.body, "offline example");
     assert_eq!(
@@ -66,10 +62,13 @@ fn offline() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
+    use public::tables::messages::Row as Root;
+    use rp_supabase_client::select;
+    let selected = select!(Root => { id, body, note, amount });
     relationships::live(client.clone()).await?;
     gaps::live(client.clone()).await?;
-    let rows = messages::query(client.clone())
-        .select::<Message>()
+    let rows = selected
+        .query(client.clone())
         .insert(&insert("live example"))
         .fetch()
         .await?;
@@ -77,8 +76,8 @@ async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
     let id = row.id;
     // Attempt cleanup after insertion, including recoverable scenario errors.
     let scenario = async {
-        let rows = messages::query(client.clone())
-            .select::<Message>()
+        let rows = selected
+            .query(client.clone())
             .eq(messages::columns::id, &id)
             .fetch()
             .await?;
@@ -92,8 +91,8 @@ async fn live(client: Postgrest) -> Result<(), Box<dyn std::error::Error>> {
             rows[0].amount.to_string(),
             "123456789012345678901234567890.123456789"
         );
-        let rows = messages::query(client.clone())
-            .select::<Message>()
+        let rows = selected
+            .query(client.clone())
             .eq(messages::columns::id, &id)
             .update(&update)
             .fetch()
