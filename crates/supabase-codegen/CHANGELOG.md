@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-codegen-v0.9.3...rp-supabase-codegen-v0.10.0) - 2026-10-06
+
+### Added
+
+- *(codegen)* ship standalone snapshot write and check commands
+- *(codegen)* enforce opt-in strict RPC argument contracts
+- *(codegen)* add checked relationship marker aliases
+- *(codegen)* reexport hygienic schema selection macros
+- *(codegen)* customize JSON fields and RPC wire types
+- *(codegen)* generate CHECK enums and override column types
+- *(codegen)* preserve and customize non-table nullability
+
+### Fixed
+
+- *(codegen)* [**breaking**] preserve safe contracts across views and SQL overrides
+
 - Respect non-table snapshot nullability, infer safe single-table view projections with a SQL parser, and support checked `not_null` builder and SQL comment contracts. Snapshot format is now version 3.
 - Generate Serde and filtering enums from exact validated string CHECK memberships, and add checked per-column Rust type overrides.
 - Add checked typed JSON customization for relation columns, composite fields, RPC inputs, OUT records, and returns, preserving SQL wrappers.
