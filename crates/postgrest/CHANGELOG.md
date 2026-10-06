@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.2.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-postgrest-v3.1.0...rp-postgrest-v3.2.0) - 2026-10-06
+
 ### Added
 
 - Add `Error::server_response()` to retain non-success status even without a decoded error body, and `Error::is_jwt_expired()` for explicit JWT expiration messages.

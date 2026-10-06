@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-macros-v0.9.3...rp-supabase-client-macros-v0.10.0) - 2026-10-06
+
 ### Added
 
 - Shared `projection!` declarations accept `filters { key: [column_for_first_relation, column_for_second_relation] }` with compile-time value/filter type equality and exact relation ownership.

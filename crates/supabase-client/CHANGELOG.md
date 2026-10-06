@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.9.3...rp-supabase-client-v0.10.0) - 2026-10-06
+
 ### Added
 
 - Shared projection filter keys map relation-specific columns through zero-sized typed markers without adding selected DTO fields.
