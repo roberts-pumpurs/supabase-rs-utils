@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-realtime-v0.8.0...rp-supabase-realtime-v0.8.1) - 2026-10-06
+
+### Fixed
+
+- Require patched `bytes` and `rustls` versions.
+- Document connection errors and extract the existing heartbeat stream into a private helper.
+
 ## [0.8.0] - 2026-10-06
 
 ### Changed

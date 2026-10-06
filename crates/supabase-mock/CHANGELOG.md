@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-mock-v0.8.0...rp-supabase-mock-v0.8.1) - 2026-10-06
+
+### Fixed
+
+- Disable unused JWT PEM support. Mock tokens use HS256 with secret keys.
+
 ## [0.8.0] - 2026-10-06
 
 ### Changed
