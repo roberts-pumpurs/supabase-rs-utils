@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Require PostgreSQL client 0.19.14 with patched protocol decoding and bounded SCRAM authentication.
+- Link the package API documentation.
+
 ## [0.9.0] - 2026-10-06
 
 ### Added
