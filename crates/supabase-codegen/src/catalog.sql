@@ -19,9 +19,11 @@ FROM pg_catalog.pg_enum ORDER BY enumtypid, enumsortorder;
 SELECT a.attrelid::bigint AS relation, a.attname::text AS name,
        a.atttypid::bigint AS type_oid, a.attnotnull AS not_null,
        a.attidentity::text AS identity, a.attgenerated::text AS generated,
-       (d.oid IS NOT NULL AND a.attgenerated = '') AS has_default
+       (d.oid IS NOT NULL AND a.attgenerated = '') AS has_default,
+       COALESCE(coll.collisdeterministic, true) AS deterministic_collation
 FROM pg_catalog.pg_attribute a
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+LEFT JOIN pg_catalog.pg_collation coll ON coll.oid = a.attcollation
 WHERE a.attnum > 0 AND NOT a.attisdropped
 ORDER BY a.attrelid, a.attnum;
 -- query: relations

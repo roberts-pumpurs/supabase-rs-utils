@@ -60,6 +60,12 @@ struct TypeInfo {
     comment: Option<String>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Collation {
+    Deterministic,
+    Nondeterministic,
+}
+
 #[derive(Clone)]
 struct Attribute {
     name: String,
@@ -68,6 +74,7 @@ struct Attribute {
     has_default: bool,
     generated: bool,
     identity: Identity,
+    collation: Collation,
 }
 
 struct Catalog {
@@ -147,7 +154,11 @@ impl Catalog {
                 fields.push(self.column(&attribute, true)?);
             }
             let fields_annotation = crate::model::annotation(info.comment.as_deref(), "@not_null")?;
-            crate::model::set_not_null(&mut fields, &fields_annotation, &format!("{}.{}", info.schema, info.name))?;
+            crate::model::set_not_null(
+                &mut fields,
+                &fields_annotation,
+                &format!("{}.{}", info.schema, info.name),
+            )?;
             self.schema(&info.schema).composites.push(Composite {
                 name: info.name.clone(),
                 fields,
@@ -207,6 +218,158 @@ impl Catalog {
     }
 }
 
+fn infer_view_nullability(
+    catalog: &Catalog,
+    row: &Row,
+    base_relations: &BTreeSet<i64>,
+    columns: &mut [Column],
+) {
+    let Some((relation, projected)) = row
+        .get::<_, Option<&str>>("definition")
+        .and_then(crate::model::view_columns)
+    else {
+        return;
+    };
+    let [namespace, name] = relation.as_slice() else {
+        return;
+    };
+    let Some(base) = catalog
+        .types
+        .values()
+        .find(|info| &info.schema == namespace && &info.name == name && info.kind == "c")
+    else {
+        return;
+    };
+    if !base_relations.contains(&base.relation) {
+        return;
+    }
+    let Some(attributes) = catalog.attributes.get(&base.relation) else {
+        return;
+    };
+    for (column, source) in columns.iter_mut().zip(projected) {
+        if let Some(source) = source {
+            column.nullable = !attributes
+                .iter()
+                .any(|attribute| attribute.name == source && attribute.not_null);
+        }
+    }
+}
+
+fn collect_check_enums(
+    catalog: &Catalog,
+    relation: &Row,
+    constraint: &Row,
+    columns: &[Column],
+    check_enums: &mut BTreeMap<String, Vec<String>>,
+) {
+    let Some(attributes) = catalog.attributes.get(&relation.get::<_, i64>("oid")) else {
+        return;
+    };
+    for column in columns {
+        // bpchar equality ignores trailing spaces, so it cannot define exact enum labels.
+        if !matches!(&column.ty, PgType::Builtin(name) if matches!(name.as_str(), "text" | "varchar"))
+            || !attributes.iter().any(|attribute| {
+                attribute.name == column.name && attribute.collation == Collation::Deterministic
+            })
+        {
+            continue;
+        }
+        if let Some(variants) = constraint
+            .get::<_, Option<&str>>("expression")
+            .and_then(|expression| crate::model::check_values(expression, &column.name))
+        {
+            check_enums
+                .entry(column.name.clone())
+                .and_modify(|existing| {
+                    existing.retain(|variant| variants.contains(variant));
+                })
+                .or_insert(variants);
+        }
+    }
+}
+
+fn load_catalog(tx: &mut Transaction<'_>, schemas: &[String]) -> Result<Catalog, Error> {
+    let mut catalog = Catalog {
+        types: BTreeMap::new(),
+        attributes: BTreeMap::new(),
+        enums: BTreeMap::new(),
+        schemas: BTreeMap::new(),
+        emitted: BTreeSet::new(),
+    };
+    for row in query(tx, "schemas", Some(schemas))? {
+        catalog.schema(row.get::<_, &str>("name"));
+    }
+    for schema in schemas {
+        if !catalog.schemas.contains_key(schema) {
+            return Err(Error::Invalid(format!(
+                "requested PostgreSQL schema {schema:?} does not exist"
+            )));
+        }
+    }
+    for row in query(tx, "types", None)? {
+        catalog.types.insert(
+            row.get("oid"),
+            TypeInfo {
+                schema: row.get("schema"),
+                name: row.get("name"),
+                kind: row.get("kind"),
+                base: row.get("base"),
+                element: row.get("element"),
+                array: row.get("array"),
+                relation: row.get("relation"),
+                not_null: row.get("not_null"),
+                has_default: row.get("has_default"),
+                comment: row.get("comment"),
+            },
+        );
+    }
+    for row in query(tx, "enums", None)? {
+        catalog
+            .enums
+            .entry(row.get("oid"))
+            .or_default()
+            .push(row.get("label"));
+    }
+    for row in query(tx, "attributes", None)? {
+        let identity: &str = row.get("identity");
+        catalog
+            .attributes
+            .entry(row.get("relation"))
+            .or_default()
+            .push(Attribute {
+                name: row.get("name"),
+                oid: row.get("type_oid"),
+                not_null: row.get("not_null"),
+                has_default: row.get("has_default"),
+                generated: !row.get::<_, &str>("generated").is_empty(),
+                identity: match identity {
+                    "a" => Identity::Always,
+                    "d" => Identity::ByDefault,
+                    _ => Identity::None,
+                },
+                collation: if row.get("deterministic_collation") {
+                    Collation::Deterministic
+                } else {
+                    Collation::Nondeterministic
+                },
+            });
+    }
+    // Include enums and composites in requested schemas, including nullable
+    // relation-row composites, even if currently unreferenced.
+    let roots: Vec<i64> = catalog
+        .types
+        .iter()
+        .filter_map(|(&oid, info)| {
+            (schemas.contains(&info.schema) && matches!(info.kind.as_str(), "e" | "c"))
+                .then_some(oid)
+        })
+        .collect();
+    for oid in roots {
+        catalog.resolve(oid, &mut BTreeSet::new())?;
+    }
+    Ok(catalog)
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "Catalog extraction remains one ordered read-only transaction over related metadata."
@@ -235,79 +398,7 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         .map_err(|_error| database_error("snapshot transaction"))?;
     tx.batch_execute("SET LOCAL search_path = ''")
         .map_err(|_error| database_error("catalog search path"))?;
-    let mut catalog = Catalog {
-        types: BTreeMap::new(),
-        attributes: BTreeMap::new(),
-        enums: BTreeMap::new(),
-        schemas: BTreeMap::new(),
-        emitted: BTreeSet::new(),
-    };
-    for row in query(&mut tx, "schemas", Some(schemas))? {
-        catalog.schema(row.get::<_, &str>("name"));
-    }
-    for schema in schemas {
-        if !catalog.schemas.contains_key(schema) {
-            return Err(Error::Invalid(format!(
-                "requested PostgreSQL schema {schema:?} does not exist"
-            )));
-        }
-    }
-    for row in query(&mut tx, "types", None)? {
-        catalog.types.insert(
-            row.get("oid"),
-            TypeInfo {
-                schema: row.get("schema"),
-                name: row.get("name"),
-                kind: row.get("kind"),
-                base: row.get("base"),
-                element: row.get("element"),
-                array: row.get("array"),
-                relation: row.get("relation"),
-                not_null: row.get("not_null"),
-                has_default: row.get("has_default"),
-                comment: row.get("comment"),
-            },
-        );
-    }
-    for row in query(&mut tx, "enums", None)? {
-        catalog
-            .enums
-            .entry(row.get("oid"))
-            .or_default()
-            .push(row.get("label"));
-    }
-    for row in query(&mut tx, "attributes", None)? {
-        let identity: &str = row.get("identity");
-        catalog
-            .attributes
-            .entry(row.get("relation"))
-            .or_default()
-            .push(Attribute {
-                name: row.get("name"),
-                oid: row.get("type_oid"),
-                not_null: row.get("not_null"),
-                has_default: row.get("has_default"),
-                generated: !row.get::<_, &str>("generated").is_empty(),
-                identity: match identity {
-                    "a" => Identity::Always,
-                    "d" => Identity::ByDefault,
-                    _ => Identity::None,
-                },
-            });
-    }
-    // Include enums and composites in requested schemas, including nullable
-    // relation-row composites, even if currently unreferenced.
-    let roots: Vec<i64> = catalog
-        .types
-        .iter()
-        .filter_map(|(&oid, info)| {
-            (schemas.contains(&info.schema) && matches!(info.kind.as_str(), "e" | "c"))
-                .then_some(oid)
-        })
-        .collect();
-    for oid in roots {
-        catalog.resolve(oid, &mut BTreeSet::new())?;
-    }
+    let mut catalog = load_catalog(&mut tx, schemas)?;
     let mut constraints: BTreeMap<i64, Vec<Row>> = BTreeMap::new();
     for row in query(&mut tx, "constraints", Some(schemas))? {
         constraints
@@ -316,7 +407,11 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
             .push(row);
     }
     let relation_rows = query(&mut tx, "relations", Some(schemas))?;
-    let base_relations: BTreeSet<i64> = relation_rows.iter().filter(|row| matches!(row.get::<_, &str>("kind"), "r" | "p" | "f")).map(|row| row.get("oid")).collect();
+    let base_relations: BTreeSet<i64> = relation_rows
+        .iter()
+        .filter(|row| matches!(row.get::<_, &str>("kind"), "r" | "p" | "f"))
+        .map(|row| row.get("oid"))
+        .collect();
     for row in relation_rows {
         let schema: String = row.get("schema");
         let kind = match row.get::<_, &str>("kind") {
@@ -333,28 +428,16 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         for attribute in attributes {
             columns.push(catalog.column(&attribute, kind != TableKind::Table)?);
         }
+        if kind == TableKind::View {
+            infer_view_nullability(&catalog, &row, &base_relations, &mut columns);
+        }
         if kind != TableKind::Table {
-            if let Some((relation, projected)) = row.get::<_, Option<&str>>("definition").and_then(crate::model::view_columns) {
-                let base = match relation.as_slice() {
-                    [namespace, name] => catalog.types.values().find(|info| &info.schema == namespace && &info.name == name && info.kind == "c"),
-                    _ => None,
-                };
-                // Only base tables qualify, not another view's row composite.
-                if let Some(base) = base {
-                    let base_relation = base.relation;
-                    if base_relations.contains(&base_relation) {
-                        if let Some(attributes) = catalog.attributes.get(&base_relation) {
-                            for (column, source) in columns.iter_mut().zip(projected) {
-                                if let Some(source) = source {
-                                    column.nullable = !attributes.iter().any(|attribute| attribute.name == source && attribute.not_null);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             let annotation = crate::model::annotation(row.get("comment"), "@not_null")?;
-            crate::model::set_not_null(&mut columns, &annotation, &format!("{schema}.{}", row.get::<_, &str>("name")))?;
+            crate::model::set_not_null(
+                &mut columns,
+                &annotation,
+                &format!("{schema}.{}", row.get::<_, &str>("name")),
+            )?;
         }
         let mut primary_key = None;
         let mut unique_keys = Vec::new();
@@ -376,25 +459,32 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
                     },
                     referenced_columns: constraint.get("referenced_columns"),
                 }),
-                "c" => {
-                    for column in &columns {
-                        if !matches!(&column.ty, PgType::Builtin(name) if matches!(name.as_str(), "text" | "varchar" | "bpchar")) { continue; }
-                        if let Some(variants) = constraint.get::<_, Option<&str>>("expression").and_then(|expression| crate::model::check_values(expression, &column.name)) {
-                            check_enums.entry(column.name.clone()).and_modify(|existing| existing.retain(|variant| variants.contains(variant))).or_insert(variants);
-                        }
-                    }
-                }
+                "c" => collect_check_enums(&catalog, &row, &constraint, &columns, &mut check_enums),
                 _ => return Err(database_error("unsupported constraint kind")),
             }
         }
         for (column_name, variants) in check_enums {
             let enum_name = format!("{}_{}", row.get::<_, &str>("name"), column_name);
-            if variants.is_empty() || catalog.schema(&schema).enums.iter().any(|enumeration| enumeration.name == enum_name) {
-                return Err(Error::Invalid(format!("invalid or colliding CHECK enum {schema}.{enum_name}")));
+            if variants.is_empty()
+                || catalog
+                    .schema(&schema)
+                    .enums
+                    .iter()
+                    .any(|enumeration| enumeration.name == enum_name)
+            {
+                return Err(Error::Invalid(format!(
+                    "invalid or colliding CHECK enum {schema}.{enum_name}"
+                )));
             }
-            catalog.schema(&schema).enums.push(Enum { name: enum_name.clone(), variants });
+            catalog.schema(&schema).enums.push(Enum {
+                name: enum_name.clone(),
+                variants,
+            });
             if let Some(column) = columns.iter_mut().find(|column| column.name == column_name) {
-                column.ty = PgType::Named { schema: schema.clone(), name: enum_name };
+                column.ty = PgType::Named {
+                    schema: schema.clone(),
+                    name: enum_name,
+                };
             }
         }
         catalog.schema(&schema).tables.push(Table {
@@ -469,8 +559,15 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
         }
         let nullable = crate::model::annotation(row.get("comment"), "@nullable")?;
         for name in nullable {
-            let argument = arguments.iter_mut().find(|argument| argument.name == name)
-                .ok_or_else(|| Error::Invalid(format!("unknown @nullable argument {}.{name}", row.get::<_, &str>("name"))))?;
+            let argument = arguments
+                .iter_mut()
+                .find(|argument| argument.name == name)
+                .ok_or_else(|| {
+                    Error::Invalid(format!(
+                        "unknown @nullable argument {}.{name}",
+                        row.get::<_, &str>("name")
+                    ))
+                })?;
             argument.nullable = true;
         }
         let mut returns = if outputs.is_empty() {
@@ -494,7 +591,9 @@ pub fn introspect(url: &str, schemas: &[String]) -> Result<Snapshot, Error> {
             if let ReturnType::Record(fields) = &mut returns {
                 crate::model::set_not_null(fields, &annotation, row.get("name"))?;
             } else {
-                return Err(Error::Invalid("@not_null requires an RPC record return".into()));
+                return Err(Error::Invalid(
+                    "@not_null requires an RPC record return".into(),
+                ));
             }
         }
         let schema: String = row.get("schema");

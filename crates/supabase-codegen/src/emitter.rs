@@ -33,7 +33,7 @@ fn selection_identifier(name: &str) -> String {
     }
 }
 
-pub(crate) fn ident(name: &str, camel: bool) -> Result<Ident, Error> {
+pub fn ident(name: &str, camel: bool) -> Result<Ident, Error> {
     let mut normalized = if camel {
         name.to_upper_camel_case()
     } else {
@@ -164,13 +164,9 @@ fn validate_relationships(snapshot: &Snapshot) -> Result<(), Error> {
     Ok(())
 }
 
-fn relationship_markers(
-    schema: &Schema,
-    table: &Table,
-    runtime: &syn::Path,
-    config: &Config,
-    used_aliases: &mut BTreeSet<String>,
-) -> Result<TokenStream, Error> {
+type RelationshipEdge<'a> = (String, &'a Table, &'a ForeignKey, bool);
+
+fn relationship_edges<'a>(schema: &'a Schema, table: &'a Table) -> Vec<RelationshipEdge<'a>> {
     let mut edges = Vec::new();
     if table.kind == TableKind::Table && !table.is_partition {
         for source in &schema.tables {
@@ -217,47 +213,101 @@ fn relationship_markers(
         }
     }
     edges.sort_by(|left, right| left.0.cmp(&right.0));
-    unique(
-        edges.iter().map(|edge| edge.0.as_str()),
-        false,
-        &format!("{}.{}.relationships", schema.name, table.name),
-    )?;
+    edges
+}
+
+fn relationship_aliases(
+    schema: &Schema,
+    table: &Table,
+    edges: &[RelationshipEdge<'_>],
+    config: &Config,
+    used_aliases: &mut BTreeSet<String>,
+) -> Result<BTreeMap<String, Vec<Ident>>, Error> {
     let mut alias_candidates: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (name, target, foreign_key, _) in &edges {
-        let alias = if table.foreign_keys.iter().any(|key| core::ptr::eq(key, *foreign_key)) {
+    for (name, target, foreign_key, _) in edges {
+        let alias = if table
+            .foreign_keys
+            .iter()
+            .any(|key| core::ptr::eq(key, *foreign_key))
+        {
             match foreign_key.columns.as_slice() {
-                [column] => Some(column.clone()),
+                [column] => Some(
+                    column
+                        .strip_suffix("_id")
+                        .filter(|stem| !stem.is_empty())
+                        .unwrap_or(column)
+                        .to_owned(),
+                ),
                 _ => None,
             }
         } else {
             Some(target.name.clone())
         };
         if let Some(alias) = alias {
-            alias_candidates.entry(ident(&alias, false)?.to_string()).or_default().push(name.clone());
+            alias_candidates
+                .entry(ident(&alias, false)?.to_string())
+                .or_default()
+                .push(name.clone());
         }
     }
-    let mut occupied: BTreeSet<String> = edges.iter().map(|edge| ident(&edge.0, false).map(|name| name.to_string())).collect::<Result<_, _>>()?;
+    let mut occupied: BTreeSet<String> = edges
+        .iter()
+        .map(|edge| ident(&edge.0, false).map(|name| name.to_string()))
+        .collect::<Result<_, _>>()?;
     let mut aliases: BTreeMap<String, Vec<Ident>> = BTreeMap::new();
     for (alias, names) in alias_candidates {
         if names.len() == 1 && !occupied.contains(&alias) {
             if let Some(name) = names.first() {
-                aliases.entry(name.clone()).or_default().push(syn::parse_str(&alias).map_err(|error| invalid(format!("invalid relationship alias: {error}")))?);
+                aliases
+                    .entry(name.clone())
+                    .or_default()
+                    .push(syn::parse_str(&alias).map_err(|error| {
+                        invalid(format!("invalid relationship alias: {error}"))
+                    })?);
                 occupied.insert(alias);
             }
         }
     }
-    for (name, _, _, _) in &edges {
-        let target = format!("{}.tables.{}.relationships.{}", ident(&schema.name, false)?, ident(&table.name, false)?, ident(name, false)?);
+    for (name, _, _, _) in edges {
+        let target = format!(
+            "{}.tables.{}.relationships.{}",
+            ident(&schema.name, false)?,
+            ident(&table.name, false)?,
+            ident(name, false)?
+        );
         if let Some(alias) = config.relationship_aliases.get(&target) {
-            let alias = syn::parse_str::<Ident>(alias).map_err(|error| invalid(format!("invalid relationship alias for {target}: {error}")))?;
-            if occupied.iter().any(|name| name.trim_start_matches("r#") == alias.to_string().trim_start_matches("r#")) {
-                return Err(invalid(format!("relationship alias collision {target}: {alias}")));
+            let alias = syn::parse_str::<Ident>(alias).map_err(|error| {
+                invalid(format!("invalid relationship alias for {target}: {error}"))
+            })?;
+            if occupied.iter().any(|name| {
+                name.trim_start_matches("r#") == alias.to_string().trim_start_matches("r#")
+            }) {
+                return Err(invalid(format!(
+                    "relationship alias collision {target}: {alias}"
+                )));
             }
             occupied.insert(alias.to_string());
             used_aliases.insert(target);
             aliases.entry(name.clone()).or_default().push(alias);
         }
     }
+    Ok(aliases)
+}
+
+fn relationship_markers(
+    schema: &Schema,
+    table: &Table,
+    runtime: &syn::Path,
+    config: &Config,
+    used_aliases: &mut BTreeSet<String>,
+) -> Result<TokenStream, Error> {
+    let edges = relationship_edges(schema, table);
+    unique(
+        edges.iter().map(|edge| edge.0.as_str()),
+        false,
+        &format!("{}.{}.relationships", schema.name, table.name),
+    )?;
+    let mut aliases = relationship_aliases(schema, table, &edges, config, used_aliases)?;
     let mut output = TokenStream::new();
     for (name, target, foreign_key, to_one) in edges {
         let edge_aliases = aliases.remove(&name).unwrap_or_default();
@@ -289,6 +339,7 @@ fn relationship_markers(
         for alias in edge_aliases {
             let key = key_name(&alias, runtime);
             output.extend(quote!(
+                #[allow(unused_imports)]
                 pub use self::#name as #alias;
                 impl #runtime::RelationshipByKey<#key> for super::Row {
                     type Edge = #name;
@@ -582,17 +633,18 @@ impl Emitter<'_> {
     }
 
     fn field_ty(&self, ty: &PgType, target: &str, depth: usize) -> Result<TokenStream, Error> {
-        if let Some(alias) = self.field_overrides.get(target) {
-            let parents = core::iter::repeat_with(|| quote!(super::)).take(depth);
-            let base = quote!(#(#parents)* #alias);
-            if self.json_targets.contains(target) {
-                Ok(self.json_wrappers(ty, base))
-            } else {
-                Ok(base)
-            }
-        } else {
-            self.ty(ty, depth)
-        }
+        self.field_overrides.get(target).map_or_else(
+            || self.ty(ty, depth),
+            |alias| {
+                let parents = core::iter::repeat_with(|| quote!(super::)).take(depth);
+                let base = quote!(#(#parents)* #alias);
+                if self.json_targets.contains(target) {
+                    Ok(self.json_wrappers(ty, base))
+                } else {
+                    Ok(base)
+                }
+            },
+        )
     }
 
     fn json_wrappers(&self, ty: &PgType, base: TokenStream) -> TokenStream {
@@ -603,7 +655,7 @@ impl Emitter<'_> {
                 quote!(#runtime::Array<#inner>)
             }
             PgType::Domain { base: inner, .. } => self.json_wrappers(inner, base),
-            _ => base,
+            PgType::Builtin(_) | PgType::Named { .. } => base,
         }
     }
 
@@ -661,7 +713,8 @@ impl Emitter<'_> {
             ReturnType::Record(columns) => {
                 let decoration = self.decoration(&format!("{target}.Record"), true, false);
                 let columns = ColumnContract::resolve(columns, None, target)?;
-                let fields = self.fields(columns, 3, FieldMode::Row, &format!("{target}.Record"))?;
+                let fields =
+                    self.fields(columns, 3, FieldMode::Row, &format!("{target}.Record"))?;
                 record.extend(quote!(#decoration pub struct Record { #fields }));
                 if function.returns_set {
                     quote!(::std::vec::Vec<Record>)
@@ -707,44 +760,71 @@ fn is_json_column_type(ty: &PgType) -> bool {
 fn is_json_type(ty: &PgType) -> bool {
     match ty {
         PgType::Array(inner) | PgType::Domain { base: inner, .. } => is_json_type(inner),
-        _ => is_json_column_type(ty),
+        PgType::Builtin(_) | PgType::Named { .. } => is_json_column_type(ty),
     }
 }
 
-fn json_field_types<'a>(snapshot: &'a Snapshot, config: &Config) -> Result<BTreeMap<String, &'a PgType>, Error> {
+fn json_field_types<'a>(
+    snapshot: &'a Snapshot,
+    config: &Config,
+) -> Result<BTreeMap<String, &'a PgType>, Error> {
     let mut fields = BTreeMap::new();
     for schema in &snapshot.schemas {
         let schema_ident = ident(&schema.name, false)?;
         for composite in &schema.composites {
             let name = ident(&composite.name, true)?;
             for column in &composite.fields {
-                fields.insert(format!("{schema_ident}.composites.{name}.{}", column.name), &column.ty);
+                fields.insert(
+                    format!("{schema_ident}.composites.{name}.{}", column.name),
+                    &column.ty,
+                );
             }
         }
-        if !config.schemas.contains(&schema.name) { continue; }
+        if !config.schemas.contains(&schema.name) {
+            continue;
+        }
         for table in &schema.tables {
             let name = ident(&table.name, false)?;
             for column in &table.columns {
-                fields.insert(format!("{schema_ident}.tables.{name}.{}", column.name), &column.ty);
+                fields.insert(
+                    format!("{schema_ident}.tables.{name}.{}", column.name),
+                    &column.ty,
+                );
             }
         }
         let mut groups: BTreeMap<&str, Vec<&Function>> = BTreeMap::new();
-        for function in &schema.functions { groups.entry(&function.name).or_default().push(function); }
+        for function in &schema.functions {
+            groups.entry(&function.name).or_default().push(function);
+        }
         for (name, mut functions) in groups {
-            functions.sort_by_key(|function| function.arguments.iter().map(|argument| format!("{}:{:?}", argument.name, argument.ty)).collect::<Vec<_>>());
+            functions.sort_by_key(|function| {
+                function
+                    .arguments
+                    .iter()
+                    .map(|argument| format!("{}:{:?}", argument.name, argument.ty))
+                    .collect::<Vec<_>>()
+            });
             let count = functions.len();
             let base = ident(name, false)?.to_string();
             for (index, function) in functions.into_iter().enumerate() {
-                let name = if count == 1 { base.clone() } else { format!("{}_{index}", base.strip_prefix("r#").unwrap_or(&base)) };
+                let name = if count == 1 {
+                    base.clone()
+                } else {
+                    format!("{}_{index}", base.strip_prefix("r#").unwrap_or(&base))
+                };
                 let target = format!("{schema_ident}.functions.{name}");
                 for argument in &function.arguments {
                     fields.insert(format!("{target}.Args.{}", argument.name), &argument.ty);
                 }
                 match &function.returns {
-                    ReturnType::Type(ty) => { fields.insert(format!("{target}.Returns"), ty); }
-                    ReturnType::Record(columns) => for column in columns {
-                        fields.insert(format!("{target}.Record.{}", column.name), &column.ty);
-                    },
+                    ReturnType::Type(ty) => {
+                        fields.insert(format!("{target}.Returns"), ty);
+                    }
+                    ReturnType::Record(columns) => {
+                        for column in columns {
+                            fields.insert(format!("{target}.Record.{}", column.name), &column.ty);
+                        }
+                    }
                 }
             }
         }
@@ -774,6 +854,98 @@ fn references(ty: &PgType, config: &Config, output: &mut BTreeSet<String>) {
         PgType::Builtin(_) => {}
     }
 }
+fn column_target(
+    snapshot: &Snapshot,
+    config: &Config,
+    target: &str,
+) -> Result<Option<String>, Error> {
+    for schema in snapshot
+        .schemas
+        .iter()
+        .filter(|schema| config.schemas.contains(&schema.name))
+    {
+        let schema_name = ident(&schema.name, false)?;
+        for table in &schema.tables {
+            let table_name = ident(&table.name, false)?;
+            for column in &table.columns {
+                let canonical = format!("{schema_name}.tables.{table_name}.{}", column.name);
+                if target == canonical
+                    || target == format!("{schema_name}.{table_name}.{}", column.name)
+                    || target == format!("{}.tables.{}.{}", schema.name, table.name, column.name)
+                    || target == format!("{}.{}.{}", schema.name, table.name, column.name)
+                {
+                    return Ok(Some(canonical));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn included_schemas(
+    snapshot: &Snapshot,
+    config: &Config,
+    field_overrides: &BTreeMap<String, Ident>,
+) -> Result<BTreeSet<String>, Error> {
+    let fields = json_field_types(snapshot, config)?;
+    let mut included: BTreeSet<_> = config.schemas.iter().cloned().collect();
+    if included.is_empty() {
+        return Err(invalid("at least one schema must be selected"));
+    }
+    loop {
+        let before = included.len();
+        for name in included.clone() {
+            if !snapshot.schemas.iter().any(|schema| schema.name == name) {
+                return Err(invalid(format!("schema {name:?} is absent from snapshot")));
+            }
+            let prefix = format!("{}.", ident(&name, false)?);
+            for (target, ty) in &fields {
+                if target.starts_with(&prefix) && !field_overrides.contains_key(target) {
+                    references(ty, config, &mut included);
+                }
+            }
+        }
+        if included.len() == before {
+            return Ok(included);
+        }
+    }
+}
+
+fn validate_emitted_targets(
+    snapshot: &Snapshot,
+    config: &Config,
+    included: &BTreeSet<String>,
+) -> Result<(), Error> {
+    let mut composite_prefixes = Vec::new();
+    let mut selected_prefixes = Vec::new();
+    for schema in &snapshot.schemas {
+        let name = ident(&schema.name, false)?;
+        if included.contains(&schema.name) {
+            composite_prefixes.push(format!("{name}.composites."));
+        }
+        if config.schemas.contains(&schema.name) {
+            selected_prefixes.push(format!("{name}.tables."));
+            selected_prefixes.push(format!("{name}.functions."));
+        }
+    }
+    for target in config.not_null.keys().chain(config.json_types.keys()) {
+        if target.contains(".composites.")
+            && !composite_prefixes
+                .iter()
+                .any(|prefix| target.starts_with(prefix))
+            || !target.contains(".composites.")
+                && config.not_null.contains_key(target)
+                && !selected_prefixes
+                    .iter()
+                    .any(|prefix| target.starts_with(prefix))
+        {
+            return Err(invalid(format!(
+                "customization target {target:?} is not emitted"
+            )));
+        }
+    }
+    Ok(())
+}
 
 #[expect(
     clippy::too_many_lines,
@@ -799,7 +971,7 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 .map_err(|e| invalid(format!("invalid derive {d:?}: {e}")))
         })
         .collect::<Result<_, _>>()?;
-    let override_types: BTreeMap<String, syn::Type> = config
+    let mut override_types: BTreeMap<String, syn::Type> = config
         .type_overrides
         .iter()
         .map(|(key, value)| {
@@ -810,20 +982,21 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
             ))
         })
         .collect::<Result<_, Error>>()?;
-    let mut override_types = override_types;
     let mut canonical_fields = BTreeMap::new();
     for (target, value) in &config.column_types {
-        let canonical = snapshot.schemas.iter().filter(|schema| config.schemas.contains(&schema.name)).find_map(|schema| {
-            schema.tables.iter().find_map(|table| table.columns.iter().find_map(|column| {
-                let canonical = format!("{}.tables.{}.{}", schema.name, table.name, column.name);
-                (target == &canonical || target == &format!("{}.{}.{}", schema.name, table.name, column.name)).then_some(canonical)
-            }))
-        }).ok_or_else(|| invalid(format!("unknown column_type target {target:?}")))?;
+        let canonical = column_target(snapshot, config, target)?
+            .ok_or_else(|| invalid(format!("unknown column_type target {target:?}")))?;
         if canonical_fields.contains_key(&canonical) {
-            return Err(invalid(format!("duplicate column_type target {canonical:?}")));
+            return Err(invalid(format!(
+                "duplicate column_type target {canonical:?}"
+            )));
         }
         let key = format!("field:{canonical}");
-        override_types.insert(key.clone(), syn::parse_str::<syn::Type>(value).map_err(|e| invalid(format!("invalid override for {target}: {e}")))?);
+        override_types.insert(
+            key.clone(),
+            syn::parse_str::<syn::Type>(value)
+                .map_err(|e| invalid(format!("invalid override for {target}: {e}")))?,
+        );
         canonical_fields.insert(canonical, key);
     }
     let known_fields = json_field_types(snapshot, config)?;
@@ -832,22 +1005,42 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         let canonical = if known_fields.contains_key(target) {
             target.clone()
         } else {
-            known_fields.keys().find(|canonical| canonical.replace(".tables.", ".") == *target).cloned().ok_or_else(|| invalid(format!("unknown json_type target {target:?}")))?
+            column_target(snapshot, config, target)?
+                .or_else(|| {
+                    known_fields
+                        .keys()
+                        .find(|canonical| canonical.replace(".tables.", ".") == *target)
+                        .cloned()
+                })
+                .ok_or_else(|| invalid(format!("unknown json_type target {target:?}")))?
         };
-        let ty = known_fields.get(&canonical).ok_or_else(|| invalid(format!("unknown json_type target {target:?}")))?;
+        let ty = known_fields
+            .get(&canonical)
+            .ok_or_else(|| invalid(format!("unknown json_type target {target:?}")))?;
         if !is_json_type(ty) {
-            return Err(invalid(format!("json_type target {target:?} is not JSON-compatible")));
+            return Err(invalid(format!(
+                "json_type target {target:?} is not JSON-compatible"
+            )));
         }
         if canonical_fields.contains_key(&canonical) {
-            return Err(invalid(format!("conflicting field overrides for {canonical:?}")));
+            return Err(invalid(format!(
+                "conflicting field overrides for {canonical:?}"
+            )));
         }
         let key = format!("field:{canonical}");
-        override_types.insert(key.clone(), syn::parse_str::<syn::Type>(value).map_err(|error| invalid(format!("invalid json_type for {target}: {error}")))?);
+        override_types.insert(
+            key.clone(),
+            syn::parse_str::<syn::Type>(value)
+                .map_err(|error| invalid(format!("invalid json_type for {target}: {error}")))?,
+        );
         json_targets.insert(canonical.clone());
         canonical_fields.insert(canonical, key);
     }
     let (aliases, overrides) = override_aliases(&prelude, override_types);
-    let field_overrides = canonical_fields.into_iter().filter_map(|(target, key)| overrides.get(&key).cloned().map(|alias| (target, alias))).collect();
+    let field_overrides = canonical_fields
+        .into_iter()
+        .filter_map(|(target, key)| overrides.get(&key).cloned().map(|alias| (target, alias)))
+        .collect();
     let targeted = config
         .type_attributes
         .iter()
@@ -864,52 +1057,8 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
         .map(|s| (s.name.clone(), s))
         .collect();
     let selected: BTreeSet<_> = config.schemas.iter().cloned().collect();
-    let mut included: BTreeSet<_> = config.schemas.iter().cloned().collect();
-    if included.is_empty() {
-        return Err(invalid("at least one schema must be selected"));
-    }
-    loop {
-        let before = included.len();
-        for name in included.clone() {
-            let schema = schemas
-                .get(&name)
-                .ok_or_else(|| invalid(format!("schema {name:?} is absent from snapshot")))?;
-            for ty in schema
-                .tables
-                .iter()
-                .filter(|_| selected.contains(&name))
-                .flat_map(|t| t.columns.iter().map(|c| &c.ty))
-                .chain(
-                    schema
-                        .composites
-                        .iter()
-                        .flat_map(|c| c.fields.iter().map(|c| &c.ty)),
-                )
-                .chain(
-                    schema
-                        .functions
-                        .iter()
-                        .filter(|_| selected.contains(&name))
-                        .flat_map(|f| f.arguments.iter().map(|a| &a.ty)),
-                )
-            {
-                references(ty, config, &mut included);
-            }
-            for function in schema.functions.iter().filter(|_| selected.contains(&name)) {
-                match &function.returns {
-                    ReturnType::Type(ty) => references(ty, config, &mut included),
-                    ReturnType::Record(fields) => {
-                        for field in fields {
-                            references(&field.ty, config, &mut included);
-                        }
-                    }
-                }
-            }
-        }
-        if included.len() == before {
-            break;
-        }
-    }
+    let included = included_schemas(snapshot, config, &field_overrides)?;
+    validate_emitted_targets(snapshot, config, &included)?;
     let mut emitter = Emitter {
         config,
         runtime,
@@ -1018,7 +1167,13 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 ColumnContract::resolve(&table.columns, Some(table.kind), &target)?.collect();
             let fields = emitter.fields(columns.iter().copied(), 3, FieldMode::Row, &target)?;
             let runtime = emitter.runtime.clone();
-            let relationship_markers = relationship_markers(schema, table, &runtime, config, &mut used_relationship_aliases)?;
+            let relationship_markers = relationship_markers(
+                schema,
+                table,
+                &runtime,
+                config,
+                &mut used_relationship_aliases,
+            )?;
             let wire_name = &table.name;
             let mut writes = TokenStream::new();
             let mut column_markers = TokenStream::new();
@@ -1165,7 +1320,11 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
                 for argument in &function.arguments {
                     let field = ident(&argument.name, false)?;
                     let wire = &argument.name;
-                    let base = emitter.field_ty(&argument.ty, &format!("{target}.Args.{}", argument.name), 3)?;
+                    let base = emitter.field_ty(
+                        &argument.ty,
+                        &format!("{target}.Args.{}", argument.name),
+                        3,
+                    )?;
                     if argument.has_default {
                         let runtime = &emitter.runtime;
                         let skip = format!(
@@ -1188,7 +1347,9 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
     }
     for target in &config.strict_functions {
         if !used_strict_functions.contains(target) {
-            return Err(invalid(format!("unknown strict_args_for target {target:?}")));
+            return Err(invalid(format!(
+                "unknown strict_args_for target {target:?}"
+            )));
         }
     }
     for target in emitter.config.type_attributes.keys() {
@@ -1200,7 +1361,9 @@ pub fn generate(snapshot: &Snapshot, config: &Config) -> Result<String, Error> {
     }
     for target in config.relationship_aliases.keys() {
         if !used_relationship_aliases.contains(target) {
-            return Err(invalid(format!("unknown relationship_alias target {target:?}")));
+            return Err(invalid(format!(
+                "unknown relationship_alias target {target:?}"
+            )));
         }
     }
     let macros = if config.reexport_macros {

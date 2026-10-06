@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .json_type("public.functions.invite_outcome.Args.audience", "InviteOutcome")
         .json_type("public.functions.invite_outcome.Returns", "InviteOutcome")
         .json_type("public.functions.invite_records.Record.data", "InviteOutcome")
-        .relationship_alias("public.tables.orders.relationships.orders_customer", "customer")
+        .relationship_alias("public.tables.orders.relationships.orders_customer", "buyer")
         .strict_args_for("public.functions.strict_probe")
         .json_type("public.functions.strict_probe.Args.manifest", "InviteOutcome")
         .json_type("public.functions.strict_probe.Args.payload", "InviteOutcome")

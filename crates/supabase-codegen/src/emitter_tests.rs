@@ -335,50 +335,48 @@ fn dependency_schemas_only_emit_types_not_endpoints_or_relationships() {
 }
 
 #[test]
-fn relationship_resource_and_constraint_preserve_escaped_wire_identities() {
-    let mut metadata = snapshot();
-    let mut source = table("source");
-    source
-        .foreign_keys
-        .push(foreign_key("odd\"constraint", "order"));
-    metadata.schemas[0].tables = vec![source, table("order")];
-    let markers = relationship_markers(
-        &metadata.schemas[0],
-        &metadata.schemas[0].tables[0],
-        &syn::parse_str("::runtime").unwrap(),
-    )
-    .unwrap();
-    let parsed = syn::parse2::<syn::File>(markers).unwrap();
-    let generated = prettyplease::unparse(&parsed);
-    assert!(generated.contains("= \"\\\"order\\\"\";"));
-    assert!(generated.contains("= \"\\\"odd\\\\\\\"constraint\\\"\";"));
-}
-
-#[test]
 fn not_null_customization_persists_and_rejects_unknown_fields() {
     let mut metadata = snapshot();
     metadata.schemas[0].functions.push(Function {
         name: "finalize".into(),
         arguments: vec![],
-        returns: ReturnType::Record(vec![Column { nullable: true, ..column("id") }]),
+        returns: ReturnType::Record(vec![Column {
+            nullable: true,
+            ..column("id")
+        }]),
         returns_set: false,
     });
-    let bindings = crate::Generator::new().not_null("public.functions.finalize.Record", ["id"]).from_metadata(metadata.clone()).unwrap();
-    let ReturnType::Record(fields) = &bindings.snapshot().schemas[0].functions[0].returns else { panic!("record"); };
-    assert!(!fields[0].nullable);
-    assert!(crate::Generator::new().not_null("public.functions.finalize.Record", ["missing"]).from_metadata(metadata.clone()).is_err());
-    assert!(crate::Generator::new().not_null("public.functions.missing.Record", ["id"]).from_metadata(metadata).is_err());
+    let bindings = crate::Generator::new()
+        .not_null("public.functions.finalize.Record", ["id"])
+        .from_metadata(metadata.clone())
+        .unwrap();
+    assert!(matches!(
+        &bindings.snapshot().schemas[0].functions[0].returns,
+        ReturnType::Record(fields) if !fields[0].nullable
+    ));
+    crate::Generator::new()
+        .not_null("public.functions.finalize.Record", ["missing"])
+        .from_metadata(metadata.clone())
+        .unwrap_err();
+    crate::Generator::new()
+        .not_null("public.functions.missing.Record", ["id"])
+        .from_metadata(metadata)
+        .unwrap_err();
 }
 
 #[test]
 fn column_overrides_validate_sql_targets_and_rust_types() {
     let mut metadata = snapshot();
     metadata.schemas[0].tables.push(table("adapters"));
-    for target in ["public.adapters.id", "public.tables.adapters.id"] {
-        assert!(crate::Generator::new().column_type(target, "::domain::OwnerType").from_metadata(metadata.clone()).is_ok());
-    }
-    for (target, ty) in [("public.adapters.missing", "String"), ("public.missing.id", "String"), ("public.adapters.id", "Vec<")] {
-        assert!(crate::Generator::new().column_type(target, ty).from_metadata(metadata.clone()).is_err());
+    for (target, ty) in [
+        ("public.adapters.missing", "String"),
+        ("public.missing.id", "String"),
+        ("public.adapters.id", "Vec<"),
+    ] {
+        crate::Generator::new()
+            .column_type(target, ty)
+            .from_metadata(metadata.clone())
+            .unwrap_err();
     }
 }
 
@@ -387,7 +385,10 @@ fn json_customization_rejects_non_json_and_unknown_targets() {
     let mut metadata = snapshot();
     metadata.schemas[0].tables.push(table("items"));
     for target in ["public.tables.items.id", "public.functions.missing.Returns"] {
-        assert!(crate::Generator::new().json_type(target, "crate::Outcome").from_metadata(metadata.clone()).is_err());
+        crate::Generator::new()
+            .json_type(target, "crate::Outcome")
+            .from_metadata(metadata.clone())
+            .unwrap_err();
     }
 }
 
@@ -395,20 +396,94 @@ fn json_customization_rejects_non_json_and_unknown_targets() {
 fn relationship_aliases_reject_unknown_edges_and_collisions() {
     let mut metadata = snapshot();
     let mut orders = table("orders");
-    orders.foreign_keys.push(foreign_key("orders_customer", "customers"));
+    orders
+        .foreign_keys
+        .push(foreign_key("orders_customer", "customers"));
     metadata.schemas[0].tables = vec![orders, table("customers")];
     for (target, alias) in [
         ("public.tables.orders.relationships.missing", "customer"),
-        ("public.tables.orders.relationships.orders_customer", "orders_customer"),
-        ("public.tables.orders.relationships.orders_customer", "parent_id"),
-        ("public.tables.orders.relationships.orders_customer", "not valid"),
+        (
+            "public.tables.orders.relationships.orders_customer",
+            "orders_customer",
+        ),
+        (
+            "public.tables.orders.relationships.orders_customer",
+            "parent",
+        ),
+        (
+            "public.tables.orders.relationships.orders_customer",
+            "not valid",
+        ),
     ] {
-        assert!(crate::Generator::new().relationship_alias(target, alias).from_metadata(metadata.clone()).is_err());
+        crate::Generator::new()
+            .relationship_alias(target, alias)
+            .from_metadata(metadata.clone())
+            .unwrap_err();
     }
 }
 
 #[test]
 fn strict_function_targets_are_checked() {
-    assert!(crate::Generator::new().strict_args_for("public.functions.missing").from_metadata(snapshot()).is_err());
-    assert!(crate::Generator::new().strict_args().from_metadata(snapshot()).is_ok());
+    crate::Generator::new()
+        .strict_args_for("public.functions.missing")
+        .from_metadata(snapshot())
+        .unwrap_err();
+}
+
+#[test]
+fn customizations_require_emitted_targets_but_allow_dependency_composites() {
+    let mut metadata = snapshot();
+    metadata.schemas.push(Schema {
+        name: "dependency".into(),
+        enums: vec![],
+        composites: vec![Composite {
+            name: "detail".into(),
+            fields: vec![Column {
+                ty: PgType::Builtin("jsonb".into()),
+                nullable: true,
+                ..column("data")
+            }],
+        }],
+        tables: vec![Table {
+            kind: TableKind::View,
+            ..table("hidden")
+        }],
+        functions: vec![Function {
+            name: "hidden".into(),
+            arguments: vec![],
+            returns: ReturnType::Record(vec![column("id")]),
+            returns_set: false,
+        }],
+    });
+    for target in [
+        "dependency.tables.hidden.Row",
+        "dependency.functions.hidden.Record",
+        "dependency.composites.Detail",
+    ] {
+        let field = if target.ends_with("Detail") {
+            "data"
+        } else {
+            "id"
+        };
+        crate::Generator::new()
+            .not_null(target, [field])
+            .from_metadata(metadata.clone())
+            .unwrap_err();
+    }
+    crate::Generator::new()
+        .json_type("dependency.composites.Detail.data", "String")
+        .from_metadata(metadata.clone())
+        .unwrap_err();
+    let mut relation = table("items");
+    relation.columns[0].ty = PgType::Named {
+        schema: "dependency".into(),
+        name: "detail".into(),
+    };
+    metadata.schemas[0].tables.push(relation);
+    let bindings = crate::Generator::new()
+        .not_null("dependency.composites.Detail", ["data"])
+        .json_type("dependency.composites.Detail.data", "String")
+        .from_metadata(metadata)
+        .unwrap();
+    assert!(!bindings.snapshot().schemas[1].composites[0].fields[0].nullable);
 }

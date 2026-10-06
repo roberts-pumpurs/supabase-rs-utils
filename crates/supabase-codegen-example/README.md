@@ -4,7 +4,7 @@
 
 This example uses codegen and client 0.9 with the owned `rp-postgrest` 3.0 runtime.
 Regenerate Rust bindings when upgrading. The generator emits schema-qualified finite field and FK lookups.
-The committed version 2 snapshot still works without credentials or a generator CLI.
+The committed format 3 snapshot supports offline builds. Regenerate older snapshots with the standalone codegen CLI.
 
 Run without a database:
 

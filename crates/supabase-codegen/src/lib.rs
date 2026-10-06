@@ -10,7 +10,7 @@ mod database;
 mod emitter;
 pub mod model;
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use model::{SNAPSHOT_VERSION, Snapshot};
@@ -47,7 +47,7 @@ struct Config {
     pub reexport_macros: bool,
     pub relationship_aliases: BTreeMap<String, String>,
     pub strict_args: bool,
-    pub strict_functions: std::collections::BTreeSet<String>,
+    pub strict_functions: BTreeSet<String>,
 }
 
 /// Configure code generation, then choose one explicit schema source.
@@ -91,7 +91,7 @@ impl Generator {
                 reexport_macros: false,
                 relationship_aliases: BTreeMap::new(),
                 strict_args: false,
-                strict_functions: std::collections::BTreeSet::new(),
+                strict_functions: BTreeSet::new(),
             },
         }
     }
@@ -176,7 +176,9 @@ impl Generator {
         target: impl Into<String>,
         fields: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        self.config.not_null.insert(target.into(), fields.into_iter().map(Into::into).collect());
+        self.config
+            .not_null
+            .insert(target.into(), fields.into_iter().map(Into::into).collect());
         self
     }
 
@@ -184,7 +186,9 @@ impl Generator {
     /// Accepts `public.table.column` or `public.tables.table.column`.
     #[must_use]
     pub fn column_type(mut self, target: impl Into<String>, rust_type: impl Into<String>) -> Self {
-        self.config.column_types.insert(target.into(), rust_type.into());
+        self.config
+            .column_types
+            .insert(target.into(), rust_type.into());
         self
     }
 
@@ -192,14 +196,16 @@ impl Generator {
     /// SQL arrays, nullability, and set-returning wrappers remain intact.
     #[must_use]
     pub fn json_type(mut self, target: impl Into<String>, rust_type: impl Into<String>) -> Self {
-        self.config.json_types.insert(target.into(), rust_type.into());
+        self.config
+            .json_types
+            .insert(target.into(), rust_type.into());
         self
     }
 
     /// Export crate-local `select!` and `key!` wrappers with the runtime path filled.
     /// Include the generated bindings at the schema crate's root.
     #[must_use]
-    pub fn reexport_macros(mut self) -> Self {
+    pub const fn reexport_macros(mut self) -> Self {
         self.config.reexport_macros = true;
         self
     }
@@ -207,14 +213,20 @@ impl Generator {
     /// Add an alias for one canonical qualified relationship marker.
     /// For example `public.tables.orders.relationships.orders_customer_fkey`.
     #[must_use]
-    pub fn relationship_alias(mut self, target: impl Into<String>, alias: impl Into<String>) -> Self {
-        self.config.relationship_aliases.insert(target.into(), alias.into());
+    pub fn relationship_alias(
+        mut self,
+        target: impl Into<String>,
+        alias: impl Into<String>,
+    ) -> Self {
+        self.config
+            .relationship_aliases
+            .insert(target.into(), alias.into());
         self
     }
 
     /// Require non-default RPC inputs unless explicitly marked nullable.
     #[must_use]
-    pub fn strict_args(mut self) -> Self {
+    pub const fn strict_args(mut self) -> Self {
         self.config.strict_args = true;
         self
     }
