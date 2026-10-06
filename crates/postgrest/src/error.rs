@@ -139,6 +139,23 @@ impl Error {
     pub fn postgrest_body(&self) -> Option<&rp_postgrest_error::ErrorResponse> {
         self.postgrest_error().map(PostgrestError::response)
     }
+    /// The authoritative HTTP status and borrowed structured server response.
+    ///
+    /// The status comes from the observed response, not the error code's inferred
+    /// status. Returns `None` when no structured server error was decoded.
+    #[must_use]
+    pub fn postgrest_response(&self) -> Option<(StatusCode, &rp_postgrest_error::ErrorResponse)> {
+        match self {
+            Self::Postgrest { metadata, source } => Some((metadata.status(), source.response())),
+            Self::Configuration(_)
+            | Self::Serialization(_)
+            | Self::Request(_)
+            | Self::ResponseBody { .. }
+            | Self::Decode { .. }
+            | Self::ResponseDecode { .. }
+            | Self::Count { .. } => None,
+        }
+    }
     /// Metadata when a response was observed.
     #[must_use]
     pub const fn response_metadata(&self) -> Option<&ResponseMetadata> {

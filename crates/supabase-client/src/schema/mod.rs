@@ -121,7 +121,7 @@ pub mod __private {
     pub use serde;
 }
 
-/// A typed RPC request with no relation projection or cardinality constraints.
+/// A typed RPC request with an optional server single-object response mode.
 #[must_use]
 pub struct Rpc<F: Function> {
     builder: rp_postgrest::Builder,
@@ -129,6 +129,16 @@ pub struct Rpc<F: Function> {
 }
 
 impl<F: Function> Rpc<F> {
+    /// Request server-enforced single-object cardinality.
+    ///
+    /// This keeps the generated return type unchanged. For a set-returning
+    /// function, use `single().fetch_as::<Row>()` to decode the selected object
+    /// rather than the generated collection type.
+    pub fn single(mut self) -> Self {
+        self.builder = self.builder.single();
+        self
+    }
+
     /// Drop the function's return-type guarantee for raw protocol composition.
     pub fn into_raw(self) -> rp_postgrest::Builder {
         self.builder
@@ -143,6 +153,26 @@ impl<F: Function> Rpc<F> {
         F::Returns: serde::de::DeserializeOwned,
     {
         self.builder.fetch().await
+    }
+
+    /// Execute and decode JSON as an explicitly selected response type.
+    ///
+    /// Use this for a typed JSON/JSONB result or a set-returning function in
+    /// single-object mode. [`Self::fetch`] retains the generated return type.
+    ///
+    /// # Errors
+    /// Preserves serialization, transport, server and response decoding failures.
+    pub async fn fetch_as<T: serde::de::DeserializeOwned>(self) -> Result<T, rp_postgrest::Error> {
+        self.builder.fetch().await
+    }
+
+    /// Execute and check the response status without decoding a successful body.
+    ///
+    /// # Errors
+    /// Preserves serialization, transport and server-response failures.
+    pub async fn execute(self) -> Result<(), rp_postgrest::Error> {
+        self.builder.execute_checked().await?;
+        Ok(())
     }
 }
 

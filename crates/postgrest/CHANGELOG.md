@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `Error::postgrest_response()` returns observed HTTP status and the borrowed typed server error body together.
+
 ## [3.0.0] - 2026-10-06
 
 ### Added

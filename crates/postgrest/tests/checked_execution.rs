@@ -159,6 +159,42 @@ async fn checked_execution_decodes_structured_postgrest_error() {
 #[expect(
     clippy::unwrap_used,
     clippy::expect_used,
+    reason = "Assertions describe authoritative status and borrowed structured error evidence"
+)]
+#[tokio::test]
+async fn structured_response_accessor_uses_observed_status_not_error_code() {
+    let body = br#"{"code":"23505","message":"duplicate key","details":null,"hint":null}"#;
+    for (status_line, status) in [
+        ("400 Bad Request", StatusCode::BAD_REQUEST),
+        ("300 Multiple Choices", StatusCode::MULTIPLE_CHOICES),
+    ] {
+        let (url, server) = serve_once(status_line, "application/json", body, body.len()).await;
+        let error = Postgrest::new(url)
+            .unwrap()
+            .from("items")
+            .execute_checked()
+            .await
+            .expect_err("structured non-success response should be an error");
+
+        let (observed_status, response) = error.postgrest_response().unwrap();
+        assert_eq!(observed_status, status);
+        assert_eq!(error.status(), Some(observed_status));
+        assert_eq!(
+            error
+                .postgrest_error()
+                .unwrap()
+                .inferred_status(rp_postgrest::rp_postgrest_error::Authentication::Unknown),
+            Some(StatusCode::CONFLICT)
+        );
+        assert_eq!(response.message, "duplicate key");
+        assert_eq!(response.code.as_str(), "23505");
+        server.await.unwrap();
+    }
+}
+
+#[expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
     clippy::panic,
     reason = "Assertions and source matches describe malformed error evidence"
 )]
@@ -175,6 +211,7 @@ async fn checked_execution_preserves_malformed_error_body() {
         .expect_err("malformed non-success response should be an error");
 
     assert_eq!(error.status(), Some(StatusCode::BAD_GATEWAY));
+    assert!(error.postgrest_response().is_none());
     assert_eq!(error.url().unwrap().path(), "/items");
     assert_eq!(
         error.response_metadata().unwrap().headers()["x-request-id"],
@@ -208,6 +245,7 @@ async fn checked_execution_preserves_status_when_body_read_fails() {
         .expect_err("truncated response body should be an error");
 
     assert_eq!(error.status(), Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(error.postgrest_response().is_none());
     let Error::ResponseBody { metadata, source } = error else {
         panic!("expected response body error, got {error:?}");
     };
@@ -250,6 +288,7 @@ async fn checked_execution_preserves_request_failure() {
     assert_eq!(error.status(), None);
     assert_eq!(error.url().unwrap().path(), "/items");
     assert!(error.response_metadata().is_none());
+    assert!(error.postgrest_response().is_none());
     let Error::Request(source) = error else {
         panic!("expected request error, got {error:?}");
     };

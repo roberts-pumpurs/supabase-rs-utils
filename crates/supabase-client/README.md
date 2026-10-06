@@ -141,6 +141,8 @@ let pairs = [
     params::in_(skills::columns::name, ["search", "storage"]),
     params::order(skills::columns::name, Order::Asc),
     params::json_text_eq(skills::columns::manifest, &["fingerprint"], "abc123")?,
+    params::limit(100),
+    params::offset(0),
 ];
 let response = http.get("https://example.supabase.co/rest/v1/skills")
     .query(&pairs)
@@ -149,6 +151,24 @@ let response = http.get("https://example.supabase.co/rest/v1/skills")
 ```
 
 This example uses another Reqwest request directly; callers can pass pairs to another HTTP serializer. Do not percent-encode them first. The module also provides `neq`, `gt`, `gte`, `lt`, `lte`, nullable `is_null`, and `order_with_nulls`. Separate order pairs remain separate pairs; combine their terms into one order value if your transport/server requires multiple ordering terms. These helpers do not send requests, add auth/schema headers, or check responses.
+
+For a table chosen at runtime, use `select` and literal-column `order_by` without generated relation markers:
+
+```rust,ignore
+let table = "audit events";
+let mut url = reqwest::Url::parse("https://example.supabase.co/rest/v1/")?;
+url.path_segments_mut().unwrap().push(table);
+let mut pairs = vec![
+    params::select("*"),
+    params::order_by("created_at", Order::Desc),
+];
+pairs.extend(params::range(100, 199)?);
+let response = http.get(url).query(&pairs).send().await?;
+```
+
+`range(low, high)` returns offset and limit pairs for an inclusive range. It rejects reversed bounds and row-count overflow with `params::RangeError`. `limit(0)` requests zero rows. `order_by` escapes a literal column name; `select` accepts selection grammar. `order_by_with_nulls` adds explicit null placement.
+
+Use `params::scope(&["tasks"], params::limit(5))` for a runtime embedded relation name or alias. It emits `tasks.limit=5`. Nested scopes take separate path segments. This limits selected child rows, not the root table, and does not add the embed itself.
 
 ## Typed RPC returns
 
@@ -160,7 +180,24 @@ let args = echo_message::Args { message: Some("rpc example".into()) };
 let result = rpc::<echo_message::Function>(client.clone(), &args).fetch().await?;
 ```
 
-`args` is the generated function's `Args`; `result` is inferred as its `Returns`. Generated scalar, set-returning, composite, and void contracts decode their corresponding server representations. RPC does not require a relation projection or automatically add `select`/`single`. Serialization errors are deferred to execution. `Rpc::into_raw()` returns the builder and intentionally drops function identity. HTTP 204 can decode `()`; an empty HTTP 200 is a JSON decoding error, not a synthetic void result. Use your generated function marker instead of the illustrative name above.
+`args` is the generated function's `Args`; `result` is inferred as its `Returns`. Generated scalar, set-returning, composite, and void contracts decode their server representations. RPC does not require a relation projection or automatically add `select` or `single`. Serialization errors are deferred to execution.
+
+Use `fetch_as::<Outcome>()` to decode JSON/JSONB directly into a caller-defined type. Use `single()` for server-enforced single-object mode:
+
+```rust,ignore
+let outcome = rpc::<delete_lifecycle::Function>(client.clone(), &args)
+    .single()
+    .fetch_as::<Outcome>()
+    .await?;
+
+rpc::<delete_lifecycle::Function>(client.clone(), &args)
+    .execute()
+    .await?;
+```
+
+Replace the function marker, arguments, and `Outcome` with your generated function and response type. `single()` sets the object Accept header but retains the generated return type. A set-returning function therefore needs `single().fetch_as::<Row>()`, not `single().fetch()`, to decode one row.
+
+`execute()` checks status without reading or decoding a successful body. It preserves structured server errors and accepts empty or non-JSON success bodies. `fetch()` and `fetch_as()` still require the requested JSON shape. HTTP 204 can decode `()`; an empty HTTP 200 remains a JSON decoding error. `Rpc::into_raw()` is still available for raw protocol composition.
 
 ## Configured authentication
 

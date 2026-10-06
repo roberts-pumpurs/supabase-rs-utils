@@ -120,8 +120,8 @@ All checked and typed operations return one `Result<T, rp_postgrest::Error>`. Th
 
 ```rust
 fn inspect(error: &rp_postgrest::Error) {
-    if let Some(body) = error.postgrest_body() {
-        eprintln!("server body: {body:?}");
+    if let Some((status, body)) = error.postgrest_response() {
+        eprintln!("PostgREST HTTP {status}: {}", body.message);
     }
     if let Some(metadata) = error.response_metadata() {
         eprintln!("status={}, url={}, headers={:?}",
@@ -131,6 +131,8 @@ fn inspect(error: &rp_postgrest::Error) {
 ```
 
 `postgrest_body()` exposes the canonical decoded code, message, details, and hint. `postgrest_error()` exposes its structured source. HTTP status remains authoritative. PostgREST 16.2 ambiguous embedding errors such as PGRST201 can use HTTP 300 and an array of relationship details; the canonical `ErrorDetails` supports that array as well as ordinary text. Malformed error envelopes retain exact bytes in the `Error::Decode` source. Valid structured errors do not retain the original JSON bytes, and failed body reads do not promise partial bytes. `status()`, `url()`, `response_metadata()`, and the standard error source chain support diagnostics without nested results.
+
+`postgrest_response()` returns the observed HTTP status and a borrowed typed `ErrorResponse` together. It does not allocate or infer status from the error code. It returns `None` for transport failures, malformed error envelopes, and other errors without a decoded server response.
 
 Enable `serde_json/arbitrary_precision` in the dependency graph when decoding exact PostgreSQL numerics. This avoids an intermediate floating-point conversion; the requested Rust response type still determines its own numeric representation.
 

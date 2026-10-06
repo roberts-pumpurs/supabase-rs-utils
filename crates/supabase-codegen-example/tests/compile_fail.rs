@@ -422,11 +422,6 @@ typed-builder = "0.21"
             "fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).select(rp_supabase_client::schema::named::<_, Id>()); }",
             false,
         ),
-        (
-            "rpc_has_no_relation_cardinality",
-            "async fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).fetch_one().await; }",
-            false,
-        ),
     ];
     for (name, source, succeeds) in cases {
         fs::write(

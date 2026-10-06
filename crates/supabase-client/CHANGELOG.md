@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- RPC single-object mode, caller-selected JSON decoding with `fetch_as`, and checked status-only `execute`.
+- Pure limit, offset, and inclusive range query pairs, with errors for reversed or overflowing ranges.
+- Runtime selections, literal-column ordering, and embedded relation scopes without generated relation markers.
+
 ## [0.9.1](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.9.0...rp-supabase-client-v0.9.1) - 2026-10-06
 
 ### Fixed
