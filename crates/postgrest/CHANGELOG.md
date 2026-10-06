@@ -6,10 +6,6 @@
 
 ### Added
 
-- *(postgrest)* expose server status and error classification helpers
-
-### Added
-
 - Add `Error::server_response()` to retain non-success status even without a decoded error body, and `Error::is_jwt_expired()` for explicit JWT expiration messages.
 - Add the `test-util` feature with `Error::from_response(status, body)` using the production decoder. Successful statuses return `None`.
 

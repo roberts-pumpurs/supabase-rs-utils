@@ -11,11 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(client)* map shared projection filter keys across relations
-- *(client)* compose runtime filters and keyset cursors
-
-### Added
-
 - Shared projection filter keys map relation-specific columns through zero-sized typed markers without adding selected DTO fields.
 - Runtime scalar filters, checked nested AND/OR query pairs, and composite ascending keyset cursors escape literal identifiers and values.
 

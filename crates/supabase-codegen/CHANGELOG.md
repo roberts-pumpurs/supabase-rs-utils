@@ -4,27 +4,28 @@
 
 ## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-codegen-v0.9.3...rp-supabase-codegen-v0.10.0) - 2026-10-06
 
+### Breaking
+
+- Snapshot format is version 3. Regenerate version 2 snapshots. Public `model::Argument` metadata now requires `nullable`.
+
 ### Added
 
-- *(codegen)* ship standalone snapshot write and check commands
-- *(codegen)* enforce opt-in strict RPC argument contracts
-- *(codegen)* add checked relationship marker aliases
-- *(codegen)* reexport hygienic schema selection macros
-- *(codegen)* customize JSON fields and RPC wire types
-- *(codegen)* generate CHECK enums and override column types
-- *(codegen)* preserve and customize non-table nullability
+- Honor nullability contracts in snapshots, SQL comments, and `Generator::not_null`.
+- Infer non-null columns for safe plain-column projections in ordinary single-table views.
+- Generate Serde and filtering enums for exact, validated string CHECK membership constraints.
+- Add `.column_type(...)` overrides for application-owned Rust types.
+- Add `.json_type(...)` for columns, composites, RPC arguments, OUT records, and returns. Preserve SQL wrappers.
+- Add `.reexport_macros()` to export schema-local `select!` and `key!` with the runtime path built in.
+- Add unambiguous forward FK-column and reverse table aliases. Support explicit `.relationship_alias(...)` mappings.
+- Add `.strict_args()` and `.strict_args_for(...)`. SQL `@nullable` annotations preserve nullable inputs. Default arguments still support omission.
+- Add the optional `cli` binary. `snapshot write` exports metadata. `snapshot check` reports drift without writing files.
 
 ### Fixed
 
-- *(codegen)* [**breaking**] preserve safe contracts across views and SQL overrides
-
-- Respect non-table snapshot nullability, infer safe single-table view projections with a SQL parser, and support checked `not_null` builder and SQL comment contracts. Snapshot format is now version 3.
-- Generate Serde and filtering enums from exact validated string CHECK memberships, and add checked per-column Rust type overrides.
-- Add checked typed JSON customization for relation columns, composite fields, RPC inputs, OUT records, and returns, preserving SQL wrappers.
-- Export hygienic schema-crate `select!` and `key!` wrappers through an opt-in runtime reexport.
-- Add unambiguous forward FK-column and reverse source-table relationship aliases, plus checked custom aliases with unchanged marker identities.
-- Add global and per-function strict RPC argument contracts with persisted checked `@nullable` opt-outs and unchanged default-argument omission semantics.
-- Ship the optional `cli` binary with metadata-only snapshot acquisition. `snapshot write` exports schemas; `snapshot check` reports drift without writing files.
+- Keep materialized-view fields nullable unless a contract explicitly declares them non-null.
+- Keep CHECK fields as strings when their SQL equality rules do not match Rust string equality.
+- Validate customization targets against emitted bindings and resolve overrides through generated SQL identifiers.
+- Exclude overridden SQL fields from dependency collection.
 
 ## [0.9.3](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-codegen-v0.9.2...rp-supabase-codegen-v0.9.3) - 2026-10-06
 
