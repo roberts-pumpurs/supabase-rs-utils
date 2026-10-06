@@ -427,6 +427,26 @@ typed-builder = "0.21"
             "fn consumer(c: Postgrest) { let _ = rp_supabase_client::schema::rpc::<bindings::public::functions::rpc_echo::Function>(c, &bindings::public::functions::rpc_echo::Args { message: None }).select(rp_supabase_client::schema::named::<_, Id>()); }",
             false,
         ),
+        (
+            "shared_filter_mismatched_types",
+            "rp_supabase_client::projection! { struct Artifact for [rel::skills, rel::adapters] { name } filters { artifact_id: [id, name] } }",
+            false,
+        ),
+        (
+            "shared_filter_wrong_query_relation",
+            "rp_supabase_client::projection! { struct Artifact for [rel::skills, rel::adapters] { name } filters { artifact_id: [id, owner_id] } } fn reject(client: Postgrest) { rel::adapters::query(client).eq(Artifact::artifact_id::<rel::skills::Row>(), &7); }",
+            false,
+        ),
+        (
+            "shared_filter_undeclared_relation",
+            "rp_supabase_client::projection! { struct Artifact for [rel::skills, rel::adapters] { name } filters { artifact_id: [id, owner_id] } } fn reject() { let _ = Artifact::artifact_id::<rel::artifact_links::Row>(); }",
+            false,
+        ),
+        (
+            "shared_filter_missing_mapping",
+            "rp_supabase_client::projection! { struct Artifact for [rel::skills, rel::adapters] { name } filters { artifact_id: [id] } }",
+            false,
+        ),
     ];
     for (name, source, succeeds) in cases {
         fs::write(

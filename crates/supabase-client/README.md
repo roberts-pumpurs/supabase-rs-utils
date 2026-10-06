@@ -89,6 +89,45 @@ println!("{} rows, {} total", page.data.len(), page.count);
 
 The shared macro emits one DTO and a `Projection<R>` implementation for each relation. Every selected field must exist on each relation with exactly the same Rust value type and SQL response key. Unselected fields need not match. Selection preserves exact SQL response keys, including renamed identifiers. Missing selected fields are decoding errors even when their type allows null; extra fields are ignored. Named projections retain their attributes, visibility, and DTO-owned relationship handles. `projection!` resolves its runtime through `$crate`, including renamed dependencies; the hidden proc-macro support is version-owned implementation, not additional caller syntax.
 
+### Shared filter keys
+
+Append a `filters` block after a shared projection's selected fields:
+
+```rust,ignore
+projection! {
+    struct Artifact for [database::public::tables::skill_links, database::public::tables::adapter_links] {
+        name,
+    } filters {
+        artifact_id: [skill_id, adapter_id],
+    }
+}
+```
+
+Each key maps one generated column identifier per relation, in the order of the `for [...]` list. Here `Artifact::artifact_id::<skill_links::Row>()` names SQL `skill_id`, while `Artifact::artifact_id::<adapter_links::Row>()` names SQL `adapter_id`. The compiler requires identical decoded value types and non-null filter types across the mappings. SQL names may differ. Unknown columns, missing mappings, duplicate keys, and use on another relation fail compilation.
+
+Filter keys are not DTO fields and do not change the selection or decoder. The example selects only `name`. Use the associated marker with any existing typed column helper:
+
+```rust,ignore
+use rp_supabase_client::{key, projection};
+use rp_supabase_client::schema::{Column, FilterColumn, Relation, SharedFilter, params};
+
+fn artifact_filter<R: Relation>(id: i64) -> params::QueryPair
+where
+    Artifact: FilterColumn<key!(type artifact_id), R>,
+    SharedFilter<Artifact, key!(type artifact_id), R>: Column<Relation = R, Filter = i64>,
+{
+    params::eq(Artifact::artifact_id::<R>(), &id)
+}
+
+let pair = artifact_filter::<skill_links::Row>(7);
+let rows = adapter_links::query(client)
+    .select(named::<_, Artifact>())
+    .eq(Artifact::artifact_id::<adapter_links::Row>(), &7)
+    .fetch().await?;
+```
+
+`key!(type artifact_id)` names the key in generic bounds without a runtime discriminator. `SharedFilter` is a zero-sized relation-specific column marker. Nullable and JSON mappings retain their corresponding column capabilities for each relation. The `filters` block is available only with the shared `for [...]` grammar.
+
 Column markers enforce relation ownership and scalar filter types. String columns accept borrowed `str`; nullable comparisons take a non-null value. `is_null(column)` requires a nullable column. Typed `in_` accepts borrowed scalar values and quotes/escapes them in list context. `order` composes multiple terms; `order_with_nulls` accepts `Nulls::First` or `Last`. `json_text_eq` requires a JSON/JSONB column and a nonempty key path. It escapes path identifiers and leaves the scalar value literal; an empty path returns a configuration error.
 
 `limit` and inclusive `range` transition a read into `Paged`. Paged queries retain selection, filters, ordering, fetch, and counts, but have no insert/update/delete methods. This prevents response pagination from being mistaken for a safe mutation limiter. Ordering alone does not prohibit writes. `limit(0)` requests zero rows.
@@ -170,6 +209,24 @@ let response = http.get(url).query(&pairs).send().await?;
 
 Use `params::scope(&["tasks"], params::limit(5))` for a runtime embedded relation name or alias. It emits `tasks.limit=5`. Nested scopes take separate path segments. This limits selected child rows, not the root table, and does not add the embed itself.
 
+### Runtime filters and keyset cursors
+
+`params::filter("score", params::Op::Gt, 10)` returns an unencoded query pair. Column names are literal identifiers, not paths or expressions.
+
+```rust,ignore
+let predicate = params::or(&[
+    params::filter("score", params::Op::Gt, 10),
+    params::and(&[
+        params::filter("owner_type", params::Op::Eq, "organization"),
+        params::filter("visibility", params::Op::Eq, "public"),
+    ])?,
+])?;
+```
+
+`or` and `and` quote scalar values in group context. They reject empty groups, non-filter pairs, and unsupported grammar with `CompositionError`. Supported pairs include scalar comparisons and nested groups, not IN lists or JSON paths.
+
+`params::after(&[("org_id", 7), ("user_id", 42)])` builds an ascending lexicographic cursor. An empty cursor returns `None`. Order by all cursor columns in the same order, ascending. Use non-null cursor values and a unique final column to break ties. Heterogeneous values can use references to `dyn Display`.
+
 ## Typed RPC returns
 
 ```rust,ignore
@@ -247,7 +304,7 @@ Typed fetch, RPC, raw fetch, and count methods return the same flat `rp_postgres
 
 ## Migration from 0.8
 
-- Regenerate Rust bindings with codegen 0.9. Snapshot version 2 remains supported.
+- Regenerate Rust bindings with the current codegen. Snapshot format 3 requires regeneration of older snapshots.
 - Replace `.select::<Dto>()` with `.select(named::<_, Dto>())`. Import `schema::named`. The old type-only method is removed.
 - Prefer `select!(Row => { ... })` for local queries and use the returned selection's handles.
 - Keep `projection!` for named/shared DTOs. Existing DTO-owned relationship constants still compose with local selections.

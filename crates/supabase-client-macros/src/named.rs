@@ -18,6 +18,7 @@ pub struct Input {
     first: Path,
     others: Vec<Path>,
     fields: Vec<Field>,
+    filters: Vec<Filter>,
 }
 struct Field {
     name: Ident,
@@ -27,6 +28,12 @@ enum Kind {
     Scalar,
     Embed(Path, Tokens, bool),
     Empty(Path),
+}
+
+struct Filter {
+    name: Ident,
+    first_column: Ident,
+    other_columns: Vec<Ident>,
 }
 
 impl Field {
@@ -116,6 +123,7 @@ impl Parse for Input {
                 body.parse::<Token![,]>()?;
             }
         }
+        let filters = parse_filters(input, shared, others.len().saturating_add(1))?;
         Ok(Self {
             runtime,
             attributes,
@@ -124,8 +132,64 @@ impl Parse for Input {
             first,
             others,
             fields,
+            filters,
         })
     }
+}
+
+fn parse_filters(
+    input: ParseStream,
+    shared: bool,
+    relation_count: usize,
+) -> syn::Result<Vec<Filter>> {
+    let mut filters = Vec::<Filter>::new();
+    if input.is_empty() {
+        return Ok(filters);
+    }
+    let keyword: Ident = input.parse()?;
+    if keyword != "filters" || !shared {
+        return Err(syn::Error::new(
+            keyword.span(),
+            "expected filters after a shared projection",
+        ));
+    }
+    let body;
+    braced!(body in input);
+    while !body.is_empty() {
+        let name: Ident = body.parse()?;
+        if filters
+            .iter()
+            .any(|filter| filter.name.unraw() == name.unraw())
+        {
+            return Err(syn::Error::new(name.span(), "duplicate shared filter key"));
+        }
+        body.parse::<Token![:]>()?;
+        let columns;
+        bracketed!(columns in body);
+        let columns = columns.parse_terminated(Ident::parse_any, Token![,])?;
+        if columns.len() != relation_count {
+            return Err(syn::Error::new(
+                name.span(),
+                "expected one column per relation, in relation declaration order",
+            ));
+        }
+        let mut columns = columns.into_iter();
+        let Some(first_column) = columns.next() else {
+            return Err(syn::Error::new(
+                name.span(),
+                "expected one column per relation, in relation declaration order",
+            ));
+        };
+        filters.push(Filter {
+            name,
+            first_column,
+            other_columns: columns.collect(),
+        });
+        if !body.is_empty() {
+            body.parse::<Token![,]>()?;
+        }
+    }
+    Ok(filters)
 }
 
 fn relation_path(input: ParseStream) -> syn::Result<Path> {
@@ -215,14 +279,15 @@ pub fn expand(names: &Names, input: &Input) -> Tokens {
     let field_names = decoded.iter().map(|field| &field.name);
     // Descriptor alias types stay private inside the implementation block. Public
     // DTO fields expose only the original column/cardinality value types.
-    let public_types = input
-        .fields
-        .iter()
-        .filter_map(|field| field.public_type(rt, first));
+    let public_types = input.public_types();
     let shared = input
         .others
         .iter()
         .map(|next| shared_projection(input, next));
+    let filters = input
+        .filters
+        .iter()
+        .map(|filter| shared_filter(input, filter));
     quote! {
         #(#attributes)*
         #visibility struct #name { #(pub #field_names: #public_types,)* }
@@ -234,7 +299,46 @@ pub fn expand(names: &Names, input: &Input) -> Tokens {
             #compiled
             #rendering
             #(#shared)*
+            #(#filters)*
         };
+    }
+}
+
+impl Input {
+    fn public_types(&self) -> impl Iterator<Item = Tokens> {
+        self.fields
+            .iter()
+            .filter_map(|field| field.public_type(&self.runtime, &self.first))
+    }
+}
+
+fn shared_filter(input: &Input, filter: &Filter) -> Tokens {
+    let rt = &input.runtime;
+    let name = &input.name;
+    let first = &input.first;
+    let key = &filter.name;
+    let text = key.unraw().to_string();
+    let characters = text.chars();
+    let key_type = quote!((#(#rt::schema::Character<#characters>,)*));
+    let first_column = &filter.first_column;
+    let relations = ::core::iter::once(first).chain(input.others.iter());
+    let columns = ::core::iter::once(first_column).chain(filter.other_columns.iter());
+    let mappings = relations.zip(columns).map(|(relation, column)| {
+        quote! {
+            #rt::schema::__private::assert_same_filter::<#first::columns::#first_column, #relation::columns::#column>();
+            impl #rt::schema::FilterColumn<#key_type, #relation::Row> for #name {
+                type Column = #relation::columns::#column;
+            }
+        }
+    });
+    quote! {
+        #(#mappings)*
+        impl #name {
+            pub const fn #key<R: #rt::schema::Relation>() -> #rt::schema::SharedFilter<Self, #key_type, R>
+            where Self: #rt::schema::FilterColumn<#key_type, R> {
+                #rt::schema::SharedFilter::new()
+            }
+        }
     }
 }
 

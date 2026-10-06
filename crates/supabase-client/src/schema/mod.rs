@@ -65,6 +65,7 @@ pub trait Function {
 pub mod params;
 mod projection;
 pub use params::{Nulls, Order, QueryPair};
+pub use projection::{FilterColumn, SharedFilter};
 mod query;
 mod relationship;
 pub mod selection;
@@ -114,6 +115,7 @@ pub use rp_postgrest::{Count, Counted, Postgrest};
 
 #[doc(hidden)]
 pub mod __private {
+    pub use super::projection::assert_same_filter;
     pub use super::relationship::{
         alias, assert_distinct, assert_same_column, check_embed, check_empty, identifier_len,
         write_identifier,
