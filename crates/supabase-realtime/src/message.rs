@@ -110,11 +110,8 @@ pub mod phx_reply {
         pub filter: Option<String>,
         pub id: i32,
     }
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub enum PostgresChangeEvent {
-        #[serde(rename = "*")]
-        All,
-    }
+    /// The server echoes the event filter of each joined subscription.
+    pub use super::phx_join::PostgresChangeEvent;
 
     #[cfg(test)]
     #[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
@@ -246,6 +243,23 @@ pub mod phx_reply {
                 simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
 
             assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[test]
+        fn reply_for_insert_subscription_decodes() {
+            let json_data = r#"{"event":"phx_reply","payload":{"response":{"postgres_changes":[{"event":"INSERT","id":72696871,"schema":"public","table":"messages"}]},"status":"ok"},"ref":"1","topic":"realtime:db"}"#;
+            let deserialized: ProtocolMessage =
+                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+            let event = if let ProtocolPayload::PhxReply(PhxReply::Ok(query)) = deserialized.payload
+            {
+                query
+                    .postgres_changes
+                    .first()
+                    .map(|change| change.event.clone())
+            } else {
+                None
+            };
+            assert_eq!(event, Some(PostgresChangeEvent::Insert));
         }
     }
 
