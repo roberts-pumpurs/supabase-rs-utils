@@ -1,49 +1,100 @@
 # Supabase Rust utilities
 
-[![Tests](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/test.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/test.yaml) [![Checks](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/check.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/check.yaml) [![Audit](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/audit.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/audit.yaml) [![Deny](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/deny.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/deny.yaml) [![Docs](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/doc.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/doc.yaml) [![Unused Dependencies](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/unused-deps.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/unused-deps.yaml) [![Conventional PR](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/conventional-pr.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/conventional-pr.yaml) [![Release](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/release-plz.yml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/release-plz.yml)
+[![Tests](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/test.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/test.yaml) [![Checks](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/check.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/check.yaml) [![Audit](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/audit.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/audit.yaml) [![Deny](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/deny.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/deny.yaml) [![Docs](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/doc.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/doc.yaml) [![Unused Dependencies](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/unused-deps.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/unused-deps.yaml) [![Conventional PR](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/conventional-pr.yaml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/conventional-pr.yaml) [![Release](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/release-plz.yml/badge.svg)](https://github.com/roberts-pumpurs/supabase-rs-utils/actions/workflows/release-plz.yml) [![crates.io](https://img.shields.io/crates/v/rp-supabase.svg)](https://crates.io/crates/rp-supabase) [![docs.rs](https://img.shields.io/docsrs/rp-supabase)](https://docs.rs/rp-supabase)
 
-A collection of Rust crates for interacting with Supabase APIs, including Authentication, Realtime, and PostgREST.
+Rust crates for [Supabase](https://supabase.com): database (PostgREST), auth, storage, edge functions, and realtime.
+Use them in async Rust services, CLIs, and tests that talk to a Supabase project.
+Start with the `rp-supabase` crate and plain queries. Add generated, compile-time checked types later if you want them.
+All crates require Rust 1.85 or later.
 
-## Overview
+## Quickstart
 
-This repository is a Cargo workspace containing multiple Rust crates that provide clients and utilities for working with Supabase services in Rust. The crates included are:
+Add the umbrella crate:
 
-- [rp-postgrest](./crates/postgrest/README.md): The workspace-owned raw PostgREST HTTP client, with checked execution and typed decoding.
-- [rp-supabase-auth](./crates/supabase-auth/README.md): A client library for Supabase's Authentication API.
-- [rp-postgrest-error](./crates/postgrest-error/README.md): Error parsing and handling for PostgREST and PostgreSQL responses.
-- [rp-supabase-realtime](./crates/supabase-realtime/README.md): A client library for Supabase's Realtime API.
-- [rp-supabase-client](./crates/supabase-client/README.md): A client for Supabase's PostgREST API with authenticated requests.
-- [rp-supabase-codegen](./crates/supabase-codegen/README.md): Generate Rust schema bindings in `build.rs`, with offline snapshots and custom derives, attributes, and preludes.
-
-## Getting started
-
-The workspace crates require Rust 1.85 or later. Add the crates you need to `Cargo.toml`:
-
-```toml
-[dependencies]
-rp-postgrest = "3.0"
-rp-supabase-auth = "0.8"
-rp-postgrest-error = "0.8"
-rp-supabase-realtime = "0.8"
-rp-supabase-client = "0.9"
-rp-supabase-codegen = "0.9"
+```sh
+cargo add rp-supabase --features full
+cargo add serde --features derive
+cargo add tokio --features macros,rt-multi-thread
 ```
 
-`rp-postgrest` is implemented in this workspace. `rp-supabase-client` builds typed queries on it and re-exports it as `rp_postgrest`. Both use the canonical `rp-postgrest-error` response model. See the [typed client documentation](./crates/supabase-client/README.md) for query-first selections, shared DTOs, typed ordering and filters, pagination, counts, minimal writes, and typed RPCs. Raw builders support checked decoding through `fetch::<T>()`.
+Query a table. Pass the project base URL and the project API key.
+
+```rust
+use rp_supabase::Client;
+
+#[derive(Debug, serde::Deserialize)]
+struct Todo {
+    id: i64,
+    title: String,
+}
+
+let client = Client::new("https://abc.supabase.co/", "your-anon-key")?;
+let todos = client.from("todos").select("id,title").fetch::<Vec<Todo>>().await?;
+println!("{todos:?}");
+```
+
+### Act as a user
+
+Sign in, then call `with_access_token`. The new client sends the user token, so row level security applies.
+
+```rust
+use rp_supabase::rp_supabase_auth::types::LoginCredentials;
+
+let login = LoginCredentials::builder()
+    .email("user@example.com".to_owned())
+    .password("password".to_owned())
+    .build();
+let session = client.auth().sign_in_with_password(&login).await?;
+let token = session.access_token.ok_or("sign-in returned no access token")?;
+let user_client = client.with_access_token(&token)?;
+let me = user_client.auth().get_user().await?;
+```
+
+The [rp-supabase README](./crates/supabase/README.md) shows storage, edge functions, and realtime.
+
+## When you want compile-time checked queries
+
+The untyped path checks column names at runtime, on the server.
+The typed path moves these checks to compile time.
+[rp-supabase-codegen](./crates/supabase-codegen/README.md) reads a schema snapshot in `build.rs` and generates Rust types for your tables, columns, and relations.
+[rp-supabase-client](./crates/supabase-client/README.md) runs queries on these types: `select!` builds a projection, and filters and ordering take typed columns.
+The [codegen example](./crates/supabase-codegen-example/README.md) builds from a committed snapshot without a database.
+Enable the `typed` feature of `rp-supabase` to get `rp_supabase_client` through the umbrella crate.
+
+## Crates
+
+| Crate | Version | What it does | Use it directly when |
+|-------|---------|--------------|----------------------|
+| [rp-supabase](./crates/supabase/README.md) | 0.1.0 | One `Client` for REST, auth, storage, functions, and realtime configuration | You start a new project. This is the default entry point. |
+| [rp-postgrest](./crates/postgrest/README.md) | 3.2.0 | PostgREST query builder with checked execution and typed decoding | You talk to a PostgREST server without the rest of Supabase. |
+| [rp-postgrest-error](./crates/postgrest-error/README.md) | 0.8.2 | PostgREST and PostgreSQL error model | You map database errors in your own code. |
+| [rp-supabase-auth](./crates/supabase-auth/README.md) | 0.8.2 | Supabase Auth API client and token refresh streams | You need auth only, or the full request types (MFA, admin). |
+| [rp-supabase-storage](./crates/supabase-storage/README.md) | 0.1.0 | Storage buckets, objects, and signed URLs | You need storage only. |
+| [rp-supabase-functions](./crates/supabase-functions/README.md) | 0.1.0 | Edge function invocation | You need functions only. |
+| [rp-supabase-realtime](./crates/supabase-realtime/README.md) | 0.8.2 | Realtime database changes, broadcast, and presence | You need realtime only. |
+| [rp-supabase-client](./crates/supabase-client/README.md) | 0.10.0 | Typed query runtime for generated schemas | You use generated types. |
+| [rp-supabase-client-macros](./crates/supabase-client-macros) | 0.10.0 | Procedural macros for rp-supabase-client | Never. rp-supabase-client re-exports them. |
+| [rp-supabase-codegen](./crates/supabase-codegen/README.md) | 0.10.0 | Generates Rust schema types in `build.rs` | You add typed queries (build dependency). |
+| [rp-supabase-mock](./crates/supabase-mock) | 0.8.2 | Mock Supabase server for tests | You test code that calls Supabase. |
+
+## Feature coverage
+
+| Supabase service | Supported | Limits |
+|------------------|-----------|--------|
+| Database (PostgREST) | Queries, filters, ordering, pagination, counts, inserts, updates, upserts, deletes, RPC | No GraphQL. |
+| Auth | Password, OTP, sign up, refresh, user update, sign out. Request types for MFA and admin endpoints. | No session storage. No convenience methods for OAuth redirects or PKCE code exchange. |
+| Realtime | Database changes (also typed), broadcast, presence | The websocket does not reconnect; the stream ends when the server closes it. One channel topic per connection. Sign in with email or phone and password only. |
+| Storage | Bucket CRUD, object upload, download, move, copy, remove, list, signed and public URLs | No resumable (TUS) uploads. No image transformations. No S3 protocol. |
+| Edge Functions | Invoke with JSON or raw bodies, custom headers and methods | No streamed request bodies. No multipart helpers. |
+| Typed codegen | Tables, views, columns, relations, RPC, from a snapshot or a live database | Regenerate after you upgrade `rp-supabase-codegen`. |
+
+Read each crate README for the full list of limits.
+See [docs/comparison.md](./docs/comparison.md) for a comparison with other Rust Supabase clients.
 
 ## Examples
 
-Check out our [examples directory](./examples/README.md) for complete working examples of how to use each crate. The examples cover:
-
-- Authentication and user management
-- Real-time database updates
-- Broadcast messaging
-- Presence tracking
-- JWT token management
-- Database operations
-- [Build-script schema bindings](./crates/supabase-codegen-example/README.md), including offline generation and live PostgREST CRUD/RPC verification.
-
-Each example is self-contained and includes detailed documentation about its use case and how to run it.
+The [examples directory](./examples/README.md) has runnable programs for auth, realtime (database changes, broadcast, presence), JWT refresh, and database queries.
+The [codegen example](./crates/supabase-codegen-example/README.md) shows build-script schema bindings with offline generation and live CRUD and RPC checks.
 
 ## Development guide
 
