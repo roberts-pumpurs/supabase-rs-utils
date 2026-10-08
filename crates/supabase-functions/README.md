@@ -10,6 +10,7 @@ It calls `{project}/functions/v1/{name}` with your API key, checks the status, a
 ```toml
 [dependencies]
 rp-supabase-functions = "0.1"
+serde = { version = "1", features = ["derive"] }
 ```
 
 ## Quickstart
@@ -32,7 +33,7 @@ struct Reply {
 }
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let url = url::Url::parse("https://abc.supabase.co/")?;
+let url = rp_supabase_functions::url::Url::parse("https://abc.supabase.co/")?;
 let client = FunctionsClient::new(&url, "anon-key")?;
 
 let reply: Reply = client
@@ -49,7 +50,8 @@ The default method is `POST`. Use `.method(Method::GET)` to change it. Use `.bod
 for raw bodies, `.header(name, value)` for extra headers, and `.region("us-east-1")` to pick a region.
 Use `.send()` to get the raw `reqwest::Response`, or `.text()` to get the body as a string.
 
-To reuse an existing connection pool, call `FunctionsClient::new_with_client`.
+The default HTTP client follows redirects only to the same origin (scheme, host, port), up to 10 hops.
+To reuse an existing connection pool, call `FunctionsClient::new_with_client`; that client is used unchanged.
 
 ## Call as a signed-in user
 

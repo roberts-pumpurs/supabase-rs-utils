@@ -180,3 +180,136 @@ async fn new_format_key_uses_access_token_override() {
         .unwrap();
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn cross_origin_redirect_is_not_followed() {
+    let mut first = mockito::Server::new_async().await;
+    let mut second = mockito::Server::new_async().await;
+    let target = format!("{}/functions/v1/hello", second.url());
+    let redirect = first
+        .mock("POST", "/functions/v1/hello")
+        .with_status(302)
+        .with_header("location", &target)
+        .create_async()
+        .await;
+    let leaked = second
+        .mock("POST", Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let leaked_get = second
+        .mock("GET", Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let error = client(&first).invoke("hello").send().await.unwrap_err();
+
+    assert!(matches!(error, FunctionsError::Http { status, .. } if status == 302));
+    redirect.assert_async().await;
+    leaked.assert_async().await;
+    leaked_get.assert_async().await;
+}
+
+#[tokio::test]
+async fn same_origin_redirect_is_followed() {
+    let mut server = mockito::Server::new_async().await;
+    let redirect = server
+        .mock("GET", "/functions/v1/old")
+        .with_status(302)
+        .with_header("location", "/functions/v1/new")
+        .create_async()
+        .await;
+    let target = server
+        .mock("GET", "/functions/v1/new")
+        .match_header("apikey", "anon-key")
+        .with_body(r#"{"ok":true}"#)
+        .create_async()
+        .await;
+
+    let reply: Reply = client(&server)
+        .invoke("old")
+        .method(Method::GET)
+        .fetch()
+        .await
+        .unwrap();
+
+    assert_eq!(reply, Reply { ok: true });
+    redirect.assert_async().await;
+    target.assert_async().await;
+}
+
+#[test]
+fn credential_headers_are_redacted_in_debug() {
+    let url = url::Url::parse("https://abc.supabase.co/").unwrap();
+    let builder = FunctionsClient::new(&url, "sb_publishable_x")
+        .unwrap()
+        .invoke("hello")
+        .header("Authorization", "Bearer secret-token")
+        .header("APIKEY", "secret-key");
+
+    let debug = format!("{builder:?}");
+
+    assert!(!debug.contains("secret-token"), "{debug}");
+    assert!(!debug.contains("secret-key"), "{debug}");
+}
+
+struct FailingSerialize;
+
+impl serde::Serialize for FailingSerialize {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("refused"))
+    }
+}
+
+#[tokio::test]
+async fn first_builder_error_wins_and_sends_nothing() {
+    let mut server = mockito::Server::new_async().await;
+    let any = server
+        .mock("POST", Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let api = client(&server);
+
+    let name_error = api
+        .invoke("hello")
+        .header("bad name", "v")
+        .header("x-ok", "v")
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(name_error, FunctionsError::HeaderName(_)),
+        "{name_error:?}"
+    );
+
+    let value_error = api
+        .invoke("hello")
+        .header("x-bad", "line\nbreak")
+        .header("bad name", "v")
+        .body("raw", "text/plain")
+        .send()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(value_error, FunctionsError::HeaderValue(_)),
+        "{value_error:?}"
+    );
+
+    let serialize_error = api
+        .invoke("hello")
+        .json(&FailingSerialize)
+        .header("bad name", "v")
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(serialize_error, FunctionsError::Serialize(_)),
+        "{serialize_error:?}"
+    );
+
+    any.assert_async().await;
+}

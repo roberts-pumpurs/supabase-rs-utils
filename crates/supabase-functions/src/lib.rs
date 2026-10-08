@@ -6,6 +6,7 @@ pub use reqwest::Method;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+pub use url;
 use url::Url;
 
 const RELAY_ERROR_HEADER: &str = "x-relay-error";
@@ -27,11 +28,15 @@ impl FunctionsClient {
     /// The client sends `apikey` on every request. Legacy JWT keys are also sent as
     /// `Authorization: Bearer <api_key>`; new-format keys (`sb_publishable_...`, `sb_secret_...`) are not.
     ///
+    /// The built-in HTTP client follows redirects only within the same origin (scheme, host,
+    /// port), up to 10 hops, so credentials never reach another host.
+    ///
     /// # Errors
     ///
-    /// Returns an error when the URL cannot hold a path or the key is not a valid header value.
+    /// Returns an error when the URL cannot hold a path, the key is not a valid header value,
+    /// or the HTTP client cannot be built.
     pub fn new(project_url: &Url, api_key: &str) -> Result<Self, FunctionsError> {
-        Self::new_with_client(project_url, api_key, reqwest::Client::new())
+        Self::new_with_client(project_url, api_key, default_client()?)
     }
 
     /// Same as [`Self::new`], but reuses the given HTTP client and its connection pool.
@@ -106,6 +111,24 @@ impl FunctionsClient {
             }),
         }
     }
+}
+
+fn default_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_origin = attempt
+                .previous()
+                .last()
+                .is_some_and(|prev| prev.origin() == attempt.url().origin());
+            if !same_origin {
+                attempt.stop()
+            } else if attempt.previous().len() > 10 {
+                attempt.error("too many redirects")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
 }
 
 fn is_new_format_key(api_key: &str) -> bool {
@@ -185,7 +208,11 @@ impl InvokeBuilder {
     pub fn header(self, name: &str, value: &str) -> Self {
         self.update(|request| {
             let name = HeaderName::from_bytes(name.as_bytes())?;
-            request.headers.insert(name, HeaderValue::from_str(value)?);
+            let mut value = HeaderValue::from_str(value)?;
+            if name == AUTHORIZATION || name.as_str() == "apikey" {
+                value.set_sensitive(true);
+            }
+            request.headers.insert(name, value);
             Ok(())
         })
     }
