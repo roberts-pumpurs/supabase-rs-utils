@@ -33,6 +33,7 @@ rstest.workspace = true
 test-log.workspace = true
 tracing-subscriber.workspace = true
 mockito.workspace = true
-rp-supabase-mock.workspace = true
+# Path only: cargo drops it on publish, so releasing auth never waits for the mock crate.
+rp-supabase-mock = { path = "../supabase-mock" }
 pretty_assertions.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
