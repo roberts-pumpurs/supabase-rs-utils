@@ -26,7 +26,7 @@ pub struct JwtStream {
 }
 
 impl JwtStream {
-    /// Creates a new [`SupabaseAuth`].
+    /// Creates a [`JwtStream`] for the given project configuration.
     #[must_use]
     pub const fn new(config: SupabaseAuthConfig) -> Self {
         Self { config }
