@@ -35,12 +35,18 @@ Start a mock server and register the password and refresh grants:
 use core::time::Duration;
 use rp_supabase_mock::{SupabaseMockServer, make_jwt};
 
-async fn mock_auth() -> Result<url::Url, Box<dyn std::error::Error>> {
+async fn mock_auth() -> Result<SupabaseMockServer, Box<dyn std::error::Error>> {
     let mut server = SupabaseMockServer::new().await;
     let jwt = make_jwt(Duration::from_secs(3600))?;
     server.register_jwt(&jwt)?;
-    // Point the auth client at this URL.
-    Ok(server.server_url()?)
+    Ok(server)
+}
+
+async fn test() -> Result<(), Box<dyn std::error::Error>> {
+    let server = mock_auth().await?;
+    // Point the auth client at this URL while `server` is alive.
+    let _url = server.server_url()?;
+    Ok(())
 }
 ```
 
