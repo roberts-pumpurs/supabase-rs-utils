@@ -43,14 +43,7 @@ struct TransferBody<'a> {
 #[serde(rename_all = "camelCase")]
 struct SignBody<'a> {
     expires_in: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    paths: Option<&'a [&'a str]>,
-}
-
-#[derive(Deserialize)]
-struct SignedResponse {
-    #[serde(rename = "signedURL")]
-    signed_url: String,
+    paths: &'a [&'a str],
 }
 
 #[derive(Deserialize)]
@@ -208,23 +201,35 @@ impl<'a> Bucket<'a> {
 
     /// Creates an absolute URL that grants read access to one object for `expires_in` seconds.
     ///
+    /// This uses the batch signing endpoint. The single-object endpoint signs a key that still
+    /// contains percent escapes when the name has a `?`, so its URL fails with an invalid
+    /// signature.
+    ///
     /// # Errors
     ///
-    /// Returns an error on an invalid path, transport failure, non-success status, or an
-    /// unexpected body.
+    /// Returns an error on an invalid path, transport failure, non-success status, an
+    /// unexpected body, or [`StorageError::SignFailed`] when the object cannot be signed.
     pub async fn create_signed_url(
         &self,
         path: &str,
         expires_in: u64,
     ) -> Result<Url, StorageError> {
-        let url = self.object_url(&["object", "sign"], path)?;
-        let body = SignBody {
-            expires_in,
-            paths: None,
-        };
-        let response: SignedResponse =
-            StorageClient::json(self.client.request(Method::POST, url).json(&body)).await?;
-        self.signed_url(path, &response.signed_url)
+        let entry = self
+            .create_signed_urls(&[path], expires_in)
+            .await?
+            .into_iter()
+            .next();
+        match entry {
+            Some(SignedUrl { url: Some(url), .. }) => Ok(url),
+            Some(SignedUrl { error, .. }) => Err(StorageError::SignFailed {
+                path: path.to_owned(),
+                message: error.unwrap_or_default(),
+            }),
+            None => Err(StorageError::SignFailed {
+                path: path.to_owned(),
+                message: "the response has no entry".to_owned(),
+            }),
+        }
     }
 
     /// Creates signed URLs for several objects in one request. Paths that cannot be signed
@@ -243,10 +248,7 @@ impl<'a> Bucket<'a> {
             path::object(object)?;
         }
         let url = self.client.url(["object", "sign", path::bucket(self.id)?]);
-        let body = SignBody {
-            expires_in,
-            paths: Some(paths),
-        };
+        let body = SignBody { expires_in, paths };
         let entries: Vec<SignedEntry> =
             StorageClient::json(self.client.request(Method::POST, url).json(&body)).await?;
         entries

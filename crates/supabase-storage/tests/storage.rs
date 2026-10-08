@@ -336,9 +336,12 @@ async fn remove_move_copy_requests() {
 async fn signed_url_is_absolute() {
     let (mut server, client) = setup().await;
     let mock = server
-        .mock("POST", "/storage/v1/object/sign/b/d/a%20b.png")
-        .match_body(Matcher::Json(json!({"expiresIn": 60})))
-        .with_body(r#"{"signedURL":"/object/sign/b/d/a%20b.png?token=t1"}"#)
+        .mock("POST", "/storage/v1/object/sign/b")
+        .match_body(Matcher::Json(json!({"expiresIn": 60, "paths": ["d/a b.png"]})))
+        .with_body(
+            json!([{"path": "d/a b.png", "signedURL": "/object/sign/b/d/a b.png?token=t1", "error": null}])
+                .to_string(),
+        )
         .create_async()
         .await;
     let url = client
@@ -401,19 +404,12 @@ async fn signed_urls_with_reserved_characters_use_encoded_path() {
         )
         .create_async()
         .await;
-    let single = server
-        .mock("POST", "/storage/v1/object/sign/b/dir/q%3F.txt")
-        .with_body(r#"{"signedURL":"/object/sign/b/dir/q?.txt?token=t.s"}"#)
-        .create_async()
-        .await;
-    let bucket = client.from("b");
-    let urls = bucket
+    let urls = client
+        .from("b")
         .create_signed_urls(&["dir/q?.txt", "h#1.txt"], 30)
         .await
         .unwrap();
-    let url = bucket.create_signed_url("dir/q?.txt", 30).await.unwrap();
     batch.assert_async().await;
-    single.assert_async().await;
     let base = format!("{}/storage/v1/object/sign/b", server.url());
     let got: Vec<_> = urls
         .iter()
@@ -426,15 +422,38 @@ async fn signed_urls_with_reserved_characters_use_encoded_path() {
             format!("{base}/h%231.txt?token=t.h"),
         ]
     );
-    assert_eq!(url.as_str(), format!("{base}/dir/q%3F.txt?token=t.s"));
+}
+
+#[tokio::test]
+async fn signed_url_for_unsignable_object_is_an_error() {
+    let (mut server, client) = setup().await;
+    let _mock = server
+        .mock("POST", "/storage/v1/object/sign/b")
+        .with_body(
+            json!([{"path": "missing", "signedURL": null, "error": "Either the object does not exist or you do not have access to it"}])
+                .to_string(),
+        )
+        .create_async()
+        .await;
+    let error = client
+        .from("b")
+        .create_signed_url("missing", 30)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, StorageError::SignFailed { path, .. } if path == "missing"),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]
 async fn signed_url_without_token_is_an_error() {
     let (mut server, client) = setup().await;
     let _mock = server
-        .mock("POST", "/storage/v1/object/sign/b/a")
-        .with_body(r#"{"signedURL":"/object/sign/b/a"}"#)
+        .mock("POST", "/storage/v1/object/sign/b")
+        .with_body(
+            json!([{"path": "a", "signedURL": "/object/sign/b/a", "error": null}]).to_string(),
+        )
         .create_async()
         .await;
     let error = client

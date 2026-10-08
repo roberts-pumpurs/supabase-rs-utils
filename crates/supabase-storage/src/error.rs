@@ -26,6 +26,15 @@ pub enum StorageError {
     /// The Storage API returned a signed URL without a `?token=` query.
     #[error("signed URL from the storage API has no token: {0:?}")]
     MissingSignedToken(String),
+    /// The Storage API did not sign an object, for example because it does not exist or the
+    /// caller cannot read it.
+    #[error("storage API did not sign {path:?}: {message}")]
+    SignFailed {
+        /// The requested object path.
+        path: String,
+        /// The reason from the Storage API.
+        message: String,
+    },
     /// A URL could not be parsed or joined.
     #[error(transparent)]
     Url(#[from] url::ParseError),

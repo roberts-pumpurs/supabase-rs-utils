@@ -14,24 +14,19 @@ const LEGACY_KEY: &str = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2lnbmF0dXJl
 const PUBLISHABLE_KEY: &str = "sb_publishable_abc123";
 const USER_TOKEN: &str = "user-jwt";
 
-async fn expect_all(
-    server: &mut ServerGuard,
-    key: &str,
-    rest_auth: Matcher,
-    gateway: Matcher,
-) -> Vec<Mock> {
+async fn expect_all(server: &mut ServerGuard, key: &str, bearer: Matcher) -> Vec<Mock> {
     let mut mocks = Vec::new();
-    for (method, path, bearer) in [
-        ("GET", "/rest/v1/todos", rest_auth.clone()),
-        ("GET", "/auth/v1/user", rest_auth),
-        ("GET", "/storage/v1/bucket", gateway.clone()),
-        ("POST", "/functions/v1/hello", gateway),
+    for (method, path) in [
+        ("GET", "/rest/v1/todos"),
+        ("GET", "/auth/v1/user"),
+        ("GET", "/storage/v1/bucket"),
+        ("POST", "/functions/v1/hello"),
     ] {
         mocks.push(
             server
                 .mock(method, Matcher::Regex(format!("^{path}")))
                 .match_header("apikey", key)
-                .match_header("authorization", bearer)
+                .match_header("authorization", bearer.clone())
                 .with_status(200)
                 .with_body("[]")
                 .expect(1)
@@ -50,11 +45,13 @@ async fn call_all(client: &Client) {
     drop(client.functions().invoke("hello").send().await);
 }
 
-async fn check(key: &str, anonymous_gateway_bearer: Matcher) {
+/// Every service sends the project key as `apikey`. Before `with_access_token`, the bearer is
+/// `anonymous_bearer`; after it, the user token.
+async fn check(key: &str, anonymous_bearer: Matcher) {
     let mut server = mockito::Server::new_async().await;
     let client = Client::new(&format!("{}/", server.url()), key).unwrap();
 
-    let mocks = expect_all(&mut server, key, Matcher::Missing, anonymous_gateway_bearer).await;
+    let mocks = expect_all(&mut server, key, anonymous_bearer).await;
     call_all(&client).await;
     for mock in mocks {
         mock.assert_async().await;
@@ -62,7 +59,7 @@ async fn check(key: &str, anonymous_gateway_bearer: Matcher) {
     }
 
     let bearer = Matcher::Exact(format!("Bearer {USER_TOKEN}"));
-    let mocks = expect_all(&mut server, key, bearer.clone(), bearer).await;
+    let mocks = expect_all(&mut server, key, bearer).await;
     call_all(&client.with_access_token(USER_TOKEN).unwrap()).await;
     for mock in mocks {
         mock.assert_async().await;

@@ -111,13 +111,9 @@ impl Client {
         let project_url = parse_project_url(project_url)?;
         Ok(Self {
             #[cfg(feature = "rest")]
-            rest: rest_client(&project_url, api_key, None, http.clone())?,
+            rest: rest_client(&project_url, api_key, default_bearer(api_key), http.clone())?,
             #[cfg(feature = "auth")]
-            auth: rp_supabase_auth::auth_client::ApiClient::new_unauthenticated_with_client(
-                &project_url,
-                api_key,
-                http.clone(),
-            )?,
+            auth: auth_client(&project_url, api_key, default_bearer(api_key), http.clone())?,
             #[cfg(feature = "storage")]
             storage: rp_supabase_storage::StorageClient::new_with_client(
                 &project_url,
@@ -140,6 +136,9 @@ impl Client {
     ///
     /// REST, auth, storage, and functions send `Authorization: Bearer <token>`.
     /// The `apikey` header keeps the project key. The connection pool is shared.
+    /// Without a user token, a legacy JWT key (anon or `service_role`) is the bearer, as in
+    /// supabase-js; a new-format key (`sb_publishable_...`, `sb_secret_...`) is sent only as
+    /// `apikey`.
     ///
     /// # Errors
     /// Returns a sub-client error when `token` is not a valid header value.
@@ -169,10 +168,10 @@ impl Client {
                 self.http.clone(),
             )?,
             #[cfg(feature = "auth")]
-            auth: rp_supabase_auth::auth_client::ApiClient::new_authenticated_with_client(
+            auth: auth_client(
                 &self.project_url,
                 &self.api_key,
-                token,
+                Some(token),
                 self.http.clone(),
             )?,
             #[cfg(feature = "storage")]
@@ -264,20 +263,45 @@ fn parse_project_url(input: &str) -> Result<Url, Error> {
     Ok(url)
 }
 
-/// Builds the REST client the same way as `rp_supabase_client::anonymous_client_with_client`,
-/// plus an optional user bearer.
+/// Returns the API key as the default bearer for legacy JWT keys. New-format keys
+/// (`sb_publishable_`, `sb_secret_`) are not JWTs, so supabase-js sends them only as `apikey`.
+#[cfg(any(feature = "rest", feature = "auth"))]
+fn default_bearer(api_key: &str) -> Option<&str> {
+    let new_format = api_key.starts_with("sb_publishable_") || api_key.starts_with("sb_secret_");
+    (!new_format).then_some(api_key)
+}
+
+/// Builds the auth client, authenticated when a bearer is given.
+#[cfg(feature = "auth")]
+fn auth_client(
+    project_url: &Url,
+    api_key: &str,
+    bearer: Option<&str>,
+    http: reqwest::Client,
+) -> Result<rp_supabase_auth::auth_client::ApiClient, Error> {
+    use rp_supabase_auth::auth_client::ApiClient;
+    Ok(match bearer {
+        Some(bearer) => {
+            ApiClient::new_authenticated_with_client(project_url, api_key, bearer, http)?
+        }
+        None => ApiClient::new_unauthenticated_with_client(project_url, api_key, http)?,
+    })
+}
+
+/// Builds the REST client like `rp_supabase_client::anonymous_client_with_client`, plus an
+/// optional bearer.
 #[cfg(feature = "rest")]
 fn rest_client(
     project_url: &Url,
     api_key: &str,
-    token: Option<&str>,
+    bearer: Option<&str>,
     http: reqwest::Client,
 ) -> Result<rp_postgrest::Postgrest, Error> {
     let base = project_url.join("rest/v1/")?;
     let client = rp_postgrest::Postgrest::new_with_client(base.as_str(), http)?
         .insert_header(API_KEY_HEADER, api_key)?;
-    Ok(match token {
-        Some(token) => client.auth(token)?,
+    Ok(match bearer {
+        Some(bearer) => client.auth(bearer)?,
         None => client,
     })
 }

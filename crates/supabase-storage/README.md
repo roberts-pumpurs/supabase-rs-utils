@@ -78,9 +78,11 @@ let as_user = storage.with_access_token(user_jwt)?;
 ```
 
 `public_url` sends no request. The URL works only when the bucket is public. For private
-buckets, call `create_signed_url` or `create_signed_urls`. The API returns signed URLs relative
-to `/storage/v1` with the object key unescaped; this crate rebuilds each URL from the bucket and
-the encoded object path, then appends the token. Keys with `?` or `#` work.
+buckets, call `create_signed_url` or `create_signed_urls`. Both use the batch signing endpoint,
+because the single-object endpoint returns an invalid signature for keys with `?`. The API
+returns signed URLs relative to `/storage/v1` with the object key unescaped; this crate rebuilds
+each URL from the bucket and the encoded object path, then appends the token. Keys with `?` and
+spaces work. The Storage server itself rejects some characters in keys, for example `#`.
 
 `BucketOptions` fields are always sent. On `update_bucket`, `None` removes an existing file size
 limit or MIME type list. `FileOptions::default()` sends `Cache-Control: max-age=3600`.
@@ -101,6 +103,8 @@ All operations return `StorageError`:
   standard Storage error JSON, else `ApiErrorBody::Raw` with the body text.
 - `InvalidPath`: a bucket id or object path is not valid.
 - `MissingSignedToken`: a signed URL from the server has no `?token=` query.
+- `SignFailed { path, message }`: `create_signed_url` got no URL for the object, for example
+  because it does not exist or the caller cannot read it.
 - `Http`, `Json`, `Url`, `InvalidHeader`, `InvalidBaseUrl`: transport, decoding, and input errors.
 
 ```rust,no_run
