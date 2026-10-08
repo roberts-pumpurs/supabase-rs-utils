@@ -1,5 +1,7 @@
 # rp-supabase-client
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase-client.svg)](https://crates.io/crates/rp-supabase-client) [![docs.rs](https://docs.rs/rp-supabase-client/badge.svg)](https://docs.rs/rp-supabase-client)
+
 Supabase authentication and query-first typed PostgreSQL queries. Version 0.10 uses the workspace-owned [rp-postgrest 3.2](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
 
 ```toml

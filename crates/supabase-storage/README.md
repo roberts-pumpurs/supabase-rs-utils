@@ -1,5 +1,7 @@
 # rp-supabase-storage
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase-storage.svg)](https://crates.io/crates/rp-supabase-storage) [![docs.rs](https://docs.rs/rp-supabase-storage/badge.svg)](https://docs.rs/rp-supabase-storage)
+
 Async Rust client for the [Supabase Storage](https://supabase.com/docs/guides/storage) API.
 It manages buckets, uploads and downloads objects, and creates signed and public URLs.
 

@@ -1,5 +1,7 @@
 # rp-supabase-realtime
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase-realtime.svg)](https://crates.io/crates/rp-supabase-realtime) [![docs.rs](https://docs.rs/rp-supabase-realtime/badge.svg)](https://docs.rs/rp-supabase-realtime)
+
 A Rust client for [Supabase Realtime](https://supabase.com/docs/guides/realtime).
 It connects over a websocket, signs in with Supabase Auth, and gives you three channel types:
 
@@ -187,5 +189,5 @@ The connection sends a heartbeat every 20 seconds.
 - The client does not reconnect the websocket. When the server closes the connection, the stream ends.
   Create a new connection to continue.
 - A connection holds one channel topic.
-- The client does not wait for a `phx_reply` to a join. Read replies from the output stream to check
-  that a subscription succeeded.
+- `subscribe_to_changes` and `join` do not wait for the server's `phx_reply`. `typed_changes` turns a
+  failed join into `SupabaseRealtimeError::ChannelError`. With the raw stream, read the replies yourself.

@@ -1,5 +1,7 @@
 # rp-supabase-functions
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase-functions.svg)](https://crates.io/crates/rp-supabase-functions) [![docs.rs](https://docs.rs/rp-supabase-functions/badge.svg)](https://docs.rs/rp-supabase-functions)
+
 Client for [Supabase Edge Functions](https://supabase.com/docs/guides/functions).
 It calls `{project}/functions/v1/{name}` with your API key, checks the status, and decodes JSON.
 

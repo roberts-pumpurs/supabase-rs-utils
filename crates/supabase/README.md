@@ -1,5 +1,7 @@
 # rp-supabase
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase.svg)](https://crates.io/crates/rp-supabase) [![docs.rs](https://docs.rs/rp-supabase/badge.svg)](https://docs.rs/rp-supabase)
+
 One entry point for [Supabase](https://supabase.com) from Rust.
 `Client` holds your project URL, your API key, and one shared HTTP connection pool.
 It gives you REST, auth, storage, edge functions, and realtime configuration.

@@ -1,5 +1,7 @@
 # rp-supabase-codegen
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase-codegen.svg)](https://crates.io/crates/rp-supabase-codegen) [![docs.rs](https://docs.rs/rp-supabase-codegen/badge.svg)](https://docs.rs/rp-supabase-codegen)
+
 Generate Rust bindings for Supabase and PostgreSQL schemas in `build.rs`. No generator CLI is required.
 
 The generator reads a versioned JSON snapshot or introspects PostgreSQL directly. It emits schema modules with table rows, insert and update payloads, enums, composites, and named-argument RPC bindings.

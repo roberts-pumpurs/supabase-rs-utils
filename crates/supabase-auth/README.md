@@ -1,5 +1,7 @@
 # rp-supabase-auth
 
+[![crates.io](https://img.shields.io/crates/v/rp-supabase-auth.svg)](https://crates.io/crates/rp-supabase-auth) [![docs.rs](https://docs.rs/rp-supabase-auth/badge.svg)](https://docs.rs/rp-supabase-auth)
+
 Typed async client for [Supabase Auth](https://supabase.com/docs/guides/auth) (GoTrue), with a stream that keeps a session's JWT fresh.
 
 ```toml
