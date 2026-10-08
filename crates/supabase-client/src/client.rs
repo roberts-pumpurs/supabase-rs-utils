@@ -18,7 +18,7 @@ pub fn new_authenticated(
     impl Stream<Item = Result<(Postgrest, AccessTokenResponseSchema), SupabaseClientError>>,
     SupabaseClientError,
 > {
-    new_authenticated_with_client(config, login_info, reqwest::Client::builder().build()?)
+    new_authenticated_with_client(config, login_info, default_client()?)
 }
 
 /// Create an authenticated stream sharing the supplied HTTP transport for REST,
@@ -52,7 +52,7 @@ pub fn new_authenticated_with_client(
 /// # Errors
 /// Returns transport construction or configuration failures.
 pub fn anonymous_client(api_key: String, url: &url::Url) -> Result<Postgrest, SupabaseClientError> {
-    anonymous_client_with_client(api_key, url, reqwest::Client::builder().build()?)
+    anonymous_client_with_client(api_key, url, default_client()?)
 }
 
 /// Create an anonymous client retaining the supplied HTTP pool and policies.
@@ -66,6 +66,26 @@ pub fn anonymous_client_with_client(
 ) -> Result<Postgrest, SupabaseClientError> {
     let url = url.join("rest/v1/")?;
     Ok(Postgrest::new_with_client(url.as_str(), http)?.insert_header(SUPABASE_KEY, api_key)?)
+}
+
+/// Builds the default transport. Redirects are followed only within the same origin.
+fn default_client() -> Result<reqwest::Client, reqwest::Error> {
+    const MAX_REDIRECTS: usize = 10;
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_origin = attempt
+                .previous()
+                .last()
+                .is_some_and(|previous| previous.origin() == attempt.url().origin());
+            if !same_origin {
+                attempt.stop()
+            } else if attempt.previous().len() > MAX_REDIRECTS {
+                attempt.error("too many redirects")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
 }
 
 #[derive(thiserror::Error, Debug)]

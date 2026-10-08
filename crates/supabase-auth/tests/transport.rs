@@ -230,3 +230,53 @@ async fn configured_sign_in_preserves_total_timeout() {
     };
     assert!(source.is_timeout());
 }
+
+#[tokio::test]
+async fn default_client_does_not_follow_cross_origin_redirect() {
+    let mut origin = mockito::Server::new_async().await;
+    let mut other = mockito::Server::new_async().await;
+    let redirect = origin
+        .mock("POST", "/auth/v1/recover")
+        .with_status(302)
+        .with_header("location", &format!("{}/steal", other.url()))
+        .create_async()
+        .await;
+    let leaked = other.mock("GET", "/steal").expect(0).create_async().await;
+    let client =
+        ApiClient::new_unauthenticated(&url::Url::parse(&origin.url()).unwrap(), "anon-key")
+            .unwrap();
+
+    let result = client.reset_password_for_email("user@example.com").await;
+
+    assert!(result.is_err());
+    redirect.assert_async().await;
+    leaked.assert_async().await;
+}
+
+#[tokio::test]
+async fn default_client_follows_same_origin_redirect() {
+    let mut server = mockito::Server::new_async().await;
+    let redirect = server
+        .mock("POST", "/auth/v1/recover")
+        .with_status(302)
+        .with_header("location", "/moved")
+        .create_async()
+        .await;
+    let target = server
+        .mock("GET", "/moved")
+        .match_header("apikey", "anon-key")
+        .with_body("{}")
+        .create_async()
+        .await;
+    let client =
+        ApiClient::new_unauthenticated(&url::Url::parse(&server.url()).unwrap(), "anon-key")
+            .unwrap();
+
+    client
+        .reset_password_for_email("user@example.com")
+        .await
+        .unwrap();
+
+    redirect.assert_async().await;
+    target.assert_async().await;
+}

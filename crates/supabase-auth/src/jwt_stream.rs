@@ -40,7 +40,7 @@ impl JwtStream {
     /// expected suffix or if the client cannot be created.
     #[tracing::instrument(skip_all, err)]
     pub fn sign_in(&self, params: LoginCredentials) -> Result<JwtRefreshStream, AuthError> {
-        self.sign_in_with_client(params, reqwest::Client::builder().build()?)
+        self.sign_in_with_client(params, crate::auth_client::default_client()?)
     }
 
     /// Sign in and refresh using the supplied HTTP pool and transport policies.

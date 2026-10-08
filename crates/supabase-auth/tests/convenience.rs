@@ -381,3 +381,56 @@ async fn non_json_error_body_keeps_status_and_text() {
     assert_eq!(status, reqwest::StatusCode::BAD_GATEWAY);
     assert_eq!(body.msg.as_deref(), Some("upstream unavailable"));
 }
+
+#[derive(Clone, Copy)]
+enum Operation {
+    ResetPasswordForEmail,
+    SignOut,
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn void_operations_map_errors_to_api_error(
+    #[values(Operation::ResetPasswordForEmail, Operation::SignOut)] operation: Operation,
+    #[values(
+        (400_u16, r#"{"code":400,"error_code":"over_email_send_rate_limit","msg":"Rate limit exceeded"}"#, "Rate limit exceeded"),
+        (502_u16, "upstream unavailable", "upstream unavailable"),
+    )]
+    response: (u16, &str, &str),
+) {
+    let (status_code, body, message) = response;
+    let mut server = server().await;
+    let mock = match operation {
+        Operation::ResetPasswordForEmail => anonymous_mock(&mut server, "POST", "/auth/v1/recover"),
+        Operation::SignOut => bearer_mock(&mut server, "POST", "/auth/v1/logout"),
+    }
+    .with_status(usize::from(status_code))
+    .with_body(body)
+    .create_async()
+    .await;
+
+    let error = match operation {
+        Operation::ResetPasswordForEmail => {
+            anonymous(&server)
+                .reset_password_for_email("user@example.com")
+                .await
+        }
+        Operation::SignOut => authenticated(&server).sign_out().await,
+    }
+    .unwrap_err();
+
+    mock.assert_async().await;
+    #[expect(
+        clippy::panic,
+        reason = "Any other error variant fails this error-mapping test"
+    )]
+    let AuthError::Api {
+        status,
+        error: decoded,
+    } = error
+    else {
+        panic!("expected API error, got {error:?}");
+    };
+    assert_eq!(status.as_u16(), status_code);
+    assert_eq!(decoded.msg.as_deref(), Some(message));
+}

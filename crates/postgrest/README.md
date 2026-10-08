@@ -12,7 +12,7 @@ rp-postgrest = "3.0"
 serde = { version = "1", features = ["derive"] }
 ```
 
-Both constructors are fallible. A supplied Reqwest client keeps its connection pool, default headers, timeout, proxy, and TLS policy. Cloning `Postgrest` shares its immutable configuration and transport.
+Both constructors are fallible. `Postgrest::new` builds a transport that follows a redirect only to the same origin (scheme, host, and port), up to 10 hops, so the API key does not leak to another host. A supplied Reqwest client keeps its connection pool, default headers, timeout, proxy, TLS policy, and redirect policy. Cloning `Postgrest` shares its immutable configuration and transport.
 
 ```rust
 use rp_postgrest::{Postgrest, reqwest};

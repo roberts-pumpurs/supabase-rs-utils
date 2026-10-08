@@ -6,7 +6,7 @@ Typed async client for [Supabase Auth](https://supabase.com/docs/guides/auth) (G
 
 ```toml
 [dependencies]
-rp-supabase-auth = "0.8"
+rp-supabase-auth = "0.9"
 ```
 
 The client talks to `<project-url>/auth/v1/`. Pass the project base URL, for example `https://abc.supabase.co/`, and the project API key (anon or service role).
@@ -99,7 +99,7 @@ To get only the tokens, use `JwtStream::new(config).sign_in(credentials)`. It yi
 
 ## Use your own HTTP client
 
-Each constructor has a `_with_client` variant that takes a `reqwest::Client`. Use it to set timeouts, proxies, TLS policy, default headers, or to share one connection pool. The stream reuses the client for sign-in, every refresh, and every `ApiClient` it yields.
+Each constructor has a `_with_client` variant that takes a `reqwest::Client`. Use it to set timeouts, proxies, TLS policy, default headers, or to share one connection pool. The stream reuses the client for sign-in, every refresh, and every `ApiClient` it yields. The default transport follows a redirect only to the same origin (scheme, host, and port), up to 10 hops; a supplied client keeps its own redirect policy.
 
 ```rust,no_run
 use std::time::Duration;

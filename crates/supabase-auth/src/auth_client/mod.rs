@@ -372,15 +372,39 @@ fn api_error(mut bytes: Vec<u8>, status: reqwest::StatusCode) -> AuthError {
     }
 }
 
-fn default_client() -> Result<reqwest::Client, AuthError> {
+/// Builds the library's default transport. Redirects are followed only within the same origin.
+#[expect(
+    clippy::pub_with_shorthand,
+    reason = "Rustfmt normalizes crate-private helper visibility to pub(crate)."
+)]
+pub(crate) fn default_client() -> Result<reqwest::Client, AuthError> {
     const KEEP_ALIVE_INTERVAL: core::time::Duration = core::time::Duration::from_secs(15);
 
     let temp_client = reqwest::Client::builder()
         .use_rustls_tls()
         .http2_keep_alive_interval(KEEP_ALIVE_INTERVAL)
         .http2_keep_alive_while_idle(true)
+        .redirect(same_origin_redirects())
         .build()?;
     Ok(temp_client)
+}
+
+/// Follows a redirect only to the previous URL's origin, up to reqwest's default 10 hops.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    const MAX_REDIRECTS: usize = 10;
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same_origin = attempt
+            .previous()
+            .last()
+            .is_some_and(|previous| previous.origin() == attempt.url().origin());
+        if !same_origin {
+            attempt.stop()
+        } else if attempt.previous().len() > MAX_REDIRECTS {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
 }
 
 fn base_headers(api_key: &str) -> Result<header::HeaderMap, AuthError> {

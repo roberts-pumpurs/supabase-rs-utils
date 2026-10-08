@@ -27,6 +27,7 @@ url.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+mockito.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 
 [lints]
