@@ -1,7 +1,9 @@
 [package]
 name = "rp-postgrest-error"
 description = "Typed PostgREST error responses with exact error codes and HTTP status."
-version.workspace = true
+# Own version: rp-postgrest re-exports this crate, so a lockstep workspace bump would be a
+# breaking change for rp-postgrest users in a patch release.
+version = "0.8.2"
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
