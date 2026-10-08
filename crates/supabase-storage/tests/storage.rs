@@ -563,3 +563,119 @@ async fn api_error_non_json_keeps_text() {
     assert_eq!(status, StatusCode::BAD_GATEWAY);
     assert_eq!(body, ApiErrorBody::Raw("Bad Gateway".to_owned()));
 }
+
+#[tokio::test]
+async fn cross_origin_redirect_is_not_followed() {
+    let (mut server, client) = setup().await;
+    let mut other = Server::new_async().await;
+    let leak = other
+        .mock("GET", Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    server
+        .mock("GET", "/storage/v1/bucket")
+        .with_status(302)
+        .with_header("location", &format!("{}/storage/v1/bucket", other.url()))
+        .create_async()
+        .await;
+    let err = client.list_buckets().await.unwrap_err();
+    assert!(matches!(err, StorageError::Api { status, .. } if status == StatusCode::FOUND));
+    leak.assert_async().await;
+}
+
+#[tokio::test]
+async fn same_origin_redirect_is_followed() {
+    let (mut server, client) = setup().await;
+    server
+        .mock("GET", "/storage/v1/bucket")
+        .with_status(302)
+        .with_header("location", "/storage/v1/moved")
+        .create_async()
+        .await;
+    let target = authed(server.mock("GET", "/storage/v1/moved"), KEY)
+        .with_body("[]")
+        .create_async()
+        .await;
+    assert!(client.list_buckets().await.unwrap().is_empty());
+    target.assert_async().await;
+}
+
+#[tokio::test]
+async fn with_access_token_leaves_original_unchanged() {
+    let (mut server, client) = setup().await;
+    let user_mock = authed(server.mock("DELETE", "/storage/v1/bucket/b"), "user-jwt")
+        .with_body("{}")
+        .create_async()
+        .await;
+    let user = client.with_access_token("user-jwt").unwrap();
+    user.delete_bucket("b").await.unwrap();
+    user_mock.assert_async().await;
+    let original_mock = authed(server.mock("GET", "/storage/v1/bucket"), KEY)
+        .with_body("[]")
+        .create_async()
+        .await;
+    client.list_buckets().await.unwrap();
+    original_mock.assert_async().await;
+
+    let project = Url::parse(&format!("{}/", server.url())).unwrap();
+    let new_key = StorageClient::new(&project, "sb_publishable_abc").unwrap();
+    let new_user_mock = server
+        .mock("DELETE", "/storage/v1/bucket/c")
+        .match_header("authorization", "Bearer user-jwt")
+        .with_body("{}")
+        .create_async()
+        .await;
+    new_key
+        .with_access_token("user-jwt")
+        .unwrap()
+        .delete_bucket("c")
+        .await
+        .unwrap();
+    new_user_mock.assert_async().await;
+    let no_bearer = server
+        .mock("GET", "/storage/v1/bucket/x")
+        .match_header("apikey", "sb_publishable_abc")
+        .match_header("authorization", Matcher::Missing)
+        .with_body(
+            json!({"id": "x", "name": "x", "owner": "", "public": false,
+                "created_at": "2024-01-01T00:00:00.000Z", "updated_at": "2024-01-01T00:00:00.000Z"})
+            .to_string(),
+        )
+        .create_async()
+        .await;
+    new_key.get_bucket("x").await.unwrap();
+    no_bearer.assert_async().await;
+}
+
+#[tokio::test]
+async fn malformed_success_json_is_json_error() {
+    let (mut server, client) = setup().await;
+    server
+        .mock("GET", "/storage/v1/bucket")
+        .with_body("{not json")
+        .create_async()
+        .await;
+    let err = client.list_buckets().await.unwrap_err();
+    assert!(matches!(err, StorageError::Json(_)), "{err:?}");
+}
+
+#[tokio::test]
+async fn numeric_status_code_decodes_as_string() {
+    let (mut server, client) = setup().await;
+    server
+        .mock("GET", "/storage/v1/bucket/x")
+        .with_status(404)
+        .with_body(r#"{"statusCode":404,"error":"not_found","message":"Bucket not found"}"#)
+        .create_async()
+        .await;
+    let err = client.get_bucket("x").await.unwrap_err();
+    let StorageError::Api {
+        body: ApiErrorBody::Storage(StorageErrorBody { status_code, .. }),
+        ..
+    } = err
+    else {
+        panic!("unexpected error: {err:?}");
+    };
+    assert_eq!(status_code.as_deref(), Some("404"));
+}

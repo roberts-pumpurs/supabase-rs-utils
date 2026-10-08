@@ -8,6 +8,24 @@ use crate::error::{ApiErrorBody, StorageError};
 use crate::types::{BucketInfo, BucketOptions};
 use crate::{Bucket, path};
 
+/// Follows up to 10 redirects, but only to the same origin (scheme, host, port), so
+/// credential headers never reach another host.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same_origin = attempt
+            .previous()
+            .last()
+            .is_some_and(|prev| prev.origin() == attempt.url().origin());
+        if !same_origin {
+            attempt.stop()
+        } else if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 /// Client for the Supabase Storage API at `<project>/storage/v1`.
 ///
 /// Cloning is cheap; clones share the HTTP connection pool.
@@ -36,9 +54,13 @@ impl StorageClient {
     ///
     /// # Errors
     ///
-    /// Returns an error when the URL cannot be a base or `api_key` is not a valid header value.
+    /// Returns an error when the URL cannot be a base, `api_key` is not a valid header value, or
+    /// the HTTP client cannot be built.
     pub fn new(project_url: &Url, api_key: &str) -> Result<Self, StorageError> {
-        Self::new_with_client(project_url, api_key, reqwest::Client::new())
+        let http = reqwest::Client::builder()
+            .redirect(same_origin_redirects())
+            .build()?;
+        Self::new_with_client(project_url, api_key, http)
     }
 
     /// Like [`StorageClient::new`], but reuses the connection pool of `http`.

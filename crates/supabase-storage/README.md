@@ -55,6 +55,8 @@ avatars.remove(&["users/1.png"]).await?;
 ```
 
 Use `StorageClient::new_with_client` to reuse an existing `reqwest::Client` and its connection pool.
+The default client from `StorageClient::new` follows redirects (up to 10) only to the same origin, so
+the API key never goes to another host; a client you pass in is used unchanged.
 
 ## Auth model
 
