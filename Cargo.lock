@@ -2000,6 +2000,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rp-supabase"
+version = "0.1.0"
+dependencies = [
+ "mockito",
+ "reqwest",
+ "rp-postgrest",
+ "rp-supabase-auth",
+ "rp-supabase-client",
+ "rp-supabase-functions",
+ "rp-supabase-realtime",
+ "rp-supabase-storage",
+ "serde",
+ "thiserror 2.0.12",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "rp-supabase-auth"
 version = "0.8.2"
 dependencies = [
