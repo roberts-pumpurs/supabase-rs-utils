@@ -6,7 +6,7 @@ use rp_supabase_auth::types::LoginCredentials;
 use rp_supabase_realtime::futures::StreamExt as _;
 use rp_supabase_realtime::message::broadcast::Broadcast;
 use rp_supabase_realtime::message::phx_join;
-use rp_supabase_realtime::realtime;
+use rp_supabase_realtime::realtime::RealtimeConnection;
 use tracing_subscriber::EnvFilter;
 
 #[expect(
@@ -39,10 +39,9 @@ async fn main() -> eyre::Result<()> {
         .email(credentials.email)
         .password(credentials.password)
         .build();
-    let (mut realtime, mut client) =
-        realtime::RealtimeConnection::<Broadcast>::channel_broadcast(config, "af")
-            .connect(login_credentials)
-            .await?;
+    let (mut realtime, mut client) = RealtimeConnection::broadcast(config, "af")
+        .connect(login_credentials)
+        .await?;
 
     client
         .join(phx_join::BroadcastConfig {

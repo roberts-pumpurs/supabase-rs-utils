@@ -1,137 +1,188 @@
 # rp-supabase-realtime
 
-A Rust client library for interacting with Supabase’s Realtime API.
+A Rust client for [Supabase Realtime](https://supabase.com/docs/guides/realtime).
+It connects over a websocket, signs in with Supabase Auth, and gives you three channel types:
 
-## Overview
+- **Postgres changes**: receive inserts, updates, and deletes on your tables.
+- **Broadcast**: send and receive messages between clients.
+- **Presence**: share and track the state of connected clients.
 
-rp-supabase-realtime is a Rust crate that enables you to connect to Supabase’s Realtime API using WebSockets. It handles authentication, connection management, and provides an easy-to-use interface for subscribing to real-time database changes such as inserts, updates, and deletes.
+## Install
 
-This crate is ideal for building applications that require real-time data synchronization, like live dashboards, notifications, chat applications, or any system that benefits from immediate data updates.
+```toml
+[dependencies]
+rp-supabase-realtime = "0.8"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
 
-Features
+Use the version on [crates.io](https://crates.io/crates/rp-supabase-realtime).
+The crate re-exports `futures`, `url`, and `rp_supabase_auth`.
 
-- 	WebSocket Connection: Establishes a WebSocket connection to Supabase’s Realtime API.
-- 	Authentication: Supports JWT authentication, handling token refreshes automatically.
-- 	Subscriptions: Allows subscribing to specific tables, rows, or columns with optional filters.
-- 	Real-time Events: Listens for INSERT, UPDATE, and DELETE events on your database tables.
-- 	Async Support: Built with async/await syntax, powered by tokio and futures.
-- 	Error Handling: Provides detailed error types for robust application development.
+## Connect
 
-## Usage
+Every channel needs a `SupabaseAuthConfig` and the credentials of a user.
+The project URL is the base URL of your project, for example `https://abc.supabase.co/`.
 
-Here’s a basic example demonstrating how to connect to Supabase Realtime API and subscribe to changes on a specific table.
-
-```rust
+```rust,no_run
 use core::time::Duration;
 
-use clap::Parser;
-use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
-use rp_supabase_auth::types::LoginCredentials;
-use rp_supabase_auth::url;
-use rp_supabase_realtime::futures::StreamExt as _;
-use rp_supabase_realtime::message::phx_join;
-use rp_supabase_realtime::realtime;
-use tracing_subscriber::EnvFilter;
+use rp_supabase_realtime::rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+use rp_supabase_realtime::rp_supabase_auth::types::LoginCredentials;
 
-#[derive(Parser, Debug)]
-#[command(version, about)]
-struct Args {
-    #[arg(short, long)]
-    supabase_api_url: url::Url,
-
-    #[arg(short, long)]
-    anon_key: String,
-
-    #[arg(short, long)]
-    email: String,
-
-    #[arg(short, long)]
-    pass: String,
-
-    /// The Supabase table to subscribe to
-    #[arg(short, long)]
-    table: String,
-
-    /// The filter to apply on the table (e.g., "id=eq.some-uuid")
-    #[arg(short, long)]
-    filter: Option<String>,
-}
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::builder()
-                .from_env()
-                .unwrap()
-                .add_directive("supabase_auth=info".parse().unwrap())
-                .add_directive("supabase_realtime=info".parse().unwrap())
-                .add_directive("examples=info".parse().unwrap())
-                .add_directive("realtime_example=info".parse().unwrap()),
-        )
-        .init();
-    color_eyre::install().unwrap();
-
-    let args = Args::parse();
-
-    let config = SupabaseAuthConfig {
-        api_key: args.anon_key,
-        max_reconnect_attempts: 5,
-        reconnect_interval: Duration::from_secs(3),
-        url: args.supabase_api_url.clone(),
-    };
-    let login_credentials = LoginCredentials::builder()
-        .email(args.email)
-        .password(args.pass)
-        .build();
-    let (mut realtime, mut client) = realtime::RealtimeConnection::new(config)
-        .connect(login_credentials)
-        .await
-        .unwrap();
-
-    let payload = phx_join::PhxJoin {
-        config: phx_join::JoinConfig {
-            broadcast: phx_join::BroadcastConfig {
-                self_item: false,
-                ack: false,
-            },
-            presence: phx_join::PresenceConfig { key: String::new() },
-            postgres_changes: vec![phx_join::PostgrsChanges {
-                event: phx_join::PostgresChangetEvent::All,
-                schema: "public".to_owned(),
-                table: args.table,
-                filter: args.filter,
-            }],
-        },
-        access_token: None,
-    };
-    client.subscribe_to_changes(payload).await.unwrap();
-    tracing::info!("Polling realtime connection");
-    while let Some(msg) = realtime.next().await {
-        match msg {
-            Ok(msg) => {
-                use rp_supabase_realtime::message::ProtocolPayload::*;
-                match msg.payload {
-                    PostgresChanges(postgres_changes_payload) => {
-                        let changes = postgres_changes_payload
-                            .data
-                            .parse_record::<simd_json::OwnedValue>()
-                            .unwrap()
-                            .parse_old_record::<simd_json::OwnedValue>()
-                            .unwrap();
-
-                        tracing::info!(?changes, "Received database change");
-                    }
-                    other_msg => {
-                        tracing::debug!(?other_msg, "Received protocol message");
-                    }
-                }
-            }
-            Err(err) => {
-                tracing::warn!(?err, "Realtime error");
-            }
-        }
-    }
-    tracing::error!("Realtime connection exited");
-}
+# fn run() -> Result<(), Box<dyn std::error::Error>> {
+let config = SupabaseAuthConfig {
+    url: "https://abc.supabase.co/".parse()?,
+    api_key: "your-anon-key".to_owned(),
+    max_reconnect_attempts: 5,
+    reconnect_interval: Duration::from_secs(3),
+};
+let login = LoginCredentials::builder()
+    .email("user@example.com".to_owned())
+    .password("password".to_owned())
+    .build();
+# Ok(())
+# }
 ```
+
+## Postgres changes with typed rows
+
+Subscribe to a table, then pass the output stream to `typed_changes`.
+It decodes each row into your type and drops protocol messages such as heartbeats and replies.
+
+```rust,no_run
+# use core::time::Duration;
+# use rp_supabase_realtime::rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+# use rp_supabase_realtime::rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_realtime::futures::StreamExt as _;
+use rp_supabase_realtime::message::phx_join::{PostgresChangeEvent, PostgresChanges};
+use rp_supabase_realtime::message::postgres_changes::PostgresChange;
+use rp_supabase_realtime::realtime::{RealtimeConnection, typed_changes};
+
+#[derive(Debug, serde::Deserialize)]
+struct Message {
+    id: i64,
+    body: String,
+}
+
+# async fn run(config: SupabaseAuthConfig, login: LoginCredentials) -> Result<(), Box<dyn std::error::Error>> {
+let (stream, mut client) = RealtimeConnection::db_changes(config).connect(login).await?;
+
+client
+    .subscribe_to_changes(vec![
+        PostgresChanges::table("messages"),
+        PostgresChanges::table("audit_log")
+            .schema("private")
+            .event(PostgresChangeEvent::Insert)
+            .filter("user_id=eq.42"),
+    ])
+    .await?;
+
+let mut changes = std::pin::pin!(typed_changes::<Message>(stream));
+while let Some(change) = changes.next().await {
+    match change? {
+        PostgresChange::Insert { record, metadata } => {
+            println!("insert into {}: {record:?}", metadata.table);
+        }
+        PostgresChange::Update { record, old_record, .. } => {
+            println!("update {old_record:?} -> {record:?}");
+        }
+        PostgresChange::Delete { old_record, .. } => println!("delete {old_record:?}"),
+    }
+}
+# Ok(())
+# }
+```
+
+All subscribed tables share one stream, so `T` must decode every row you subscribe to.
+Use `simd_json::OwnedValue` as `T` to receive untyped rows.
+
+`old_record` holds only the primary key columns.
+To receive the full previous row, run `ALTER TABLE messages REPLICA IDENTITY FULL;`.
+Row level security applies: the signed-in user receives only the rows it can select.
+Enable Realtime for the table in the Supabase dashboard or add it to the `supabase_realtime` publication.
+
+## Broadcast
+
+```rust,no_run
+# use rp_supabase_realtime::rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+# use rp_supabase_realtime::rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_realtime::futures::StreamExt as _;
+use rp_supabase_realtime::message::broadcast::Broadcast;
+use rp_supabase_realtime::message::phx_join::BroadcastConfig;
+use rp_supabase_realtime::realtime::RealtimeConnection;
+
+# async fn run(config: SupabaseAuthConfig, login: LoginCredentials) -> Result<(), Box<dyn std::error::Error>> {
+let (mut stream, mut client) = RealtimeConnection::broadcast(config, "room-1")
+    .connect(login)
+    .await?;
+
+// `self_item: true` echoes your own messages back to you.
+client.join(BroadcastConfig { self_item: true, ack: true }).await?;
+client
+    .broadcast(Broadcast {
+        r#type: "broadcast".to_owned(),
+        event: "cursor".to_owned(),
+        payload: simd_json::json!({ "x": 10, "y": 20 }),
+    })
+    .await?;
+
+while let Some(msg) = stream.next().await {
+    println!("{:?}", msg?.payload);
+}
+# Ok(())
+# }
+```
+
+## Presence
+
+`connect_with_state_tracking` keeps the presence state for you.
+It yields the full state after each `presence_state` or `presence_diff` message.
+
+```rust,no_run
+# use rp_supabase_realtime::rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
+# use rp_supabase_realtime::rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_realtime::futures::StreamExt as _;
+use rp_supabase_realtime::futures::future::Either;
+use rp_supabase_realtime::realtime::RealtimeConnection;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct UserState {
+    name: String,
+}
+
+# async fn run(config: SupabaseAuthConfig, login: LoginCredentials) -> Result<(), Box<dyn std::error::Error>> {
+let (stream, mut client) = RealtimeConnection::presence(config, "lobby")
+    .connect_with_state_tracking::<UserState>(login)
+    .await?;
+
+client.join(Some("user-1".to_owned())).await?;
+client.track(&UserState { name: "Ada".to_owned() }).await?;
+
+let mut stream = std::pin::pin!(stream);
+while let Some(msg) = stream.next().await {
+    if let Either::Left(state) = msg? {
+        println!("{} clients online", state.metas.len());
+    }
+}
+# Ok(())
+# }
+```
+
+## Token refresh
+
+`connect` signs in through `rp_supabase_auth::jwt_stream::JwtStream`.
+The stream refreshes the access token when half of its lifetime has passed.
+The connection sends each new token to the server, and later messages carry it.
+If sign in fails, the stream retries `max_reconnect_attempts` times and waits `reconnect_interval` between attempts.
+
+The connection sends a heartbeat every 20 seconds.
+
+## Limits
+
+- Only email or phone and password sign in is supported. You cannot pass an existing access token.
+- The client does not reconnect the websocket. When the server closes the connection, the stream ends.
+  Create a new connection to continue.
+- A connection holds one channel topic.
+- The client does not wait for a `phx_reply` to a join. Read replies from the output stream to check
+  that a subscription succeeded.

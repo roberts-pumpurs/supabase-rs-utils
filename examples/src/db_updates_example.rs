@@ -4,8 +4,8 @@ use examples::get_supabase_credentials;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
 use rp_supabase_realtime::futures::StreamExt as _;
-use rp_supabase_realtime::message::phx_join;
-use rp_supabase_realtime::realtime::{self, DbUpdates};
+use rp_supabase_realtime::message::phx_join::PostgresChanges;
+use rp_supabase_realtime::realtime::{RealtimeConnection, typed_changes};
 use tracing_subscriber::EnvFilter;
 
 #[expect(
@@ -38,46 +38,19 @@ async fn main() -> eyre::Result<()> {
         .email(credentials.email)
         .password(credentials.password)
         .build();
-    let (mut realtime, mut client) =
-        realtime::RealtimeConnection::<DbUpdates>::channel_db_changes(config)
-            .connect(login_credentials)
-            .await?;
+    let (realtime, mut client) = RealtimeConnection::db_changes(config)
+        .connect(login_credentials)
+        .await?;
 
     client
-        .subscribe_to_changes(vec![phx_join::PostgrsChanges {
-            event: phx_join::PostgresChangetEvent::All,
-            schema: "public".to_owned(),
-            table: "messages".to_owned(),
-            filter: None,
-        }])
+        .subscribe_to_changes(vec![PostgresChanges::table("messages")])
         .await?;
-    tracing::info!("pooling realtime connection");
-    while let Some(msg) = realtime.next().await {
-        match msg {
-            Ok(msg) => {
-                use rp_supabase_realtime::message::ProtocolPayload::{
-                    AccessToken, Broadcast, Heartbeat, PhxClose, PhxError, PhxJoin, PhxReply,
-                    PostgresChanges, PresenceDiff, PresenceInner, PresenceState, System,
-                };
-                match msg.payload {
-                    PostgresChanges(postgres_changes_payload) => {
-                        let changes = postgres_changes_payload
-                            .data
-                            .parse_record::<simd_json::OwnedValue>()?
-                            .parse_old_record::<simd_json::OwnedValue>()?;
-
-                        tracing::info!(?changes, "reading protocol message");
-                    }
-                    msg @ (Heartbeat(_) | AccessToken(_) | PhxJoin(_) | PhxClose(_)
-                    | PhxReply(_) | Broadcast(_) | PresenceInner(_) | PresenceState(_)
-                    | PresenceDiff(_) | System(_) | PhxError(_)) => {
-                        tracing::debug!(?msg, "reading protocol message");
-                    }
-                }
-            }
-            Err(err) => {
-                tracing::warn!(?err, "realtime error");
-            }
+    tracing::info!("polling realtime connection");
+    let mut changes = core::pin::pin!(typed_changes::<simd_json::OwnedValue>(realtime));
+    while let Some(change) = changes.next().await {
+        match change {
+            Ok(change) => tracing::info!(?change, "postgres change"),
+            Err(err) => tracing::warn!(?err, "realtime error"),
         }
     }
     tracing::error!("realtime connection exited");

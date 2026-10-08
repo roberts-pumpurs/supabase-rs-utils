@@ -1,8 +1,6 @@
 [package]
 name = "rp-supabase-realtime"
-description = """
-Supabase Realtime client with Auth and subscription capabilities
-"""
+description = "Supabase Realtime client: typed postgres changes, broadcast, and presence over websockets"
 version.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -10,6 +8,9 @@ homepage.workspace = true
 license.workspace = true
 edition.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/rp-supabase-realtime"
+keywords = ["supabase", "realtime", "websocket", "postgres", "async"]
+categories = ["api-bindings", "asynchronous", "web-programming::websocket", "database"]
 
 [dependencies]
 tokio.workspace = true

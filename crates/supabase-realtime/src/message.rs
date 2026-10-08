@@ -102,7 +102,7 @@ pub mod phx_reply {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct PostgresChanges {
-        pub event: PostgresChangetEvent,
+        pub event: PostgresChangeEvent,
         pub schema: String,
         pub table: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -111,7 +111,7 @@ pub mod phx_reply {
         pub id: i32,
     }
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub enum PostgresChangetEvent {
+    pub enum PostgresChangeEvent {
         #[serde(rename = "*")]
         All,
     }
@@ -186,7 +186,7 @@ pub mod phx_reply {
                         table: "profiles".to_owned(),
                         id: 31_339_675,
                         filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_owned()),
-                        event: PostgresChangetEvent::All,
+                        event: PostgresChangeEvent::All,
                     }],
                 })),
                 ref_field: Some("1".to_owned()),
@@ -233,7 +233,7 @@ pub mod phx_reply {
                         table: "profiles".to_owned(),
                         id: 30_636_876,
                         filter: Some(String::new()),
-                        event: PostgresChangetEvent::All,
+                        event: PostgresChangeEvent::All,
                     }],
                 })),
                 ref_field: Some("1".to_owned()),
@@ -290,7 +290,7 @@ pub mod phx_join {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub enum PostgresChangetEvent {
+    pub enum PostgresChangeEvent {
         #[serde(rename = "*")]
         All,
         #[serde(rename = "INSERT")]
@@ -317,7 +317,7 @@ pub mod phx_join {
         #[serde(rename = "presence")]
         pub presence: PresenceConfig,
         #[serde(rename = "postgres_changes")]
-        pub postgres_changes: Vec<PostgrsChanges>,
+        pub postgres_changes: Vec<PostgresChanges>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -334,13 +334,47 @@ pub mod phx_join {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct PostgrsChanges {
-        pub event: PostgresChangetEvent,
+    pub struct PostgresChanges {
+        pub event: PostgresChangeEvent,
         pub schema: String,
         pub table: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         #[serde(default)]
         pub filter: Option<String>,
+    }
+
+    impl PostgresChanges {
+        /// Subscribes to all events on `table` in the `public` schema.
+        #[must_use]
+        pub fn table<S: Into<String>>(table: S) -> Self {
+            Self {
+                event: PostgresChangeEvent::All,
+                schema: "public".to_owned(),
+                table: table.into(),
+                filter: None,
+            }
+        }
+
+        /// Sets the schema of the table.
+        #[must_use]
+        pub fn schema<S: Into<String>>(mut self, schema: S) -> Self {
+            self.schema = schema.into();
+            self
+        }
+
+        /// Limits the subscription to one event type.
+        #[must_use]
+        pub const fn event(mut self, event: PostgresChangeEvent) -> Self {
+            self.event = event;
+            self
+        }
+
+        /// Sets a row filter in `PostgREST` syntax, for example `id=eq.1`.
+        #[must_use]
+        pub fn filter<S: Into<String>>(mut self, filter: S) -> Self {
+            self.filter = Some(filter.into());
+            self
+        }
     }
 
     #[cfg(test)]
@@ -389,8 +423,8 @@ pub mod phx_join {
                             ack: false,
                         },
                         presence: PresenceConfig { key: String::new() },
-                        postgres_changes: vec![PostgrsChanges {
-                            event: PostgresChangetEvent::All,
+                        postgres_changes: vec![PostgresChanges {
+                            event: PostgresChangeEvent::All,
                             schema: "public".to_owned(),
                             table: "profiles".to_owned(),
                             filter: Some("id=eq.83a19c16-fcd8-45d0-9710-d7b06ce6f329".to_owned()),
@@ -1050,6 +1084,8 @@ pub mod postgres_changes {
 
     use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
+    use crate::error::SupabaseRealtimeError;
+
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct PostgresChangesPayload {
@@ -1065,7 +1101,7 @@ pub mod postgres_changes {
         pub type_: String,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub enum PostgresDataChangeEvent {
         #[serde(rename = "INSERT")]
         Insert,
@@ -1151,6 +1187,84 @@ pub mod postgres_changes {
                 schema: self.schema,
                 table: self.table,
                 type_: self.type_,
+            })
+        }
+    }
+
+    /// Metadata shared by every postgres change event.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ChangeMetadata {
+        pub schema: String,
+        pub table: String,
+        pub commit_timestamp: String,
+        pub columns: Vec<Column>,
+        /// Errors that Realtime reports for this change, for example a payload that is too large.
+        pub errors: Option<String>,
+    }
+
+    /// A decoded postgres change with the new row typed as `T`.
+    ///
+    /// `old_record` holds only the primary key columns unless the table uses
+    /// `REPLICA IDENTITY FULL`. Run `ALTER TABLE <table> REPLICA IDENTITY FULL;`
+    /// to receive the full previous row.
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum PostgresChange<T> {
+        Insert {
+            record: T,
+            metadata: ChangeMetadata,
+        },
+        Update {
+            record: T,
+            old_record: simd_json::OwnedValue,
+            metadata: ChangeMetadata,
+        },
+        Delete {
+            old_record: simd_json::OwnedValue,
+            metadata: ChangeMetadata,
+        },
+    }
+
+    impl Data<Buffer, Buffer> {
+        /// Decodes this change into a [`PostgresChange`] with the new row typed as `T`.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if a required record is missing or does not deserialize.
+        pub fn into_change<T: serde::de::DeserializeOwned>(
+            self,
+        ) -> Result<PostgresChange<T>, SupabaseRealtimeError> {
+            let event = self.type_;
+            let missing = |field| SupabaseRealtimeError::MissingChangeRecord { event, field };
+            let record = |buffer: Option<Buffer>| -> Result<T, SupabaseRealtimeError> {
+                let mut bytes = buffer.ok_or_else(|| missing("record"))?.0;
+                Ok(simd_json::from_slice(&mut bytes)?)
+            };
+            let old_record =
+                |buffer: Option<Buffer>| -> Result<simd_json::OwnedValue, SupabaseRealtimeError> {
+                    let mut bytes = buffer.ok_or_else(|| missing("old_record"))?.0;
+                    Ok(simd_json::to_owned_value(&mut bytes)?)
+                };
+            let metadata = ChangeMetadata {
+                schema: self.schema,
+                table: self.table,
+                commit_timestamp: self.commit_timestamp,
+                columns: self.columns,
+                errors: self.errors,
+            };
+            Ok(match event {
+                PostgresDataChangeEvent::Insert => PostgresChange::Insert {
+                    record: record(self.record)?,
+                    metadata,
+                },
+                PostgresDataChangeEvent::Update => PostgresChange::Update {
+                    record: record(self.record)?,
+                    old_record: old_record(self.old_record)?,
+                    metadata,
+                },
+                PostgresDataChangeEvent::Delete => PostgresChange::Delete {
+                    old_record: old_record(self.old_record)?,
+                    metadata,
+                },
             })
         }
     }
@@ -1551,6 +1665,118 @@ pub mod postgres_changes {
             dbg!(&deserialized_struct);
 
             assert_eq!(deserialized_struct, expected_struct);
+        }
+
+        #[derive(Debug, PartialEq, serde::Deserialize)]
+        struct Message {
+            id: i64,
+            body: String,
+        }
+
+        #[expect(
+            clippy::panic,
+            clippy::panic_in_result_fn,
+            reason = "fixtures always hold postgres_changes"
+        )]
+        fn decode(json: &str) -> Result<PostgresChange<Message>, SupabaseRealtimeError> {
+            let msg = simd_json::from_slice::<ProtocolMessage>(
+                json.to_owned().into_bytes().as_mut_slice(),
+            );
+            let Ok(ProtocolMessage {
+                payload: ProtocolPayload::PostgresChanges(payload),
+                ..
+            }) = msg
+            else {
+                panic!("expected postgres_changes payload: {msg:?}");
+            };
+            payload.data.into_change::<Message>()
+        }
+
+        fn fixture(event: &str, record: &str, old_record: &str) -> String {
+            format!(
+                r#"{{"event":"postgres_changes","topic":"realtime:table-db-changes","ref":null,
+                "payload":{{"ids":[1],"data":{{
+                "columns":[{{"name":"id","type":"int8"}},{{"name":"body","type":"text"}}],
+                "commit_timestamp":"2024-08-25T17:00:19.009Z","errors":null,
+                "schema":"public","table":"messages","type":"{event}",
+                "record":{record},"old_record":{old_record}}}}}}}"#
+            )
+        }
+
+        fn metadata() -> ChangeMetadata {
+            ChangeMetadata {
+                schema: "public".to_owned(),
+                table: "messages".to_owned(),
+                commit_timestamp: "2024-08-25T17:00:19.009Z".to_owned(),
+                columns: vec![
+                    Column {
+                        name: "id".to_owned(),
+                        type_: "int8".to_owned(),
+                    },
+                    Column {
+                        name: "body".to_owned(),
+                        type_: "text".to_owned(),
+                    },
+                ],
+                errors: None,
+            }
+        }
+
+        #[test]
+        fn into_change_decodes_insert() {
+            let change = decode(&fixture("INSERT", r#"{"id":1,"body":"hi"}"#, "{}")).unwrap();
+            assert_eq!(
+                change,
+                PostgresChange::Insert {
+                    record: Message {
+                        id: 1,
+                        body: "hi".to_owned()
+                    },
+                    metadata: metadata(),
+                }
+            );
+        }
+
+        #[test]
+        fn into_change_decodes_update_with_primary_key_old_record() {
+            let change = decode(&fixture(
+                "UPDATE",
+                r#"{"id":1,"body":"edited"}"#,
+                r#"{"id":1}"#,
+            ))
+            .unwrap();
+            assert_eq!(
+                change,
+                PostgresChange::Update {
+                    record: Message {
+                        id: 1,
+                        body: "edited".to_owned()
+                    },
+                    old_record: simd_json::json!({"id": 1_i64}),
+                    metadata: metadata(),
+                }
+            );
+        }
+
+        #[test]
+        fn into_change_decodes_delete() {
+            let change = decode(&fixture("DELETE", "{}", r#"{"id":1}"#)).unwrap();
+            assert_eq!(
+                change,
+                PostgresChange::Delete {
+                    old_record: simd_json::json!({"id": 1_i64}),
+                    metadata: metadata(),
+                }
+            );
+        }
+
+        #[test]
+        fn into_change_reports_record_type_mismatch() {
+            let err = decode(&fixture("INSERT", r#"{"id":"not-a-number"}"#, "{}")).unwrap_err();
+            assert!(
+                matches!(err, SupabaseRealtimeError::SerdeJsonError(_)),
+                "{err:?}"
+            );
         }
     }
 }

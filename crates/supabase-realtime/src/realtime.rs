@@ -15,7 +15,8 @@ use tokio_stream::wrappers::IntervalStream;
 use crate::connection::WsSupabaseConnection;
 use crate::error::SupabaseRealtimeError;
 use crate::message::access_token::AccessToken;
-use crate::message::phx_join::PostgrsChanges;
+use crate::message::phx_join::PostgresChanges;
+use crate::message::postgres_changes::PostgresChange;
 use crate::message::presence_inner::PresenceInner;
 use crate::message::{ProtocolMessage, ProtocolPayload, broadcast, phx_join};
 use crate::{connection, error, message};
@@ -36,7 +37,7 @@ impl RealtimeConnectionClient<DbUpdates> {
     /// - if message cannot be delivered
     pub async fn subscribe_to_changes(
         &mut self,
-        join: Vec<PostgrsChanges>,
+        join: Vec<PostgresChanges>,
     ) -> Result<(), futures::channel::mpsc::SendError> {
         let join = phx_join::PhxJoin {
             config: phx_join::JoinConfig {
@@ -143,45 +144,31 @@ pub struct RealtimeConnection<T> {
 
 type RealtimeStreamType = Result<ProtocolMessage, SupabaseRealtimeError>;
 
+impl RealtimeConnection<DbUpdates> {
+    /// Creates a channel that receives postgres changes.
+    #[must_use]
+    pub fn db_changes(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig) -> Self {
+        Self::with_topic(config, "table-db-changes")
+    }
+}
+
+impl RealtimeConnection<Broadcast> {
+    /// Creates a broadcast channel on `topic`.
+    #[must_use]
+    pub fn broadcast(
+        config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
+        topic: &str,
+    ) -> Self {
+        Self::with_topic(config, topic)
+    }
+}
+
 impl<T> RealtimeConnection<T> {
     const HEARTBEAT_PERIOD: core::time::Duration = core::time::Duration::from_secs(20);
 
-    #[must_use]
-    pub fn channel_db_changes(
-        config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
-    ) -> RealtimeConnection<DbUpdates> {
-        const DB_UPDATE_TOPIC: &str = "table-db-changes";
-        let topic = ["realtime", DB_UPDATE_TOPIC].join(":");
-        RealtimeConnection {
-            topic,
-            config,
-            _t: PhantomData,
-        }
-    }
-
-    #[must_use]
-    pub fn channel_presence(
-        config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
-        topic: &str,
-    ) -> RealtimeConnection<Presence> {
-        let prefix = "realtime";
-        let topic = [prefix, topic].join(":");
-        RealtimeConnection {
-            topic,
-            config,
-            _t: PhantomData,
-        }
-    }
-
-    #[must_use]
-    pub fn channel_broadcast(
-        config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig,
-        topic: &str,
-    ) -> RealtimeConnection<Broadcast> {
-        let prefix = "realtime";
-        let topic = [prefix, topic].join(":");
-        RealtimeConnection {
-            topic,
+    fn with_topic(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig, topic: &str) -> Self {
+        Self {
+            topic: ["realtime", topic].join(":"),
             config,
             _t: PhantomData,
         }
@@ -218,10 +205,11 @@ impl<T> RealtimeConnection<T> {
         ),
         SupabaseRealtimeError,
     > {
-        let supabase_annon_key = &self.config.api_key;
-        let realtime_url = self.config.url.join(
-            format!("realtime/v1/websocket?apikey={supabase_annon_key}&vsn=1.0.0").as_str(),
-        )?;
+        let anon_key = &self.config.api_key;
+        let realtime_url = self
+            .config
+            .url
+            .join(format!("realtime/v1/websocket?apikey={anon_key}&vsn=1.0.0").as_str())?;
 
         let mut auth_stream = rp_supabase_auth::jwt_stream::JwtStream::new(self.config.clone())
             .sign_in(login_info)?;
@@ -316,6 +304,30 @@ impl<T> RealtimeConnection<T> {
     }
 }
 
+/// Turns the output stream of a [`DbUpdates`] connection into typed postgres changes.
+///
+/// The returned stream drops protocol messages such as heartbeats, replies, and
+/// system messages. It yields an error when the connection fails or when a row
+/// does not decode into `T`.
+#[expect(
+    clippy::impl_trait_in_params,
+    reason = "Callers name only the row type: `typed_changes::<Row>(stream)`"
+)]
+pub fn typed_changes<T: DeserializeOwned>(
+    stream: impl Stream<Item = RealtimeStreamType>,
+) -> impl Stream<Item = Result<PostgresChange<T>, SupabaseRealtimeError>> {
+    stream.filter_map(|msg| {
+        futures::future::ready(match msg {
+            Ok(ProtocolMessage {
+                payload: ProtocolPayload::PostgresChanges(payload),
+                ..
+            }) => Some(payload.data.into_change::<T>()),
+            Ok(_) => None,
+            Err(err) => Some(Err(err)),
+        })
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresenceParsed<T> {
     pub metas: Vec<PresenceMetaParsed<T>>,
@@ -329,6 +341,12 @@ pub struct PresenceMetaParsed<T> {
 }
 
 impl RealtimeConnection<Presence> {
+    /// Creates a presence channel on `topic`.
+    #[must_use]
+    pub fn presence(config: rp_supabase_auth::jwt_stream::SupabaseAuthConfig, topic: &str) -> Self {
+        Self::with_topic(config, topic)
+    }
+
     /// Connects a presence channel and tracks its current presence state.
     ///
     /// # Errors

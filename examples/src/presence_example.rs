@@ -4,7 +4,7 @@ use examples::get_supabase_credentials;
 use rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
 use rp_supabase_auth::types::LoginCredentials;
 use rp_supabase_realtime::futures::StreamExt as _;
-use rp_supabase_realtime::realtime::{self, Presence};
+use rp_supabase_realtime::realtime::RealtimeConnection;
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::EnvFilter;
 
@@ -45,10 +45,9 @@ async fn main() -> eyre::Result<()> {
         .email(credentials.email)
         .password(credentials.password)
         .build();
-    let (mut realtime, mut client) =
-        realtime::RealtimeConnection::<Presence>::channel_presence(config, "af")
-            .connect_with_state_tracking::<simd_json::OwnedValue>(login_credentials)
-            .await?;
+    let (mut realtime, mut client) = RealtimeConnection::presence(config, "af")
+        .connect_with_state_tracking::<simd_json::OwnedValue>(login_credentials)
+        .await?;
 
     client.join(None).await?;
     client

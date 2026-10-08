@@ -1,38 +1,46 @@
 use fastwebsockets::WebSocketError;
 use rp_supabase_auth::error::AuthError;
 
+use crate::message::postgres_changes::PostgresDataChangeEvent;
+
+/// Errors produced by the realtime connection and its streams.
 #[derive(thiserror::Error, Debug)]
 pub enum SupabaseRealtimeError {
-    #[error("cannot set native certs")]
+    #[error("cannot load the native TLS root certificates")]
     CannotSetNativeCertificate,
-    #[error("Host string not present in the Stream URL")]
+    #[error("the realtime URL has no host")]
     HostStringNotPresent,
-    #[error("Websocket processing Error")]
+    #[error("websocket processing failed")]
     WsProcessingError,
-    #[error("Hyper error {0}")]
-    HypreError(#[from] hyper::http::Error),
-    #[error("IO Error {0}")]
+    #[error("HTTP error: {0}")]
+    HyperError(#[from] hyper::http::Error),
+    #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-    #[error("cannot load tls certs")]
+    #[error("cannot load TLS certificates")]
     LocalCertificateLoadError,
-    #[error("Misconfigured stream URL")]
+    #[error("the realtime URL is misconfigured")]
     MisconfiguredStreamURL,
-    #[error("cannot convert domain to server name")]
+    #[error("cannot convert the domain to a TLS server name")]
     UnableConvertDomainToServerName,
-    #[error("Unable to look up host {host}:{port}")]
+    #[error("cannot look up host {host}:{port}")]
     UnableToLookUpHost { host: String, port: u16 },
-    #[error("WS error {0}")]
+    #[error("websocket error: {0}")]
     WebsocketError(#[from] WebSocketError),
-    #[error("Url parse error {0}")]
+    #[error("cannot parse URL: {0}")]
     UrlParseError(#[from] url::ParseError),
-    #[error("Serde json error {0}")]
+    #[error("JSON error: {0}")]
     SerdeJsonError(#[from] simd_json::Error),
-    #[error("Mpsc send error")]
+    #[error("cannot send a message to the connection task")]
     MpscSendError,
-    #[error("Jwt Stream closed unexpectedly")]
+    #[error("the JWT stream closed before it produced an access token")]
     JwtStreamClosedUnexpectedly,
-    #[error("Refresh stream error")]
+    #[error("token refresh failed: {0}")]
     RefreshStreamError(#[from] rp_supabase_auth::jwt_stream::RefreshStreamError),
-    #[error("Auth sign in error")]
+    #[error("sign in failed: {0}")]
     AuthSignInError(#[from] AuthError),
+    #[error("{event:?} change has no `{field}` field")]
+    MissingChangeRecord {
+        event: PostgresDataChangeEvent,
+        field: &'static str,
+    },
 }
