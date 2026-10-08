@@ -245,11 +245,19 @@ pub mod phx_reply {
             assert_eq!(deserialized_struct, expected_struct);
         }
 
-        #[test]
-        fn reply_for_insert_subscription_decodes() {
-            let json_data = r#"{"event":"phx_reply","payload":{"response":{"postgres_changes":[{"event":"INSERT","id":72696871,"schema":"public","table":"messages"}]},"status":"ok"},"ref":"1","topic":"realtime:db"}"#;
+        #[rstest::rstest]
+        #[case::insert("INSERT", PostgresChangeEvent::Insert)]
+        #[case::update("UPDATE", PostgresChangeEvent::Update)]
+        #[case::delete("DELETE", PostgresChangeEvent::Delete)]
+        fn reply_for_subscription_decodes(
+            #[case] wire: &str,
+            #[case] expected: PostgresChangeEvent,
+        ) {
+            let json_data = format!(
+                r#"{{"event":"phx_reply","payload":{{"response":{{"postgres_changes":[{{"event":"{wire}","id":72696871,"schema":"public","table":"messages"}}]}},"status":"ok"}},"ref":"1","topic":"realtime:db"}}"#
+            );
             let deserialized: ProtocolMessage =
-                simd_json::from_slice(json_data.to_owned().into_bytes().as_mut_slice()).unwrap();
+                simd_json::from_slice(json_data.into_bytes().as_mut_slice()).unwrap();
             let event = if let ProtocolPayload::PhxReply(PhxReply::Ok(query)) = deserialized.payload
             {
                 query
@@ -259,7 +267,7 @@ pub mod phx_reply {
             } else {
                 None
             };
-            assert_eq!(event, Some(PostgresChangeEvent::Insert));
+            assert_eq!(event, Some(expected));
         }
     }
 
@@ -1790,11 +1798,123 @@ pub mod postgres_changes {
 
         #[test]
         fn into_change_reports_record_type_mismatch() {
-            let err = decode(&fixture("INSERT", r#"{"id":"not-a-number"}"#, "{}")).unwrap_err();
+            let err = decode(&fixture(
+                "INSERT",
+                r#"{"id":"not-a-number","body":"hi"}"#,
+                "{}",
+            ))
+            .unwrap_err();
             assert!(
                 matches!(err, SupabaseRealtimeError::SerdeJsonError(_)),
                 "{err:?}"
             );
+        }
+
+        const ROW: &str = r#"{"id":1,"body":"hi"}"#;
+        const KEY: &str = r#"{"id":1}"#;
+
+        #[rstest::rstest]
+        #[case::insert_null_record(
+            "INSERT",
+            Some("null"),
+            Some(KEY),
+            PostgresDataChangeEvent::Insert,
+            "record"
+        )]
+        #[case::insert_omitted_record(
+            "INSERT",
+            None,
+            Some(KEY),
+            PostgresDataChangeEvent::Insert,
+            "record"
+        )]
+        #[case::update_null_record(
+            "UPDATE",
+            Some("null"),
+            Some(KEY),
+            PostgresDataChangeEvent::Update,
+            "record"
+        )]
+        #[case::update_omitted_record(
+            "UPDATE",
+            None,
+            Some(KEY),
+            PostgresDataChangeEvent::Update,
+            "record"
+        )]
+        #[case::update_null_old_record(
+            "UPDATE",
+            Some(ROW),
+            Some("null"),
+            PostgresDataChangeEvent::Update,
+            "old_record"
+        )]
+        #[case::update_omitted_old_record(
+            "UPDATE",
+            Some(ROW),
+            None,
+            PostgresDataChangeEvent::Update,
+            "old_record"
+        )]
+        #[case::delete_null_old_record(
+            "DELETE",
+            Some(ROW),
+            Some("null"),
+            PostgresDataChangeEvent::Delete,
+            "old_record"
+        )]
+        #[case::delete_omitted_old_record(
+            "DELETE",
+            Some(ROW),
+            None,
+            PostgresDataChangeEvent::Delete,
+            "old_record"
+        )]
+        fn into_change_reports_missing_record(
+            #[case] event: &str,
+            #[case] record: Option<&str>,
+            #[case] old_record: Option<&str>,
+            #[case] expected_event: PostgresDataChangeEvent,
+            #[case] expected_field: &str,
+        ) {
+            let err = decode(&partial_fixture(event, record, old_record)).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    SupabaseRealtimeError::MissingChangeRecord { event, field }
+                        if event == expected_event && field == expected_field
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[rstest::rstest]
+        #[case::null_record(Some("null"))]
+        #[case::omitted_record(None)]
+        fn into_change_decodes_delete_without_record(#[case] record: Option<&str>) {
+            let change = decode(&partial_fixture("DELETE", record, Some(KEY))).unwrap();
+            assert_eq!(
+                change,
+                PostgresChange::Delete {
+                    old_record: simd_json::json!({"id": 1_i64}),
+                    metadata: metadata(),
+                }
+            );
+        }
+
+        fn partial_fixture(event: &str, record: Option<&str>, old_record: Option<&str>) -> String {
+            let field = |name: &str, value: Option<&str>| {
+                value.map_or_else(String::new, |value| format!(r#","{name}":{value}"#))
+            };
+            format!(
+                r#"{{"event":"postgres_changes","topic":"realtime:table-db-changes","ref":null,
+                "payload":{{"ids":[1],"data":{{
+                "columns":[{{"name":"id","type":"int8"}},{{"name":"body","type":"text"}}],
+                "commit_timestamp":"2024-08-25T17:00:19.009Z","errors":null,
+                "schema":"public","table":"messages","type":"{event}"{}{}}}}}}}"#,
+                field("record", record),
+                field("old_record", old_record),
+            )
         }
     }
 }

@@ -716,6 +716,100 @@ mod tests {
     }
 
     #[test]
+    fn system_timeout_yields_channel_error() {
+        let (topic, reason) = channel_error(
+            r#"{"event":"system","payload":{"channel":"db","extension":"postgres_changes","message":"Subscription timed out","status":"timeout"},"ref":null,"topic":"realtime:db"}"#,
+        );
+        assert_eq!(topic, "realtime:db");
+        assert_eq!(reason, "Subscription timed out");
+    }
+
+    #[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+    struct Row {
+        id: i64,
+        body: String,
+    }
+
+    fn message(json: &str) -> ProtocolMessage {
+        let mut bytes = json.as_bytes().to_vec();
+        simd_json::from_slice(&mut bytes).unwrap()
+    }
+
+    fn change(event: &str, record: &str, old_record: &str) -> ProtocolMessage {
+        message(&format!(
+            r#"{{"event":"postgres_changes","topic":"realtime:db","ref":null,
+            "payload":{{"ids":[1],"data":{{"columns":[],
+            "commit_timestamp":"2024-08-25T17:00:19.009Z","errors":null,
+            "schema":"public","table":"messages","type":"{event}",
+            "record":{record},"old_record":{old_record}}}}}}}"#
+        ))
+    }
+
+    #[test]
+    #[expect(clippy::panic, reason = "test asserts the exact output sequence")]
+    fn typed_changes_yields_every_item_in_order() {
+        let input = futures::stream::iter([
+            Ok(message(
+                r#"{"event":"phx_reply","payload":{"status":"ok","response":{}},"ref":"1","topic":"realtime:db"}"#,
+            )),
+            Ok(change("INSERT", r#"{"id":1,"body":"hi"}"#, "null")),
+            Err(SupabaseRealtimeError::MpscSendError),
+            Ok(message(
+                r#"{"event":"phx_reply","payload":{"response":{"reason":"Invalid JWT Token"},"status":"error"},"ref":"2","topic":"realtime:db"}"#,
+            )),
+            Ok(change("INSERT", r#"{"id":"wrong","body":"hi"}"#, "null")),
+            Ok(change(
+                "UPDATE",
+                r#"{"id":1,"body":"edited"}"#,
+                r#"{"id":1}"#,
+            )),
+        ]);
+        let output: Vec<_> = futures::executor::block_on(typed_changes::<Row>(input).collect());
+
+        let [first, second, third, fourth, fifth] = <[_; 5]>::try_from(output).unwrap();
+        match first {
+            Ok(PostgresChange::Insert { record, .. }) => assert_eq!(
+                record,
+                Row {
+                    id: 1,
+                    body: "hi".to_owned()
+                }
+            ),
+            other => panic!("expected insert: {other:?}"),
+        }
+        assert!(
+            matches!(second, Err(SupabaseRealtimeError::MpscSendError)),
+            "{second:?}"
+        );
+        match third {
+            Err(SupabaseRealtimeError::ChannelError { topic, reason }) => {
+                assert_eq!(topic, "realtime:db");
+                assert_eq!(reason, "Invalid JWT Token");
+            }
+            other => panic!("expected channel error: {other:?}"),
+        }
+        assert!(
+            matches!(fourth, Err(SupabaseRealtimeError::SerdeJsonError(_))),
+            "{fourth:?}"
+        );
+        match fifth {
+            Ok(PostgresChange::Update {
+                record, old_record, ..
+            }) => {
+                assert_eq!(
+                    record,
+                    Row {
+                        id: 1,
+                        body: "edited".to_owned()
+                    }
+                );
+                assert_eq!(old_record, simd_json::json!({"id": 1_i64}));
+            }
+            other => panic!("expected update: {other:?}"),
+        }
+    }
+
+    #[test]
     fn phx_error_yields_channel_error() {
         let (topic, _) =
             channel_error(r#"{"event":"phx_error","payload":{},"ref":"1","topic":"realtime:db"}"#);
