@@ -90,3 +90,10 @@ match client.invoke("hello-world").send().await {
 
 The client does not stream request bodies. It does not support multipart form helpers; build the
 body yourself and pass it to `.body(..)`.
+
+Function names must be non-empty, must not be `.` or `..`, and must not contain `/`, tab, CR, or LF.
+Other names fail with `InvalidFunctionName` when you send the request.
+
+The client sends your key in the `apikey` header. It also sends a legacy JWT key as
+`Authorization: Bearer <key>`. It does not send new-format keys (`sb_publishable_...`,
+`sb_secret_...`) as a bearer token. Call `with_access_token` to send a user token.

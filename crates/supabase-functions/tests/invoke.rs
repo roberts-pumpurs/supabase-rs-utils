@@ -132,11 +132,51 @@ async fn invalid_json_maps_to_decode_error() {
 #[tokio::test]
 async fn invalid_names_fail_without_request() {
     let server = mockito::Server::new_async().await;
-    for name in ["", "a/b"] {
+    for name in ["", "a/b", ".", "..", "hello\n", "hel\tlo", "hello\r"] {
         let error = client(&server).invoke(name).send().await.unwrap_err();
         assert!(
             matches!(&error, FunctionsError::InvalidFunctionName(got) if got == name),
             "{error:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn new_format_key_sends_only_apikey() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/functions/v1/hello")
+        .match_header("apikey", "sb_publishable_abc")
+        .match_header("authorization", Matcher::Missing)
+        .create_async()
+        .await;
+    let url = url::Url::parse(&server.url()).unwrap();
+    FunctionsClient::new(&url, "sb_publishable_abc")
+        .unwrap()
+        .invoke("hello")
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn new_format_key_uses_access_token_override() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/functions/v1/hello")
+        .match_header("apikey", "sb_secret_abc")
+        .match_header("authorization", "Bearer user-jwt")
+        .create_async()
+        .await;
+    let url = url::Url::parse(&server.url()).unwrap();
+    FunctionsClient::new(&url, "sb_secret_abc")
+        .unwrap()
+        .with_access_token("user-jwt")
+        .unwrap()
+        .invoke("hello")
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
 }

@@ -3,8 +3,10 @@ use reqwest::StatusCode;
 /// Errors returned by [`crate::FunctionsClient`] and [`crate::InvokeBuilder`].
 #[derive(Debug, thiserror::Error)]
 pub enum FunctionsError {
-    /// The function name is empty or contains `/`.
-    #[error("invalid function name {0:?}: it must be non-empty and must not contain '/'")]
+    /// The function name is empty, `.` or `..`, or contains `/`, tab, CR, or LF.
+    #[error(
+        "invalid function name {0:?}: it must be non-empty, must not be '.' or '..', and must not contain '/', tab, CR, or LF"
+    )]
     InvalidFunctionName(String),
     /// The project URL cannot hold the functions path.
     #[error("invalid project URL: {0}")]

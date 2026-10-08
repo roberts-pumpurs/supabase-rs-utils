@@ -24,7 +24,8 @@ pub struct FunctionsClient {
 impl FunctionsClient {
     /// Creates a client for the project base URL, for example `https://abc.supabase.co/`.
     ///
-    /// The client sends `apikey` and `Authorization: Bearer <api_key>` on every request.
+    /// The client sends `apikey` on every request. Legacy JWT keys are also sent as
+    /// `Authorization: Bearer <api_key>`; new-format keys (`sb_publishable_...`, `sb_secret_...`) are not.
     ///
     /// # Errors
     ///
@@ -54,7 +55,9 @@ impl FunctionsClient {
         let base = root.join("functions/v1/")?;
         let mut headers = HeaderMap::new();
         headers.insert("apikey", sensitive(api_key)?);
-        headers.insert(AUTHORIZATION, sensitive(&format!("Bearer {api_key}"))?);
+        if !is_new_format_key(api_key) {
+            headers.insert(AUTHORIZATION, sensitive(&format!("Bearer {api_key}"))?);
+        }
         Ok(Self {
             http,
             base,
@@ -78,12 +81,11 @@ impl FunctionsClient {
 
     /// Starts a request to the function `name`. The default method is `POST`.
     ///
-    /// The name must be non-empty and must not contain `/`. The builder reports an
+    /// The name must be non-empty, must not be `.` or `..`, and must not contain `/`, tab,
+    /// CR, or LF. The builder reports an
     /// invalid name when you call [`InvokeBuilder::send`].
     pub fn invoke(&self, name: &str) -> InvokeBuilder {
-        let url = if name.is_empty() || name.contains('/') {
-            Err(FunctionsError::InvalidFunctionName(name.to_owned()))
-        } else {
+        let url = if is_valid_function_name(name) {
             let mut url = self.base.clone();
             url.path_segments_mut()
                 .map_err(|()| FunctionsError::UrlNotBase)
@@ -91,6 +93,8 @@ impl FunctionsClient {
                     segments.pop_if_empty().push(name);
                 })
                 .map(|()| url)
+        } else {
+            Err(FunctionsError::InvalidFunctionName(name.to_owned()))
         };
         InvokeBuilder {
             http: self.http.clone(),
@@ -102,6 +106,14 @@ impl FunctionsClient {
             }),
         }
     }
+}
+
+fn is_new_format_key(api_key: &str) -> bool {
+    api_key.starts_with("sb_publishable_") || api_key.starts_with("sb_secret_")
+}
+
+fn is_valid_function_name(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\t', '\r', '\n'])
 }
 
 fn sensitive(value: &str) -> Result<HeaderValue, FunctionsError> {
