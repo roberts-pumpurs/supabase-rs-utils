@@ -65,17 +65,17 @@ Enable the `typed` feature of `supabase-rp` to get `rp-supabase-client` as `supa
 
 | Crate | Version | What it does | Use it directly when |
 |-------|---------|--------------|----------------------|
-| [supabase-rp](./crates/supabase-rp/README.md) | 0.1.0 | One `Client` for REST, auth, storage, functions, and realtime configuration | You start a new project. This is the default entry point. |
-| [rp-postgrest](./crates/postgrest/README.md) | 3.2.0 | PostgREST query builder with checked execution and typed decoding | You talk to a PostgREST server without the rest of Supabase. |
-| [rp-postgrest-error](./crates/postgrest-error/README.md) | 0.8.2 | PostgREST and PostgreSQL error model | You map database errors in your own code. |
-| [rp-supabase-auth](./crates/supabase-auth/README.md) | 0.8.2 | Supabase Auth API client and token refresh streams | You need auth only, or the full request types (MFA, admin). |
-| [rp-supabase-storage](./crates/supabase-storage/README.md) | 0.1.0 | Storage buckets, objects, and signed URLs | You need storage only. |
-| [rp-supabase-functions](./crates/supabase-functions/README.md) | 0.1.0 | Edge function invocation | You need functions only. |
-| [rp-supabase-realtime](./crates/supabase-realtime/README.md) | 0.8.2 | Realtime database changes, broadcast, and presence | You need realtime only. |
-| [rp-supabase-client](./crates/supabase-client/README.md) | 0.10.0 | Typed query runtime for generated schemas | You use generated types. |
-| [rp-supabase-client-macros](./crates/supabase-client-macros) | 0.10.0 | Procedural macros for rp-supabase-client | Never. rp-supabase-client re-exports them. |
-| [rp-supabase-codegen](./crates/supabase-codegen/README.md) | 0.10.0 | Generates Rust schema types in `build.rs` | You add typed queries (build dependency). |
-| [rp-supabase-mock](./crates/supabase-mock) | 0.8.2 | Mock Supabase server for tests | You test code that calls Supabase. |
+| [supabase-rp](./crates/supabase-rp/README.md) | [![crates.io](https://img.shields.io/crates/v/supabase-rp.svg)](https://crates.io/crates/supabase-rp) | One `Client` for REST, auth, storage, functions, and realtime configuration | You start a new project. This is the default entry point. |
+| [rp-postgrest](./crates/postgrest/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-postgrest.svg)](https://crates.io/crates/rp-postgrest) | PostgREST query builder with checked execution and typed decoding | You talk to a PostgREST server without the rest of Supabase. |
+| [rp-postgrest-error](./crates/postgrest-error/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-postgrest-error.svg)](https://crates.io/crates/rp-postgrest-error) | PostgREST and PostgreSQL error model | You map database errors in your own code. |
+| [rp-supabase-auth](./crates/supabase-auth/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-auth.svg)](https://crates.io/crates/rp-supabase-auth) | Supabase Auth API client and token refresh streams | You need auth only, or the full request types (MFA, admin). |
+| [rp-supabase-storage](./crates/supabase-storage/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-storage.svg)](https://crates.io/crates/rp-supabase-storage) | Storage buckets, objects, and signed URLs | You need storage only. |
+| [rp-supabase-functions](./crates/supabase-functions/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-functions.svg)](https://crates.io/crates/rp-supabase-functions) | Edge function invocation | You need functions only. |
+| [rp-supabase-realtime](./crates/supabase-realtime/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-realtime.svg)](https://crates.io/crates/rp-supabase-realtime) | Realtime database changes, broadcast, and presence | You need realtime only. |
+| [rp-supabase-client](./crates/supabase-client/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-client.svg)](https://crates.io/crates/rp-supabase-client) | Typed query runtime for generated schemas | You use generated types. |
+| [rp-supabase-client-macros](./crates/supabase-client-macros) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-client-macros.svg)](https://crates.io/crates/rp-supabase-client-macros) | Procedural macros for rp-supabase-client | Never. rp-supabase-client re-exports them. |
+| [rp-supabase-codegen](./crates/supabase-codegen/README.md) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-codegen.svg)](https://crates.io/crates/rp-supabase-codegen) | Generates Rust schema types in `build.rs` | You add typed queries (build dependency). |
+| [rp-supabase-mock](./crates/supabase-mock) | [![crates.io](https://img.shields.io/crates/v/rp-supabase-mock.svg)](https://crates.io/crates/rp-supabase-mock) | Mock Supabase server for tests | You test code that calls Supabase. |
 
 ## Feature coverage
 
