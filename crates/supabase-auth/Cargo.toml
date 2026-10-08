@@ -35,3 +35,4 @@ tracing-subscriber.workspace = true
 mockito.workspace = true
 rp-supabase-mock.workspace = true
 pretty_assertions.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -76,7 +76,37 @@ pub struct SignupPayload {
 }
 
 /// Response from the `/signup` endpoint.
-pub type SignupResponse = AccessTokenResponseSchema;
+///
+/// Supabase returns a session when the user can sign in at once. When email or phone
+/// confirmation is required, Supabase returns only the user object.
+#[derive(Debug, Serialize, Clone)]
+#[serde(untagged)]
+pub enum SignupResponse {
+    /// The user is signed in. The response holds the tokens and the user.
+    Session(AccessTokenResponseSchema),
+    /// The user must confirm the sign-up before a session exists.
+    ConfirmationRequired(UserSchema),
+}
+
+impl<'de> Deserialize<'de> for SignupResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use simd_json::prelude::ValueObjectAccess as _;
+
+        let value = OwnedValue::deserialize(deserializer)?;
+        if value.get("access_token").is_some() {
+            simd_json::serde::from_owned_value(value)
+                .map(Self::Session)
+                .map_err(serde::de::Error::custom)
+        } else {
+            simd_json::serde::from_owned_value(value)
+                .map(Self::ConfirmationRequired)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
 
 /// Response from the `/resend` endpoint.
 #[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
@@ -171,7 +201,12 @@ pub struct GoTrueMetaSecurity {
 }
 
 /// Error response schema.
+///
+/// Decodes both error shapes that Supabase Auth returns:
+/// - Legacy: `{"code":400,"error_code":"invalid_credentials","msg":"..."}`.
+/// - API version `2024-01-01` and later: `{"code":"invalid_credentials","message":"..."}`.
 #[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder, thiserror::Error)]
+#[serde(from = "RawErrorSchema")]
 pub struct ErrorSchema {
     /// Certain responses will contain this property with the provided values.
     ///
@@ -192,18 +227,19 @@ pub struct ErrorSchema {
     #[builder(setter(strip_option), default)]
     pub error_description: Option<String>,
 
-    /// The HTTP status code. Usually missing if `error` is present.
+    /// The HTTP status code. Present only in the legacy error shape.
     #[serde(rename = "code")]
     #[builder(setter(strip_option), default)]
     pub code: Option<i32>,
 
-    /// A basic message describing the problem with the request. Usually missing if `error` is
-    /// present.
+    /// A basic message describing the problem with the request. Decoded from `msg` or
+    /// `message`.
     #[serde(rename = "msg")]
     #[builder(setter(strip_option), default)]
     pub msg: Option<String>,
 
-    /// A stable machine-readable error code, for example `invalid_credentials`.
+    /// A stable machine-readable error code, for example `invalid_credentials`. Decoded from
+    /// `error_code` or from a string `code`.
     #[serde(rename = "error_code")]
     #[builder(setter(strip_option), default)]
     pub error_code: Option<String>,
@@ -213,6 +249,44 @@ pub struct ErrorSchema {
     #[serde(rename = "weak_password")]
     #[builder(setter(strip_option), default)]
     pub weak_password: Option<WeakPassword>,
+}
+
+/// Wire form of [`ErrorSchema`] that accepts both error shapes.
+#[derive(Deserialize)]
+struct RawErrorSchema {
+    error: Option<String>,
+    error_description: Option<String>,
+    code: Option<RawErrorCode>,
+    #[serde(alias = "message")]
+    msg: Option<String>,
+    error_code: Option<String>,
+    weak_password: Option<WeakPassword>,
+}
+
+/// The `code` field is the HTTP status in the legacy shape and the error code otherwise.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawErrorCode {
+    Status(i32),
+    Name(String),
+}
+
+impl From<RawErrorSchema> for ErrorSchema {
+    fn from(raw: RawErrorSchema) -> Self {
+        let (code, code_name) = match raw.code {
+            Some(RawErrorCode::Status(status)) => (Some(status), None),
+            Some(RawErrorCode::Name(name)) => (None, Some(name)),
+            None => (None, None),
+        };
+        Self {
+            error: raw.error,
+            error_description: raw.error_description,
+            code,
+            msg: raw.msg,
+            error_code: raw.error_code.or(code_name),
+            weak_password: raw.weak_password,
+        }
+    }
 }
 
 impl core::fmt::Display for ErrorSchema {

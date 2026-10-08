@@ -223,7 +223,7 @@ pub struct SignupRequest {
 }
 
 impl AuthModuleRequest for SignupRequest {
-    type Res = types::SignupResponse; // Could be AccessTokenResponseSchema or UserSchema
+    type Res = types::SignupResponse;
     type Payload = types::SignupPayload;
 
     const METHOD: Method = Method::POST;

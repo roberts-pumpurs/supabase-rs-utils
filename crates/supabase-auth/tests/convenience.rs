@@ -12,7 +12,7 @@ use pretty_assertions::assert_eq;
 use rp_supabase_auth::auth_client::ApiClient;
 use rp_supabase_auth::auth_client::requests::{OtpRequest, UserUpdateRequest, VerifyPostRequest};
 use rp_supabase_auth::error::AuthError;
-use rp_supabase_auth::types::{LoginCredentials, SignupPayload};
+use rp_supabase_auth::types::{LoginCredentials, SignupPayload, SignupResponse};
 
 const USER: &str = r#"{
     "id": "7d1e5b4c-7f1e-4d0a-9a39-0c2b4c4f2d11",
@@ -122,6 +122,10 @@ async fn refresh_session_posts_refresh_token() {
     assert_eq!(session.access_token.as_deref(), Some("new-access"));
 }
 
+#[expect(
+    clippy::panic,
+    reason = "Any other response variant fails this decoding test"
+)]
 #[tokio::test]
 async fn sign_up_posts_payload_and_decodes_session() {
     let mut server = server().await;
@@ -133,7 +137,7 @@ async fn sign_up_posts_payload_and_decodes_session() {
         .create_async()
         .await;
 
-    let session = anonymous(&server)
+    let response = anonymous(&server)
         .sign_up(
             SignupPayload::builder()
                 .email("new@example.com".to_owned())
@@ -144,7 +148,38 @@ async fn sign_up_posts_payload_and_decodes_session() {
         .unwrap();
 
     mock.assert_async().await;
+    let SignupResponse::Session(session) = response else {
+        panic!("expected a session, got {response:?}");
+    };
     assert_eq!(session.access_token.as_deref(), Some("new-access"));
+}
+
+#[expect(
+    clippy::panic,
+    reason = "Any other response variant fails this decoding test"
+)]
+#[tokio::test]
+async fn sign_up_with_confirmation_required_decodes_user() {
+    let mut server = server().await;
+    let _mock = anonymous_mock(&mut server, "POST", "/auth/v1/signup")
+        .with_body(USER)
+        .create_async()
+        .await;
+
+    let response = anonymous(&server)
+        .sign_up(
+            SignupPayload::builder()
+                .email("user@example.com".to_owned())
+                .password("secret".to_owned())
+                .build(),
+        )
+        .await
+        .unwrap();
+
+    let SignupResponse::ConfirmationRequired(user) = response else {
+        panic!("expected a confirmation-required user, got {response:?}");
+    };
+    assert_eq!(user.email.as_deref(), Some("user@example.com"));
 }
 
 #[tokio::test]
@@ -268,19 +303,25 @@ async fn sign_out_posts_logout_and_accepts_no_content() {
     mock.assert_async().await;
 }
 
-#[expect(
-    clippy::panic,
-    reason = "Any other error variant fails this error-mapping test"
+#[rstest::rstest]
+#[case::legacy(
+    r#"{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}"#,
+    Some(400_i32)
+)]
+#[case::api_version_2024_01_01(
+    r#"{"code":"invalid_credentials","message":"Invalid login credentials"}"#,
+    None
 )]
 #[tokio::test]
-async fn gotrue_error_body_maps_to_api_error_with_status_and_message() {
+async fn gotrue_error_body_maps_to_api_error_with_status_and_message(
+    #[case] body: &str,
+    #[case] code: Option<i32>,
+) {
     let mut server = server().await;
     let _mock = anonymous_mock(&mut server, "POST", "/auth/v1/token")
         .match_query(Matcher::UrlEncoded("grant_type".into(), "password".into()))
         .with_status(400)
-        .with_body(
-            r#"{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}"#,
-        )
+        .with_body(body)
         .create_async()
         .await;
 
@@ -298,12 +339,21 @@ async fn gotrue_error_body_maps_to_api_error_with_status_and_message() {
         error.to_string(),
         "Supabase Auth returned 400 Bad Request: Invalid login credentials; code: invalid_credentials"
     );
-    let AuthError::Api { status, error: body } = error else {
+    #[expect(
+        clippy::panic,
+        reason = "Any other error variant fails this error-mapping test"
+    )]
+    let AuthError::Api {
+        status,
+        error: body,
+    } = error
+    else {
         panic!("expected API error, got {error:?}");
     };
     assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
     assert_eq!(body.msg.as_deref(), Some("Invalid login credentials"));
     assert_eq!(body.error_code.as_deref(), Some("invalid_credentials"));
+    assert_eq!(body.code, code);
 }
 
 #[expect(
@@ -321,7 +371,11 @@ async fn non_json_error_body_keeps_status_and_text() {
 
     let error = authenticated(&server).get_user().await.unwrap_err();
 
-    let AuthError::Api { status, error: body } = error else {
+    let AuthError::Api {
+        status,
+        error: body,
+    } = error
+    else {
         panic!("expected API error, got {error:?}");
     };
     assert_eq!(status, reqwest::StatusCode::BAD_GATEWAY);

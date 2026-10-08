@@ -16,6 +16,7 @@ Sign in with a password, read the user, and sign out:
 ```rust,no_run
 use rp_supabase_auth::auth_client::ApiClient;
 use rp_supabase_auth::types::LoginCredentials;
+use rp_supabase_auth::url;
 
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let url: url::Url = "https://abc.supabase.co/".parse()?;
@@ -53,6 +54,8 @@ client.sign_out().await?;
 | `sign_out` | `POST /logout` |
 
 `get_user`, `update_user`, and `sign_out` need a client made with `new_authenticated`.
+
+`sign_up` returns a `SignupResponse`. It is `Session` when the user can sign in at once. It is `ConfirmationRequired` with the new user when the project requires email or phone confirmation. No session exists until the user confirms.
 
 ## Keep a session fresh
 
@@ -100,6 +103,7 @@ Each constructor has a `_with_client` variant that takes a `reqwest::Client`. Us
 use std::time::Duration;
 
 use rp_supabase_auth::auth_client::ApiClient;
+use rp_supabase_auth::url;
 
 # fn example() -> Result<(), Box<dyn std::error::Error>> {
 let http = reqwest::Client::builder()
@@ -140,7 +144,7 @@ Use `Response::ok` instead of `Response::json` for endpoints that return no body
 
 ## Errors
 
-Every call returns `Result<_, AuthError>`. A non-success HTTP status becomes `AuthError::Api`. It holds the status and the decoded `ErrorSchema`. If the body is not a JSON error object, `ErrorSchema::msg` holds the raw body text.
+Every call returns `Result<_, AuthError>`. A non-success HTTP status becomes `AuthError::Api`. It holds the status and the decoded `ErrorSchema`. `ErrorSchema` reads both the legacy error format and the `2024-01-01` API version format: `error_code` holds the machine-readable code and `msg` holds the message. If the body is not a JSON error object, `ErrorSchema::msg` holds the raw body text.
 
 ```rust,no_run
 use rp_supabase_auth::auth_client::ApiClient;
