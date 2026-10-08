@@ -11,7 +11,7 @@ use tokio::task::JoinSet;
 use crate::auth_client::requests::{GrantType, TokenRequest};
 use crate::auth_client::{ApiClient, Request};
 use crate::error::AuthError;
-use crate::types::{AccessTokenResponseSchema, ErrorSchema, LoginCredentials, TokenRequestBody};
+use crate::types::{AccessTokenResponseSchema, LoginCredentials, TokenRequestBody};
 
 #[derive(Clone, Debug, PartialEq, Eq, typed_builder::TypedBuilder)]
 pub struct SupabaseAuthConfig {
@@ -81,9 +81,7 @@ pub struct JwtRefreshStream {
 }
 
 impl JwtRefreshStream {
-    fn login_request(
-        &self,
-    ) -> Result<Request<AccessTokenResponseSchema, ErrorSchema>, RefreshStreamError> {
+    fn login_request(&self) -> Result<Request<AccessTokenResponseSchema>, RefreshStreamError> {
         let req = self.client.build_request(
             &TokenRequest::builder()
                 .grant_type(GrantType::Password)
@@ -220,9 +218,9 @@ impl Stream for JwtRefreshStream {
 }
 
 async fn auth_request(
-    request: Request<AccessTokenResponseSchema, ErrorSchema>,
+    request: Request<AccessTokenResponseSchema>,
 ) -> Result<AccessTokenResponseSchema, RefreshStreamError> {
-    let res = request.execute().await?.json().await??;
+    let res = request.execute().await?.json().await?;
     Ok(res)
 }
 
@@ -230,18 +228,11 @@ fn calculate_refresh_sleep_duration(expires_in: u64) -> Duration {
     Duration::from_secs(expires_in).div(2)
 }
 
+/// A login or refresh attempt failed. The stream retries until `max_reconnect_attempts`.
 #[derive(Debug, Error)]
 pub enum RefreshStreamError {
-    #[error("Request error: {0}")]
-    Reqwest(#[from] reqwest::Error),
-    #[error("JSON parse error: {0}")]
-    JsonParse(#[from] simd_json::Error),
-    #[error("Supabase API error: {0}")]
-    SupabaseApiError(String),
     #[error("Auth error: {0}")]
     AuthError(#[from] AuthError),
-    #[error("Auth error: {0}")]
-    ErrorResponse(#[from] ErrorSchema),
 }
 
 #[derive(Debug, Error)]

@@ -1,3 +1,4 @@
+#![cfg_attr(doc, doc = include_str!("../README.md"))]
 pub use {futures, redact, url};
 pub const SUPABASE_KEY: &str = "apikey";
 

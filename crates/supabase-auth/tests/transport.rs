@@ -86,7 +86,6 @@ async fn configured_api_clients_keep_headers_and_do_not_mutate_shared_bearer() {
         .unwrap()
         .json()
         .await
-        .unwrap()
         .unwrap();
     ApiClient::new_unauthenticated_with_client(&url, "key", transport)
         .unwrap()
@@ -97,7 +96,6 @@ async fn configured_api_clients_keep_headers_and_do_not_mutate_shared_bearer() {
         .unwrap()
         .json()
         .await
-        .unwrap()
         .unwrap();
     authenticated.assert_async().await;
     unauthenticated.assert_async().await;
@@ -176,11 +174,9 @@ async fn authenticated_auth_stream_reuses_transport_after_refresh() {
         .await
         .unwrap()
         .unwrap()
-        .unwrap()
         .unwrap();
     let second = tokio::time::timeout(Duration::from_secs(3), stream.next())
         .await
-        .unwrap()
         .unwrap()
         .unwrap()
         .unwrap();
@@ -192,7 +188,6 @@ async fn authenticated_auth_stream_reuses_transport_after_refresh() {
         .unwrap()
         .json()
         .await
-        .unwrap()
         .unwrap();
     login.assert_async().await;
     refresh.assert_async().await;

@@ -203,6 +203,11 @@ pub struct ErrorSchema {
     #[builder(setter(strip_option), default)]
     pub msg: Option<String>,
 
+    /// A stable machine-readable error code, for example `invalid_credentials`.
+    #[serde(rename = "error_code")]
+    #[builder(setter(strip_option), default)]
+    pub error_code: Option<String>,
+
     /// Only returned on the `/signup` endpoint if the password used is too weak. Inspect the
     /// `reasons` and `msg` property to identify the causes.
     #[serde(rename = "weak_password")]
@@ -212,35 +217,25 @@ pub struct ErrorSchema {
 
 impl core::fmt::Display for ErrorSchema {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Start with the main error if available
-        if let Some(ref error) = self.error {
-            write!(fmt, "Error: {error}")?;
-        }
-
-        // Append the error description if available
-        if let Some(ref description) = self.error_description {
-            if self.error.is_some() {
-                write!(fmt, " - Description: {description}")?;
-            } else {
-                write!(fmt, "Description: {description}")?;
+        let parts = [
+            self.msg.as_deref().map(|msg| (None, msg)),
+            self.error.as_deref().map(|error| (Some("error"), error)),
+            self.error_description
+                .as_deref()
+                .map(|description| (None, description)),
+            self.error_code.as_deref().map(|code| (Some("code"), code)),
+        ];
+        let mut separator = "";
+        for (label, text) in parts.into_iter().flatten() {
+            match label {
+                Some(label) => write!(fmt, "{separator}{label}: {text}")?,
+                None => write!(fmt, "{separator}{text}")?,
             }
+            separator = "; ";
         }
-
-        // Append the HTTP status code if available
-        if let Some(code) = self.code {
-            write!(fmt, " (HTTP Code: {code})")?;
+        if let Some(weak_password) = &self.weak_password {
+            write!(fmt, "{separator}weak password: {weak_password}")?;
         }
-
-        // Append the basic message if available
-        if let Some(ref msg) = self.msg {
-            write!(fmt, ". Message: {msg}")?;
-        }
-
-        // Append weak password details if available
-        if let Some(ref weak_password) = self.weak_password {
-            write!(fmt, ". Weak Password: {weak_password}")?;
-        }
-
         Ok(())
     }
 }

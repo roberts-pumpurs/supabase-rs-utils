@@ -1,5 +1,7 @@
 use reqwest::header::InvalidHeaderValue;
 
+use crate::types::ErrorSchema;
+
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
     #[error("Reqwest error {0}")]
@@ -10,4 +12,13 @@ pub enum AuthError {
     Json(#[from] simd_json::Error),
     #[error("Invalid header value {0}")]
     InvalidHeaderValue(#[from] InvalidHeaderValue),
+    /// Supabase Auth returned a non-success HTTP status.
+    ///
+    /// `error` holds the decoded response body. When the body is not a JSON error object,
+    /// `error.msg` holds the raw body text.
+    #[error("Supabase Auth returned {status}: {error}")]
+    Api {
+        status: reqwest::StatusCode,
+        error: Box<ErrorSchema>,
+    },
 }

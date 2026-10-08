@@ -8,8 +8,6 @@ use crate::types;
 pub trait AuthModuleRequest {
     /// The successful result type to be returned
     type Res: serde::de::DeserializeOwned + core::fmt::Debug;
-    /// The error type to be returned on invalid data
-    type Error: serde::de::DeserializeOwned;
     /// The payload that we will send as JSON during the request body
     type Payload: serde::Serialize;
 
@@ -32,7 +30,6 @@ pub struct HealthCheckRequest;
 
 impl AuthModuleRequest for HealthCheckRequest {
     type Res = String;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -64,7 +61,6 @@ pub struct TokenRequest {
 
 impl AuthModuleRequest for TokenRequest {
     type Res = types::AccessTokenResponseSchema;
-    type Error = types::ErrorSchema;
     type Payload = types::TokenRequestBody;
 
     const METHOD: Method = Method::POST;
@@ -88,13 +84,13 @@ impl AuthModuleRequest for TokenRequest {
 
 /// Logout Request
 #[derive(Debug, Clone, typed_builder::TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct LogoutRequest {
     pub scope: Option<String>,
 }
 
 impl AuthModuleRequest for LogoutRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::POST;
@@ -122,7 +118,6 @@ pub struct VerifyGetRequest {
 
 impl AuthModuleRequest for VerifyGetRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -146,20 +141,27 @@ impl AuthModuleRequest for VerifyGetRequest {
 
 /// Verify POST Request
 #[derive(Debug, Clone, Serialize, typed_builder::TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct VerifyPostRequest {
     #[serde(rename = "type")]
+    #[builder(!default, setter(!strip_option))]
     pub verification_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub redirect_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
 
 impl AuthModuleRequest for VerifyPostRequest {
     type Res = types::AccessTokenResponseSchema;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -185,7 +187,6 @@ pub struct AuthorizeRequest {
 
 impl AuthModuleRequest for AuthorizeRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -223,7 +224,6 @@ pub struct SignupRequest {
 
 impl AuthModuleRequest for SignupRequest {
     type Res = types::SignupResponse; // Could be AccessTokenResponseSchema or UserSchema
-    type Error = types::ErrorSchema;
     type Payload = types::SignupPayload;
 
     const METHOD: Method = Method::POST;
@@ -239,16 +239,20 @@ impl AuthModuleRequest for SignupRequest {
 
 /// Recover Request
 #[derive(Debug, Clone, Serialize, typed_builder::TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct RecoverRequest {
+    #[builder(!default, setter(!strip_option))]
     pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge_method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
 
 impl AuthModuleRequest for RecoverRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -274,7 +278,6 @@ pub struct ResendRequest {
 
 impl AuthModuleRequest for ResendRequest {
     type Res = types::ResendResponse;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -298,7 +301,6 @@ pub struct MagicLinkRequest {
 
 impl AuthModuleRequest for MagicLinkRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -314,20 +316,28 @@ impl AuthModuleRequest for MagicLinkRequest {
 
 /// OTP Request
 #[derive(Debug, Clone, Serialize, typed_builder::TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct OtpRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub create_user: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<types::UserMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge_method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
 
 impl AuthModuleRequest for OtpRequest {
     type Res = types::OtpResponse;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -347,7 +357,6 @@ pub struct UserGetRequest;
 
 impl AuthModuleRequest for UserGetRequest {
     type Res = types::UserSchema;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -363,19 +372,26 @@ impl AuthModuleRequest for UserGetRequest {
 
 /// User PUT Request
 #[derive(Debug, Clone, Serialize, typed_builder::TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct UserUpdateRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<types::UserMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_metadata: Option<types::AppMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
 }
 
 impl AuthModuleRequest for UserUpdateRequest {
     type Res = types::UserSchema;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::PUT;
@@ -395,7 +411,6 @@ pub struct ReauthenticateRequest;
 
 impl AuthModuleRequest for ReauthenticateRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::POST;
@@ -420,7 +435,6 @@ pub struct FactorsRequest {
 
 impl AuthModuleRequest for FactorsRequest {
     type Res = types::FactorsResponse;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -443,7 +457,6 @@ pub struct FactorsChallengeRequest {
 
 impl AuthModuleRequest for FactorsChallengeRequest {
     type Res = types::ChallengeResponse;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -468,7 +481,6 @@ pub struct FactorsVerifyRequest {
 
 impl AuthModuleRequest for FactorsVerifyRequest {
     type Res = types::AccessTokenResponseSchema;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -491,7 +503,6 @@ pub struct FactorsDeleteRequest {
 
 impl AuthModuleRequest for FactorsDeleteRequest {
     type Res = types::FactorDeleteResponse;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::DELETE;
@@ -512,7 +523,6 @@ pub struct CallbackGetRequest;
 
 impl AuthModuleRequest for CallbackGetRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -532,7 +542,6 @@ pub struct CallbackPostRequest;
 
 impl AuthModuleRequest for CallbackPostRequest {
     type Res = ();
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::POST;
@@ -560,7 +569,6 @@ pub struct SsoRequest {
 
 impl AuthModuleRequest for SsoRequest {
     type Res = types::SsoResponse;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -584,7 +592,6 @@ pub struct SamlMetadataRequest {
 
 impl AuthModuleRequest for SamlMetadataRequest {
     type Res = String; // The response is XML content as a string
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -613,7 +620,6 @@ pub struct SamlAcsRequest {
 
 impl AuthModuleRequest for SamlAcsRequest {
     type Res = (); // The response is a redirect
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::POST;
@@ -647,7 +653,6 @@ pub struct InviteRequest {
 
 impl AuthModuleRequest for InviteRequest {
     type Res = types::UserSchema;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -675,7 +680,6 @@ pub struct AdminGenerateLinkRequest {
 
 impl AuthModuleRequest for AdminGenerateLinkRequest {
     type Res = types::AdminGenerateLinkResponse;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -700,7 +704,6 @@ pub struct AdminAuditRequest {
 
 impl AuthModuleRequest for AdminAuditRequest {
     type Res = Vec<types::AuditLogEntry>;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -731,7 +734,6 @@ pub struct AdminUsersRequest {
 
 impl AuthModuleRequest for AdminUsersRequest {
     type Res = types::AdminUsersResponse;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -761,7 +763,6 @@ pub struct AdminUserGetRequest {
 
 impl AuthModuleRequest for AdminUserGetRequest {
     type Res = types::UserSchema;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -785,7 +786,6 @@ pub struct AdminUserUpdateRequest {
 
 impl AuthModuleRequest for AdminUserUpdateRequest {
     type Res = types::UserSchema;
-    type Error = types::ErrorSchema;
     type Payload = types::UserSchema;
 
     const METHOD: Method = Method::PUT;
@@ -808,7 +808,6 @@ pub struct AdminUserDeleteRequest {
 
 impl AuthModuleRequest for AdminUserDeleteRequest {
     type Res = types::UserSchema;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::DELETE;
@@ -831,7 +830,6 @@ pub struct AdminUserFactorsRequest {
 
 impl AuthModuleRequest for AdminUserFactorsRequest {
     type Res = Vec<types::MFAFactorSchema>;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -856,7 +854,6 @@ pub struct AdminUserFactorUpdateRequest {
 
 impl AuthModuleRequest for AdminUserFactorUpdateRequest {
     type Res = types::MFAFactorSchema;
-    type Error = types::ErrorSchema;
     type Payload = types::MFAFactorUpdateData;
 
     const METHOD: Method = Method::PUT;
@@ -880,7 +877,6 @@ pub struct AdminUserFactorDeleteRequest {
 
 impl AuthModuleRequest for AdminUserFactorDeleteRequest {
     type Res = types::MFAFactorSchema;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::DELETE;
@@ -901,7 +897,6 @@ pub struct AdminSsoProvidersGetRequest;
 
 impl AuthModuleRequest for AdminSsoProvidersGetRequest {
     type Res = types::SsoProvidersResponse;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -930,7 +925,6 @@ pub struct AdminSsoProviderCreateRequest {
 
 impl AuthModuleRequest for AdminSsoProviderCreateRequest {
     type Res = types::SSOProviderSchema;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::POST;
@@ -954,7 +948,6 @@ pub struct AdminSsoProviderGetRequest {
 
 impl AuthModuleRequest for AdminSsoProviderGetRequest {
     type Res = types::SSOProviderSchema;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;
@@ -981,7 +974,6 @@ pub struct AdminSsoProviderUpdateRequest {
 
 impl AuthModuleRequest for AdminSsoProviderUpdateRequest {
     type Res = types::SSOProviderSchema;
-    type Error = types::ErrorSchema;
     type Payload = Self;
 
     const METHOD: Method = Method::PUT;
@@ -1004,7 +996,6 @@ pub struct AdminSsoProviderDeleteRequest {
 
 impl AuthModuleRequest for AdminSsoProviderDeleteRequest {
     type Res = types::SSOProviderSchema;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::DELETE;
@@ -1025,7 +1016,6 @@ pub struct SettingsRequest;
 
 impl AuthModuleRequest for SettingsRequest {
     type Res = types::SettingsResponse;
-    type Error = types::ErrorSchema;
     type Payload = ();
 
     const METHOD: Method = Method::GET;

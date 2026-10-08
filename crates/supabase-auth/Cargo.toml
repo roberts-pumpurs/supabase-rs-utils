@@ -2,9 +2,10 @@
 name = "rp-supabase-auth"
 version.workspace = true
 authors.workspace = true
-description = """
-A Rust client library for interacting with Supabase’s Authentication API.
-"""
+description = "Typed async client for Supabase Auth (GoTrue) with automatic JWT refresh"
+documentation = "https://docs.rs/rp-supabase-auth"
+keywords = ["supabase", "auth", "gotrue", "jwt", "authentication"]
+categories = ["authentication", "api-bindings", "asynchronous", "web-programming::http-client"]
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
