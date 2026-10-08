@@ -127,8 +127,9 @@ println!("{}", reply.message);
 
 Requires the `realtime` feature. `realtime_config` returns the configuration that
 `RealtimeConnection::db_changes`, `presence`, and `broadcast` take. Realtime signs in on its
-own with `LoginCredentials`. It reconnects up to 5 times, 3 seconds apart; change the returned
-fields to override this.
+own with `LoginCredentials`. If sign-in or a token refresh fails, it retries up to 5 times,
+3 seconds apart. The websocket itself does not reconnect. Change the returned fields to
+override the retry settings.
 
 ```rust,no_run
 # #[cfg(feature = "realtime")]

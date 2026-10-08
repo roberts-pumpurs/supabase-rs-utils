@@ -18,11 +18,11 @@ pub use url::Url;
 #[cfg(feature = "rest")]
 const API_KEY_HEADER: &str = "apikey";
 
-/// Maximum reconnect attempts in [`Client::realtime_config`].
+/// Maximum sign-in and token refresh retries in [`Client::realtime_config`].
 #[cfg(feature = "realtime")]
 pub const REALTIME_MAX_RECONNECT_ATTEMPTS: u8 = 5;
 
-/// Delay between reconnect attempts in [`Client::realtime_config`].
+/// Delay between sign-in and token refresh retries in [`Client::realtime_config`].
 #[cfg(feature = "realtime")]
 pub const REALTIME_RECONNECT_INTERVAL: core::time::Duration = core::time::Duration::from_secs(3);
 
@@ -230,8 +230,9 @@ impl Client {
     /// Configuration for `RealtimeConnection::db_changes`, `presence`, and `broadcast`.
     ///
     /// Realtime signs in on its own, so it uses the project key, not a user token.
-    /// Reconnect defaults: [`REALTIME_MAX_RECONNECT_ATTEMPTS`] attempts,
-    /// [`REALTIME_RECONNECT_INTERVAL`] apart. Change the returned fields to override them.
+    /// Retry defaults for sign-in and token refresh: [`REALTIME_MAX_RECONNECT_ATTEMPTS`]
+    /// attempts, [`REALTIME_RECONNECT_INTERVAL`] apart. The websocket itself does not reconnect.
+    /// Change the returned fields to override the retry settings.
     #[cfg(feature = "realtime")]
     #[must_use]
     pub fn realtime_config(
