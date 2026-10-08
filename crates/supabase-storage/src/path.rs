@@ -15,6 +15,8 @@ pub fn object(path: &str) -> Result<core::str::Split<'_, char>, StorageError> {
 fn check<'a>(input: &str, mut segments: impl Iterator<Item = &'a str>) -> Result<(), StorageError> {
     let reason = if input.is_empty() {
         Some(PathError::Empty)
+    } else if input.contains(['\t', '\r', '\n']) {
+        Some(PathError::ControlCharacter)
     } else {
         segments.find_map(|segment| match segment {
             "" => Some(PathError::EmptySegment),

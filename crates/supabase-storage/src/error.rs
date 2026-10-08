@@ -23,6 +23,9 @@ pub enum StorageError {
     /// The project URL cannot carry path segments (for example `mailto:`).
     #[error("project URL cannot be a base URL")]
     InvalidBaseUrl,
+    /// The Storage API returned a signed URL without a `?token=` query.
+    #[error("signed URL from the storage API has no token: {0:?}")]
+    MissingSignedToken(String),
     /// A URL could not be parsed or joined.
     #[error(transparent)]
     Url(#[from] url::ParseError),
@@ -49,6 +52,10 @@ pub enum PathError {
     /// The path contains a `.` or `..` segment.
     #[error("path contains a `.` or `..` segment")]
     DotSegment,
+    /// The path contains a tab, carriage return, or line feed. URL parsing drops these
+    /// characters silently, which changes the target object.
+    #[error("path contains a tab, carriage return, or line feed")]
+    ControlCharacter,
 }
 
 /// Body of a failed Storage API response.

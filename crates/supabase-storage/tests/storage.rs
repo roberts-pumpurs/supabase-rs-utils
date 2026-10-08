@@ -77,6 +77,40 @@ async fn with_access_token_swaps_bearer_only() {
 }
 
 #[tokio::test]
+async fn new_format_keys_send_no_default_bearer() {
+    let mut server = Server::new_async().await;
+    let project = Url::parse(&format!("{}/", server.url())).unwrap();
+    for key in ["sb_publishable_abc", "sb_secret_abc"] {
+        let client = StorageClient::new(&project, key).unwrap();
+        let anonymous = server
+            .mock("GET", "/storage/v1/bucket")
+            .match_header("apikey", key)
+            .match_header("authorization", Matcher::Missing)
+            .with_body("[]")
+            .create_async()
+            .await;
+        client.list_buckets().await.unwrap();
+        anonymous.assert_async().await;
+        anonymous.remove_async().await;
+        let as_user = server
+            .mock("GET", "/storage/v1/bucket")
+            .match_header("apikey", key)
+            .match_header("authorization", "Bearer user-jwt")
+            .with_body("[]")
+            .create_async()
+            .await;
+        client
+            .with_access_token("user-jwt")
+            .unwrap()
+            .list_buckets()
+            .await
+            .unwrap();
+        as_user.assert_async().await;
+        as_user.remove_async().await;
+    }
+}
+
+#[tokio::test]
 async fn bucket_crud_requests() {
     let (mut server, client) = setup().await;
     let options = BucketOptions {
@@ -130,6 +164,25 @@ async fn bucket_crud_requests() {
 }
 
 #[tokio::test]
+async fn bucket_options_none_is_sent_as_null() {
+    let (mut server, client) = setup().await;
+    let update = server
+        .mock("PUT", "/storage/v1/bucket/docs")
+        .match_body(Matcher::Json(json!({
+            "id": "docs", "name": "docs", "public": false,
+            "file_size_limit": null, "allowed_mime_types": null
+        })))
+        .with_body(r#"{"message":"ok"}"#)
+        .create_async()
+        .await;
+    client
+        .update_bucket("docs", &BucketOptions::default())
+        .await
+        .unwrap();
+    update.assert_async().await;
+}
+
+#[tokio::test]
 async fn upload_sends_options_as_headers_and_encodes_segments() {
     let (mut server, client) = setup().await;
     let mock = authed(
@@ -145,7 +198,7 @@ async fn upload_sends_options_as_headers_and_encodes_segments() {
     .await;
     let options = FileOptions {
         content_type: Some("text/plain".to_owned()),
-        cache_control: Some(60),
+        cache_control: 60,
         upsert: true,
     };
     let key = client
@@ -159,12 +212,12 @@ async fn upload_sends_options_as_headers_and_encodes_segments() {
 }
 
 #[tokio::test]
-async fn update_uses_put_and_omits_unset_headers() {
+async fn update_uses_put_and_default_cache_control() {
     let (mut server, client) = setup().await;
     let mock = server
         .mock("PUT", "/storage/v1/object/b/f.bin")
         .match_header("x-upsert", "false")
-        .match_header("cache-control", Matcher::Missing)
+        .match_header("cache-control", "max-age=3600")
         .match_header("content-type", Matcher::Missing)
         .with_body(r#"{"Id":"i","Key":"b/f.bin"}"#)
         .create_async()
@@ -335,6 +388,67 @@ async fn signed_urls_keep_per_path_errors() {
 }
 
 #[tokio::test]
+async fn signed_urls_with_reserved_characters_use_encoded_path() {
+    let (mut server, client) = setup().await;
+    let batch = server
+        .mock("POST", "/storage/v1/object/sign/b")
+        .with_body(
+            json!([
+                {"path": "dir/q?.txt", "signedURL": "/object/sign/b/dir/q?.txt?token=t.q", "error": null},
+                {"path": "h#1.txt", "signedURL": "/object/sign/b/h#1.txt?token=t.h", "error": null}
+            ])
+            .to_string(),
+        )
+        .create_async()
+        .await;
+    let single = server
+        .mock("POST", "/storage/v1/object/sign/b/dir/q%3F.txt")
+        .with_body(r#"{"signedURL":"/object/sign/b/dir/q?.txt?token=t.s"}"#)
+        .create_async()
+        .await;
+    let bucket = client.from("b");
+    let urls = bucket
+        .create_signed_urls(&["dir/q?.txt", "h#1.txt"], 30)
+        .await
+        .unwrap();
+    let url = bucket.create_signed_url("dir/q?.txt", 30).await.unwrap();
+    batch.assert_async().await;
+    single.assert_async().await;
+    let base = format!("{}/storage/v1/object/sign/b", server.url());
+    let got: Vec<_> = urls
+        .iter()
+        .map(|entry| entry.url.as_ref().unwrap().as_str())
+        .collect();
+    assert_eq!(
+        got,
+        [
+            format!("{base}/dir/q%3F.txt?token=t.q"),
+            format!("{base}/h%231.txt?token=t.h"),
+        ]
+    );
+    assert_eq!(url.as_str(), format!("{base}/dir/q%3F.txt?token=t.s"));
+}
+
+#[tokio::test]
+async fn signed_url_without_token_is_an_error() {
+    let (mut server, client) = setup().await;
+    let _mock = server
+        .mock("POST", "/storage/v1/object/sign/b/a")
+        .with_body(r#"{"signedURL":"/object/sign/b/a"}"#)
+        .create_async()
+        .await;
+    let error = client
+        .from("b")
+        .create_signed_url("a", 30)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StorageError::MissingSignedToken(_)),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
 async fn public_url_needs_no_request() {
     let (server, client) = setup().await;
     let url = client.from("pub").public_url("img/a b.png").unwrap();
@@ -358,6 +472,9 @@ async fn invalid_paths_are_rejected_before_sending() {
         ("a/", PathError::EmptySegment),
         ("a/./b", PathError::DotSegment),
         ("../a", PathError::DotSegment),
+        ("a\tb", PathError::ControlCharacter),
+        ("a/b\r", PathError::ControlCharacter),
+        ("a\nb", PathError::ControlCharacter),
     ] {
         let error = bucket.public_url(path).unwrap_err();
         assert!(

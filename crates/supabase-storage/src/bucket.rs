@@ -122,9 +122,7 @@ impl<'a> Bucket<'a> {
         if let Some(content_type) = &options.content_type {
             request = request.header(CONTENT_TYPE, content_type.as_str());
         }
-        if let Some(seconds) = options.cache_control {
-            request = request.header(CACHE_CONTROL, format!("max-age={seconds}"));
-        }
+        request = request.header(CACHE_CONTROL, format!("max-age={}", options.cache_control));
         StorageClient::json(request).await
     }
 
@@ -226,7 +224,7 @@ impl<'a> Bucket<'a> {
         };
         let response: SignedResponse =
             StorageClient::json(self.client.request(Method::POST, url).json(&body)).await?;
-        self.client.absolute(&response.signed_url)
+        self.signed_url(path, &response.signed_url)
     }
 
     /// Creates signed URLs for several objects in one request. Paths that cannot be signed
@@ -253,17 +251,33 @@ impl<'a> Bucket<'a> {
             StorageClient::json(self.client.request(Method::POST, url).json(&body)).await?;
         entries
             .into_iter()
-            .map(|entry| {
+            .zip(paths)
+            .map(|(entry, requested)| {
+                let url = entry
+                    .signed_url
+                    .map(|signed| {
+                        self.signed_url(entry.path.as_deref().unwrap_or(requested), &signed)
+                    })
+                    .transpose()?;
                 Ok(SignedUrl {
                     path: entry.path,
-                    url: entry
-                        .signed_url
-                        .map(|relative| self.client.absolute(&relative))
-                        .transpose()?,
+                    url,
                     error: entry.error,
                 })
             })
             .collect()
+    }
+
+    /// Builds `<base>/object/sign/<bucket>/<path>?token=<token>` from the known path. The API
+    /// returns the object key unescaped, so a key with `?` or `#` breaks a plain URL parse.
+    /// The token follows the last `?token=` in `signed`.
+    fn signed_url(&self, path: &str, signed: &str) -> Result<Url, StorageError> {
+        let (_, token) = signed
+            .rsplit_once("?token=")
+            .ok_or_else(|| StorageError::MissingSignedToken(signed.to_owned()))?;
+        let mut url = self.object_url(&["object", "sign"], path)?;
+        url.set_query(Some(&format!("token={token}")));
+        Ok(url)
     }
 
     /// Returns the public URL of an object. No request is sent and the URL works only when the

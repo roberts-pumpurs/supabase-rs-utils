@@ -3,15 +3,18 @@ use serde::{Deserialize, Serialize};
 
 /// Settings for [`StorageClient::create_bucket`](crate::StorageClient::create_bucket) and
 /// [`StorageClient::update_bucket`](crate::StorageClient::update_bucket).
+///
+/// Every field is always sent. On update, the value replaces the stored setting, so `None`
+/// removes an existing limit. Fetch the bucket first to keep a setting.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct BucketOptions {
     /// Anyone can read objects without a token when `true`.
     pub public: bool,
-    /// Maximum object size in bytes. `None` keeps the server limit.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Maximum object size in bytes. `None` is sent as `null`: no bucket limit (the global
+    /// project limit still applies).
     pub file_size_limit: Option<u64>,
-    /// Accepted MIME types, for example `image/png` or `image/*`. `None` accepts all types.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Accepted MIME types, for example `image/png` or `image/*`. `None` is sent as `null`:
+    /// all types are accepted.
     pub allowed_mime_types: Option<Vec<String>>,
 }
 
@@ -40,14 +43,24 @@ pub struct BucketInfo {
 }
 
 /// Settings for [`Bucket::upload`](crate::Bucket::upload) and [`Bucket::update`](crate::Bucket::update).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileOptions {
     /// `Content-Type` of the object. `None` lets the server pick one.
     pub content_type: Option<String>,
-    /// Sent as `Cache-Control: max-age=<seconds>`. `None` keeps the server default (3600).
-    pub cache_control: Option<u32>,
+    /// Sent as `Cache-Control: max-age=<seconds>`. The default is 3600, like supabase-js.
+    pub cache_control: u32,
     /// Overwrite an existing object at the same path. Sent as `x-upsert`.
     pub upsert: bool,
+}
+
+impl Default for FileOptions {
+    fn default() -> Self {
+        Self {
+            content_type: None,
+            cache_control: 3600,
+            upsert: false,
+        }
+    }
 }
 
 /// Key of a stored object.

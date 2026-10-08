@@ -34,7 +34,7 @@ let avatars = storage.from("avatars");
 // Upload an object.
 let file = FileOptions {
     content_type: Some("image/png".to_owned()),
-    cache_control: Some(3600),
+    cache_control: 3600,
     upsert: true,
 };
 avatars.upload("users/1.png", vec![0_u8; 16], &file).await?;
@@ -56,10 +56,13 @@ Use `StorageClient::new_with_client` to reuse an existing `reqwest::Client` and 
 
 ## Auth model
 
-Every request sends the `apikey` header and `Authorization: Bearer <token>`.
+Every request sends the `apikey` header. The `Authorization` header depends on the key and token:
 
-- `StorageClient::new` uses the API key as the bearer token. With the service role key, the
-  client bypasses row level security (RLS). Use it only on a server.
+- `StorageClient::new` with a legacy JWT key (anon or service role) also sends
+  `Authorization: Bearer <api_key>`. With the service role key, the client bypasses row level
+  security (RLS). Use it only on a server.
+- `StorageClient::new` with a new-format key (`sb_publishable_...` or `sb_secret_...`) sends no
+  `Authorization` header. These keys are not JWTs; the gateway checks the `apikey` header.
 - `with_access_token(user_jwt)` returns a client that sends the user's JWT as the bearer token.
   Storage then applies the RLS policies on `storage.objects` and `storage.buckets` for that user.
   Use the anon key plus a user token in code that acts for a user.
@@ -76,13 +79,18 @@ let as_user = storage.with_access_token(user_jwt)?;
 
 `public_url` sends no request. The URL works only when the bucket is public. For private
 buckets, call `create_signed_url` or `create_signed_urls`. The API returns signed URLs relative
-to `/storage/v1`; this crate returns absolute URLs.
+to `/storage/v1` with the object key unescaped; this crate rebuilds each URL from the bucket and
+the encoded object path, then appends the token. Keys with `?` or `#` work.
+
+`BucketOptions` fields are always sent. On `update_bucket`, `None` removes an existing file size
+limit or MIME type list. `FileOptions::default()` sends `Cache-Control: max-age=3600`.
 
 ## Object paths
 
 Separate path segments with `/`, for example `users/1.png`. The client percent-encodes each
 segment once. It rejects empty paths, empty segments (`a//b`, leading or trailing `/`), `.` and
-`..` with `StorageError::InvalidPath` before it sends a request.
+`..`, tabs, carriage returns, and line feeds with `StorageError::InvalidPath` before it sends a
+request.
 
 ## Errors
 
@@ -92,6 +100,7 @@ All operations return `StorageError`:
   `ApiErrorBody::Storage` with `status_code`, `error`, and `message` when the server sent the
   standard Storage error JSON, else `ApiErrorBody::Raw` with the body text.
 - `InvalidPath`: a bucket id or object path is not valid.
+- `MissingSignedToken`: a signed URL from the server has no `?token=` query.
 - `Http`, `Json`, `Url`, `InvalidHeader`, `InvalidBaseUrl`: transport, decoding, and input errors.
 
 ```rust,no_run

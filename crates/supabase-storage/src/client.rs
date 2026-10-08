@@ -29,7 +29,10 @@ struct BucketBody<'a> {
 impl StorageClient {
     /// Creates a client for the project at `project_url` (for example `https://abc.supabase.co/`).
     ///
-    /// Requests send `apikey: <api_key>` and `Authorization: Bearer <api_key>`.
+    /// Requests send `apikey: <api_key>`. A legacy JWT key is also sent as
+    /// `Authorization: Bearer <api_key>`. A new-format key (`sb_publishable_...` or
+    /// `sb_secret_...`) is not a JWT, so the client sends no `Authorization` header until
+    /// [`StorageClient::with_access_token`] sets one.
     ///
     /// # Errors
     ///
@@ -54,7 +57,9 @@ impl StorageClient {
         }
         let mut headers = HeaderMap::new();
         headers.insert("apikey", sensitive(api_key)?);
-        headers.insert(AUTHORIZATION, sensitive(&format!("Bearer {api_key}"))?);
+        if !(api_key.starts_with("sb_publishable_") || api_key.starts_with("sb_secret_")) {
+            headers.insert(AUTHORIZATION, sensitive(&format!("Bearer {api_key}"))?);
+        }
         Ok(Self {
             http,
             base,
@@ -174,16 +179,6 @@ impl StorageClient {
             path.pop_if_empty().extend(segments);
         }
         url
-    }
-
-    /// Turns a URL relative to `/storage/v1` into an absolute URL.
-    pub(crate) fn absolute(&self, relative: &str) -> Result<Url, StorageError> {
-        if let Ok(url) = Url::parse(relative) {
-            return Ok(url);
-        }
-        let base = self.base.as_str().trim_end_matches('/');
-        let separator = if relative.starts_with('/') { "" } else { "/" };
-        Ok(Url::parse(&format!("{base}{separator}{relative}"))?)
     }
 
     pub(crate) fn request(&self, method: Method, url: Url) -> RequestBuilder {
