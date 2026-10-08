@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-auth-v0.8.2...rp-supabase-auth-v0.9.0) - 2026-10-08
+
+### Added
+
+- *(auth)* [**breaking**] flatten auth results and add session convenience methods
+
+### Fixed
+
+- *(auth,postgrest,client)* follow only same-origin redirects on default clients
+- *(auth)* decode both GoTrue error shapes and model confirmation-required sign-up
+
+### Other
+
+- add crates.io and docs.rs badges; clarify realtime join replies
+- *(auth)* fix broken JwtStream doc link
+
 ## [0.8.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-auth-v0.8.1...rp-supabase-auth-v0.8.2) - 2026-10-06
 
 ### Changed

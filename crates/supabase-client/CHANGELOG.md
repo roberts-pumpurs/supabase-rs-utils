@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-client-v0.10.0...rp-supabase-client-v0.11.0) - 2026-10-08
+
+### Fixed
+
+- *(auth,postgrest,client)* follow only same-origin redirects on default clients
+
+### Other
+
+- *(client)* [**breaking**] re-exported rp-supabase-auth moves to 0.9 with flat results
+- *(client)* cover same-origin redirect policy and document it
+- add crates.io and docs.rs badges; clarify realtime join replies
+- *(client,codegen)* compile README snippets through the example schema
+- fix crate metadata, docs.rs links, and stale version notes
+
 ## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-v0.9.3...rp-supabase-client-v0.10.0) - 2026-10-06
 
 ### Added

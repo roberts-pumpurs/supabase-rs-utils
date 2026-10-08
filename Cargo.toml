@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "xtask", "examples"]
 
 [workspace.package]
-version = "0.8.2"
+version = "0.9.0"
 authors = [
   "Roberts Pumpurs <roberts@pumpurlabs.com>",
 ]
@@ -77,17 +77,17 @@ assert_is_empty = "allow"
 
 [workspace.dependencies]
 # our cretes
-rp-supabase-mock = { path = "crates/supabase-mock", version = "0.8" }
-rp-supabase-auth = { path = "crates/supabase-auth", version = "0.8" }
-rp-supabase-client = { path = "crates/supabase-client", version = "0.10" }
+rp-supabase-mock = { path = "crates/supabase-mock", version = "0.9" }
+rp-supabase-auth = { path = "crates/supabase-auth", version = "0.9" }
+rp-supabase-client = { path = "crates/supabase-client", version = "0.11" }
 rp-supabase-storage = { path = "crates/supabase-storage", version = "0.1" }
 rp-supabase-functions = { path = "crates/supabase-functions", version = "0.1" }
 supabase-rp = { path = "crates/supabase-rp", version = "0.1" }
 rp-postgrest-error = { path = "crates/postgrest-error", version = "0.8" }
-rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.8" }
-rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.10" }
+rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.9" }
+rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.11" }
 rp-postgrest = { path = "crates/postgrest", version = "3.2" }
-rp-supabase-client-macros = { path = "crates/supabase-client-macros", version = "=0.10.0" }
+rp-supabase-client-macros = { path = "crates/supabase-client-macros", version = "=0.11.0" }
 
 # Async
 futures-concurrency = "7.4"

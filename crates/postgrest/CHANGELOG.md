@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [3.2.1](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-postgrest-v3.2.0...rp-postgrest-v3.2.1) - 2026-10-08
+
+### Fixed
+
+- *(auth,postgrest,client)* follow only same-origin redirects on default clients
+
+### Other
+
+- fix crate metadata, docs.rs links, and stale version notes
+
 ## [3.2.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-postgrest-v3.1.0...rp-postgrest-v3.2.0) - 2026-10-06
 
 ### Added
