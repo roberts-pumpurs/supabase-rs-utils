@@ -8,11 +8,10 @@ authors = [
   "Roberts Pumpurs <roberts@pumpurlabs.com>",
 ]
 description = """
-Utilities for interacting with Supabase form Rust
+Utilities for interacting with Supabase from Rust
 """
-keywords = ["auth", "supabase", "postgrest", "async", "jwt", "realtime", "websockets"]
+keywords = ["supabase", "postgrest", "auth", "realtime", "jwt"]
 categories = ["database", "authentication", "asynchronous"]
-documentation = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 repository = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 homepage = "https://github.com/roberts-pumpurs/supabase-rs-utils"
 license = "MIT OR Apache-2.0"

@@ -6,9 +6,12 @@ rust-version = "1.85"
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+homepage.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/rp-postgrest"
 description = "Owned PostgREST protocol client with checked execution and typed JSON decoding"
 keywords = ["postgrest", "supabase", "database", "async"]
-categories = ["database", "asynchronous"]
+categories = ["database", "asynchronous", "web-programming::http-client"]
 
 [features]
 default = ["rustls"]

@@ -1,3 +1,5 @@
+#![cfg_attr(doc, doc = include_str!("../README.md"))]
+
 use core::net::SocketAddr;
 use core::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};

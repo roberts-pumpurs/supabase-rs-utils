@@ -1,4 +1,4 @@
-//! Constructor-checked query-local records and lossless schema keys.
+#![cfg_attr(doc, doc = include_str!("../README.md"))]
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as Tokens;
 use quote::{quote, quote_spanned};

@@ -1,14 +1,17 @@
 [package]
 name = "rp-supabase-mock"
 version.workspace = true
-description = """
-Mock client for supabase auth module, useful for tests
-"""
+description = "Mock Supabase auth server and JWT helpers for tests."
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 edition.workspace = true
+rust-version = "1.85"
+readme = "README.md"
+documentation = "https://docs.rs/rp-supabase-mock"
+keywords = ["supabase", "mock", "testing", "auth", "jwt"]
+categories = ["development-tools::testing", "authentication"]
 
 [dependencies]
 mockito.workspace = true

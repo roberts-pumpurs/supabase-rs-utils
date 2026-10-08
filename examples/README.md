@@ -1,6 +1,7 @@
 # Supabase utils examples
 
-These applications use workspace 0.8 and the owned `rp-postgrest` 3.0 REST client.
+These applications use the crates in this workspace: `rp-postgrest` 3.2,
+`rp-supabase-client` 0.10, and the auth and realtime crates at 0.8.
 
 ## Local Supabase prerequisites
 
@@ -42,8 +43,8 @@ cargo run -p rp-supabase-codegen-example --offline
 ```
 
 Dependencies must already be cached for Cargo's offline mode. The generator runs in host-side
-`build.rs`; it needs no separate generator CLI. Generated 0.9 rows implement `Projection<Row>`
-and finite column/FK lookups. Regenerate older Rust output for runtime 0.9. JSON/JSONB markers retain `JsonColumn`.
+`build.rs`; it needs no separate generator CLI. Generated rows implement `Projection<Row>`
+and finite column/FK lookups. Regenerate Rust output when you upgrade `rp-supabase-codegen`; it must match the `rp-supabase-client` 0.10 runtime. JSON/JSONB markers retain `JsonColumn`.
 
 Its `smoke.sql` and permanent `src/gaps.rs` scenario exercise shared skills/adapters DTOs, typed
 order, IN, JSON text paths, pagination, counts, minimal writes, raw DTO decoding, and pure

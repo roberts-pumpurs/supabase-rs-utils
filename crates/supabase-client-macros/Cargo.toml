@@ -9,6 +9,9 @@ authors.workspace = true
 homepage.workspace = true
 description = "Constructor-checked query-local selections for rp-supabase-client"
 documentation = "https://docs.rs/rp-supabase-client-macros"
+readme = "README.md"
+keywords = ["supabase", "postgrest", "macro", "query"]
+categories = ["database", "development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true

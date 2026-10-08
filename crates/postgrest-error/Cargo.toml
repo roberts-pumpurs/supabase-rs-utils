@@ -1,8 +1,6 @@
 [package]
 name = "rp-postgrest-error"
-description = """
-strongly typed errors for PostgREST
-"""
+description = "Typed PostgREST error responses with exact error codes and HTTP status."
 version.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -10,6 +8,9 @@ homepage.workspace = true
 license.workspace = true
 edition.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/rp-postgrest-error"
+keywords = ["supabase", "postgrest", "error", "postgres", "http"]
+categories = ["database", "web-programming"]
 
 [dependencies]
 http.workspace = true

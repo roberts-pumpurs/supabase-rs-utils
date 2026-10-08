@@ -12,6 +12,8 @@ edition.workspace = true
 rust-version = "1.85"
 readme = "README.md"
 documentation = "https://docs.rs/rp-supabase-client"
+keywords = ["supabase", "postgrest", "database", "client", "async"]
+categories = ["api-bindings", "database", "asynchronous"]
 
 [features]
 default = ["client"]

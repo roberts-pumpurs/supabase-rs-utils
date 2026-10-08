@@ -1,5 +1,7 @@
 # rp-postgrest-error
 
+[![crates.io](https://img.shields.io/crates/v/rp-postgrest-error.svg)](https://crates.io/crates/rp-postgrest-error) [![docs.rs](https://docs.rs/rp-postgrest-error/badge.svg)](https://docs.rs/rp-postgrest-error)
+
 Typed error responses for `PostgREST` clients, with exact error codes and malformed-body evidence.
 
 The crate combines the authoritative HTTP status with `PostgREST`'s structured
