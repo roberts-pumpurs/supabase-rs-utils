@@ -43,4 +43,7 @@ pub enum SupabaseRealtimeError {
         event: PostgresDataChangeEvent,
         field: &'static str,
     },
+    /// The server rejected the join or subscription, or reported a channel error.
+    #[error("channel {topic} failed: {reason}")]
+    ChannelError { topic: String, reason: String },
 }

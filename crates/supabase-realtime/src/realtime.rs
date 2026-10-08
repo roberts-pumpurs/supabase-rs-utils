@@ -16,6 +16,7 @@ use crate::connection::WsSupabaseConnection;
 use crate::error::SupabaseRealtimeError;
 use crate::message::access_token::AccessToken;
 use crate::message::phx_join::PostgresChanges;
+use crate::message::phx_reply::PhxReply;
 use crate::message::postgres_changes::PostgresChange;
 use crate::message::presence_inner::PresenceInner;
 use crate::message::{ProtocolMessage, ProtocolPayload, broadcast, phx_join};
@@ -306,9 +307,11 @@ impl<T> RealtimeConnection<T> {
 
 /// Turns the output stream of a [`DbUpdates`] connection into typed postgres changes.
 ///
-/// The returned stream drops protocol messages such as heartbeats, replies, and
-/// system messages. It yields an error when the connection fails or when a row
-/// does not decode into `T`.
+/// The returned stream drops successful protocol messages such as heartbeats,
+/// `ok` replies, and `ok` system messages. It yields
+/// [`SupabaseRealtimeError::ChannelError`] when the server rejects the join or
+/// the subscription, or reports a channel error. It also yields an error when
+/// the connection fails or when a row does not decode into `T`.
 #[expect(
     clippy::impl_trait_in_params,
     reason = "Callers name only the row type: `typed_changes::<Row>(stream)`"
@@ -316,16 +319,33 @@ impl<T> RealtimeConnection<T> {
 pub fn typed_changes<T: DeserializeOwned>(
     stream: impl Stream<Item = RealtimeStreamType>,
 ) -> impl Stream<Item = Result<PostgresChange<T>, SupabaseRealtimeError>> {
-    stream.filter_map(|msg| {
-        futures::future::ready(match msg {
-            Ok(ProtocolMessage {
-                payload: ProtocolPayload::PostgresChanges(payload),
-                ..
-            }) => Some(payload.data.into_change::<T>()),
-            Ok(_) => None,
-            Err(err) => Some(Err(err)),
-        })
-    })
+    stream.filter_map(|msg| futures::future::ready(typed_change(msg)))
+}
+
+fn typed_change<T: DeserializeOwned>(
+    msg: RealtimeStreamType,
+) -> Option<Result<PostgresChange<T>, SupabaseRealtimeError>> {
+    let ProtocolMessage { topic, payload, .. } = match msg {
+        Ok(msg) => msg,
+        Err(err) => return Some(Err(err)),
+    };
+    let reason = match payload {
+        ProtocolPayload::PostgresChanges(payload) => return Some(payload.data.into_change::<T>()),
+        ProtocolPayload::PhxReply(PhxReply::Error(reply)) => reply.reason,
+        ProtocolPayload::System(system) if system.status != "ok" => system.message,
+        ProtocolPayload::PhxError(_) => "the server reported a channel error".to_owned(),
+        ProtocolPayload::Heartbeat(_)
+        | ProtocolPayload::AccessToken(_)
+        | ProtocolPayload::PhxJoin(_)
+        | ProtocolPayload::PhxClose(_)
+        | ProtocolPayload::PhxReply(PhxReply::Ok(_))
+        | ProtocolPayload::Broadcast(_)
+        | ProtocolPayload::PresenceInner(_)
+        | ProtocolPayload::PresenceState(_)
+        | ProtocolPayload::PresenceDiff(_)
+        | ProtocolPayload::System(_) => return None,
+    };
+    Some(Err(SupabaseRealtimeError::ChannelError { topic, reason }))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -336,7 +356,7 @@ pub struct PresenceParsed<T> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresenceMetaParsed<T> {
     pub phx_ref: String,
-    pub name: Option<String>,
+    /// Every key the client tracked, decoded as `T`.
     pub payload: T,
 }
 
@@ -388,7 +408,7 @@ impl RealtimeConnection<Presence> {
                                     let payload = simd_json::from_slice(&mut payload_bytes)?;
                                     Ok::<_, simd_json::Error>(PresenceMetaParsed {
                                         phx_ref: meta.phx_ref.clone(),
-                                        name: meta.name.clone(),
+
                                         payload,
                                     })
                                 })
@@ -430,7 +450,7 @@ impl RealtimeConnection<Presence> {
                                     let payload = simd_json::from_slice(&mut payload_bytes)?;
                                     Ok::<_, simd_json::Error>(PresenceMetaParsed {
                                         phx_ref: meta.phx_ref.clone(),
-                                        name: meta.name.clone(),
+
                                         payload,
                                     })
                                 })
@@ -651,6 +671,65 @@ fn is_irrecoverable_ws_err(err: &WebSocketError) -> Result<(), &WebSocketError> 
         => {
             // Propagate irrecoverable errors immediately.
             Err(err)
+        }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "Allowed in test code for simplicity")]
+mod tests {
+    use super::*;
+
+    fn decode(
+        json: &str,
+    ) -> Option<Result<PostgresChange<simd_json::OwnedValue>, SupabaseRealtimeError>> {
+        let mut bytes = json.as_bytes().to_vec();
+        let msg: ProtocolMessage = simd_json::from_slice(&mut bytes).unwrap();
+        typed_change(Ok(msg))
+    }
+
+    fn channel_error(json: &str) -> (String, String) {
+        match decode(json) {
+            Some(Err(SupabaseRealtimeError::ChannelError { topic, reason })) => {
+                Some((topic, reason))
+            }
+            _ => None,
+        }
+        .unwrap()
+    }
+
+    #[test]
+    fn error_reply_yields_channel_error() {
+        let (topic, reason) = channel_error(
+            r#"{"event":"phx_reply","payload":{"response":{"reason":"Invalid JWT Token"},"status":"error"},"ref":"1","topic":"realtime:db"}"#,
+        );
+        assert_eq!(topic, "realtime:db");
+        assert_eq!(reason, "Invalid JWT Token");
+    }
+
+    #[test]
+    fn system_error_yields_channel_error() {
+        let (_, reason) = channel_error(
+            r#"{"event":"system","payload":{"channel":"db","extension":"postgres_changes","message":"bad filter","status":"error"},"ref":null,"topic":"realtime:db"}"#,
+        );
+        assert_eq!(reason, "bad filter");
+    }
+
+    #[test]
+    fn phx_error_yields_channel_error() {
+        let (topic, _) =
+            channel_error(r#"{"event":"phx_error","payload":{},"ref":"1","topic":"realtime:db"}"#);
+        assert_eq!(topic, "realtime:db");
+    }
+
+    #[test]
+    fn successful_protocol_messages_are_skipped() {
+        for json in [
+            r#"{"event":"phx_reply","payload":{"status":"ok","response":{}},"ref":"1","topic":"realtime:db"}"#,
+            r#"{"event":"system","payload":{"channel":"db","extension":"postgres_changes","message":"Subscribed to PostgreSQL","status":"ok"},"ref":null,"topic":"realtime:db"}"#,
+            r#"{"event":"heartbeat","payload":{},"ref":"2","topic":"phoenix"}"#,
+        ] {
+            assert!(decode(json).is_none(), "{json}");
         }
     }
 }

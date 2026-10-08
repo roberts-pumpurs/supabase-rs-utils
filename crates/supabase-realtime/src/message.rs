@@ -97,7 +97,7 @@ pub mod phx_reply {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct ErrorReply {
-        reason: String,
+        pub reason: String,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -460,9 +460,10 @@ pub mod presence_state {
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    /// One tracked presence entry. `payload` holds every key the client tracked,
+    /// including keys such as `name`.
     pub struct PresenceMeta {
         pub phx_ref: String,
-        pub name: Option<String>,
         #[serde(flatten)]
         pub payload: simd_json::OwnedValue,
     }
@@ -502,8 +503,7 @@ pub mod presence_state {
                 Presence {
                     metas: vec![PresenceMeta {
                         phx_ref: "GAsCC3FpEhdb4wgk".to_owned(),
-                        name: Some("service_role_75".to_owned()),
-                        payload: simd_json::json!({"t": 22_866_011_u64 }),
+                        payload: simd_json::json!({"name": "service_role_75", "t": 22_866_011_u64 }),
                     }],
                 },
             );
@@ -744,8 +744,7 @@ pub mod presence_diff {
                             Presence {
                                 metas: vec![PresenceMeta {
                                     phx_ref: "GAsBN9izrRlb40jh".to_owned(),
-                                    name: Some("service_role_47".to_owned()),
-                                    payload: simd_json::json!({"t": 21_957_173_u64 }),
+                                    payload: simd_json::json!({"name": "service_role_47", "t": 21_957_173_u64 }),
                                 }],
                             },
                         );
@@ -1207,6 +1206,11 @@ pub mod postgres_changes {
     /// `old_record` holds only the primary key columns unless the table uses
     /// `REPLICA IDENTITY FULL`. Run `ALTER TABLE <table> REPLICA IDENTITY FULL;`
     /// to receive the full previous row.
+    ///
+    /// Deletes are an exception. Realtime cannot apply row level security to
+    /// deletes, so every subscriber receives every delete event. When the table
+    /// has row level security enabled, a delete's `old_record` holds only the
+    /// primary key columns, even with `REPLICA IDENTITY FULL`.
     #[derive(Debug, Clone, PartialEq)]
     pub enum PostgresChange<T> {
         Insert {

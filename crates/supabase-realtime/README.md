@@ -95,11 +95,13 @@ while let Some(change) = changes.next().await {
 ```
 
 All subscribed tables share one stream, so `T` must decode every row you subscribe to.
-Use `simd_json::OwnedValue` as `T` to receive untyped rows.
+Use `rp_supabase_realtime::simd_json::OwnedValue` as `T` to receive untyped rows.
 
 `old_record` holds only the primary key columns.
 To receive the full previous row, run `ALTER TABLE messages REPLICA IDENTITY FULL;`.
-Row level security applies: the signed-in user receives only the rows it can select.
+Row level security applies to inserts and updates: the signed-in user receives only the rows it can select.
+Deletes are an exception. Realtime cannot apply row level security to deletes, so every subscriber receives every delete.
+With row level security enabled, a delete's `old_record` holds only the primary key columns, even with `REPLICA IDENTITY FULL`.
 Enable Realtime for the table in the Supabase dashboard or add it to the `supabase_realtime` publication.
 
 ## Broadcast
@@ -123,7 +125,7 @@ client
     .broadcast(Broadcast {
         r#type: "broadcast".to_owned(),
         event: "cursor".to_owned(),
-        payload: simd_json::json!({ "x": 10, "y": 20 }),
+        payload: rp_supabase_realtime::simd_json::json!({ "x": 10, "y": 20 }),
     })
     .await?;
 
@@ -138,6 +140,7 @@ while let Some(msg) = stream.next().await {
 
 `connect_with_state_tracking` keeps the presence state for you.
 It yields the full state after each `presence_state` or `presence_diff` message.
+`payload` holds every key you track, including `name`. Only `phx_ref` is reserved.
 
 ```rust,no_run
 # use rp_supabase_realtime::rp_supabase_auth::jwt_stream::SupabaseAuthConfig;
