@@ -2,7 +2,7 @@
 
 These applications use the service crates in this workspace directly: `rp-postgrest` 3.2,
 `rp-supabase-client` 0.10, and the auth and realtime crates at 0.8.
-For a new project, start with the umbrella crate [`rp-supabase`](../crates/supabase/README.md) 0.1.
+For a new project, start with the umbrella crate [`supabase-rp`](../crates/supabase-rp/README.md) 0.1.
 It wraps these crates behind one `Client`. Its README has short examples for REST, auth,
 storage, edge functions, and realtime.
 

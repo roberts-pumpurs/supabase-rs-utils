@@ -2001,24 +2001,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rp-supabase"
-version = "0.1.0"
-dependencies = [
- "mockito",
- "reqwest",
- "rp-postgrest",
- "rp-supabase-auth",
- "rp-supabase-client",
- "rp-supabase-functions",
- "rp-supabase-realtime",
- "rp-supabase-storage",
- "serde",
- "thiserror 2.0.12",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "rp-supabase-auth"
 version = "0.8.2"
 dependencies = [
@@ -2589,6 +2571,24 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "supabase-rp"
+version = "0.1.0"
+dependencies = [
+ "mockito",
+ "reqwest",
+ "rp-postgrest",
+ "rp-supabase-auth",
+ "rp-supabase-client",
+ "rp-supabase-functions",
+ "rp-supabase-realtime",
+ "rp-supabase-storage",
+ "serde",
+ "thiserror 2.0.12",
+ "tokio",
+ "url",
+]
 
 [[package]]
 name = "syn"

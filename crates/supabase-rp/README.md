@@ -1,6 +1,6 @@
-# rp-supabase
+# supabase-rp
 
-[![crates.io](https://img.shields.io/crates/v/rp-supabase.svg)](https://crates.io/crates/rp-supabase) [![docs.rs](https://docs.rs/rp-supabase/badge.svg)](https://docs.rs/rp-supabase)
+[![crates.io](https://img.shields.io/crates/v/supabase-rp.svg)](https://crates.io/crates/supabase-rp) [![docs.rs](https://docs.rs/supabase-rp/badge.svg)](https://docs.rs/supabase-rp)
 
 One entry point for [Supabase](https://supabase.com) from Rust.
 `Client` holds your project URL, your API key, and one shared HTTP connection pool.
@@ -10,7 +10,7 @@ It gives you REST, auth, storage, edge functions, and realtime configuration.
 
 ```toml
 [dependencies]
-rp-supabase = { version = "0.1", features = ["full"] }
+supabase-rp = { version = "0.1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -22,11 +22,13 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 | `storage`   | no      | `Client::storage` (buckets, objects, signed URLs)       |
 | `functions` | no      | `Client::functions` (edge functions)                    |
 | `realtime`  | no      | `Client::realtime_config` (websocket channels)          |
-| `typed`     | no      | Re-exports `rp_supabase_client` for generated schemas   |
+| `typed`     | no      | Re-exports `rp-supabase-client` as `supabase_rp::typed` |
 | `full`      | no      | All of the above                                        |
 
-Each enabled crate is re-exported at the root, for example `rp_supabase::rp_postgrest`.
+Each enabled crate is re-exported as a module (see [Module map](#module-map)).
 You need only this one dependency.
+
+The default HTTP client of `Client::new` follows up to 10 redirects, and only to the same origin (scheme, host, port), so credentials never reach another host. `Client::new_with_client` uses your client and its redirect policy unchanged.
 
 ## Quickstart
 
@@ -34,7 +36,7 @@ Pass the project root URL, for example `https://abc.supabase.co/`, and the proje
 A URL with a path, such as `https://gateway.example/supabase`, is rejected.
 
 ```rust,no_run
-use rp_supabase::Client;
+use supabase_rp::Client;
 
 #[derive(Debug, serde::Deserialize)]
 struct Todo {
@@ -59,8 +61,8 @@ The `apikey` header keeps the project key. The connection pool is shared.
 
 ```rust,no_run
 # #[cfg(all(feature = "rest", feature = "auth"))]
-# async fn run(client: rp_supabase::Client) -> Result<(), Box<dyn std::error::Error>> {
-use rp_supabase::rp_supabase_auth::types::LoginCredentials;
+# async fn run(client: supabase_rp::Client) -> Result<(), Box<dyn std::error::Error>> {
+use supabase_rp::auth::types::LoginCredentials;
 
 let login = LoginCredentials::builder()
     .email("user@example.com".to_owned())
@@ -83,8 +85,8 @@ Requires the `storage` feature.
 
 ```rust,no_run
 # #[cfg(feature = "storage")]
-# async fn run(client: rp_supabase::Client) -> Result<(), Box<dyn std::error::Error>> {
-use rp_supabase::rp_supabase_storage::FileOptions;
+# async fn run(client: supabase_rp::Client) -> Result<(), Box<dyn std::error::Error>> {
+use supabase_rp::storage::FileOptions;
 
 let avatars = client.storage().from("avatars");
 let options = FileOptions {
@@ -104,7 +106,7 @@ Requires the `functions` feature.
 
 ```rust,no_run
 # #[cfg(feature = "functions")]
-# async fn run(client: rp_supabase::Client) -> Result<(), Box<dyn std::error::Error>> {
+# async fn run(client: supabase_rp::Client) -> Result<(), Box<dyn std::error::Error>> {
 #[derive(serde::Serialize)]
 struct Input<'a> {
     name: &'a str,
@@ -137,12 +139,12 @@ override the retry settings.
 ```rust,no_run
 # #[cfg(feature = "realtime")]
 # async fn run(
-#     client: rp_supabase::Client,
-#     login: rp_supabase::rp_supabase_realtime::rp_supabase_auth::types::LoginCredentials,
+#     client: supabase_rp::Client,
+#     login: supabase_rp::realtime::rp_supabase_auth::types::LoginCredentials,
 # ) -> Result<(), Box<dyn std::error::Error>> {
-use rp_supabase::rp_supabase_realtime::futures::StreamExt as _;
-use rp_supabase::rp_supabase_realtime::message::phx_join::PostgresChanges;
-use rp_supabase::rp_supabase_realtime::realtime::{RealtimeConnection, typed_changes};
+use supabase_rp::realtime::futures::StreamExt as _;
+use supabase_rp::realtime::message::phx_join::PostgresChanges;
+use supabase_rp::realtime::realtime::{RealtimeConnection, typed_changes};
 
 #[derive(Debug, serde::Deserialize)]
 struct Todo {
@@ -169,6 +171,19 @@ See [rp-supabase-realtime](https://docs.rs/rp-supabase-realtime) for broadcast a
 The `typed` feature re-exports [rp-supabase-client](https://docs.rs/rp-supabase-client).
 Generate Rust types for your tables with [rp-supabase-codegen](https://docs.rs/rp-supabase-codegen),
 then run typed queries against `client.rest()`. It is the same `Postgrest` the typed runtime takes.
+
+## Module map
+
+| Path | Crate | Feature |
+|------|-------|---------|
+| `supabase_rp::postgrest` | `rp-postgrest`         | `rest`      |
+| `supabase_rp::auth`      | `rp-supabase-auth`     | `auth`      |
+| `supabase_rp::storage`   | `rp-supabase-storage`  | `storage`   |
+| `supabase_rp::functions` | `rp-supabase-functions` | `functions` |
+| `supabase_rp::realtime`  | `rp-supabase-realtime` | `realtime`  |
+| `supabase_rp::typed`     | `rp-supabase-client`   | `typed`     |
+
+The module `supabase_rp::auth` holds the auth types. The method `Client::auth()` returns the auth client.
 
 ## Underlying crates
 

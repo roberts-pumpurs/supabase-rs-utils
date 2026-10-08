@@ -1,5 +1,5 @@
 [package]
-name = "rp-supabase"
+name = "supabase-rp"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
@@ -8,13 +8,13 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "One entry point for Supabase from Rust: REST, auth, storage, functions, and realtime"
-documentation = "https://docs.rs/rp-supabase"
+documentation = "https://docs.rs/supabase-rp"
 readme = "README.md"
 keywords = ["supabase", "postgrest", "auth", "storage", "realtime"]
 categories = ["api-bindings", "database", "authentication", "asynchronous", "web-programming::http-client"]
 
 [lib]
-name = "rp_supabase"
+name = "supabase_rp"
 
 [features]
 default = ["rest", "auth"]

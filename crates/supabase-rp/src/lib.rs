@@ -1,17 +1,23 @@
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 
+/// `PostgREST` query builder (`rp-postgrest`).
 #[cfg(feature = "rest")]
-pub use rp_postgrest;
+pub use rp_postgrest as postgrest;
+/// Supabase Auth API client and token streams (`rp-supabase-auth`).
 #[cfg(feature = "auth")]
-pub use rp_supabase_auth;
+pub use rp_supabase_auth as auth;
+/// Typed runtime for generated schemas (`rp-supabase-client`).
 #[cfg(feature = "typed")]
-pub use rp_supabase_client;
+pub use rp_supabase_client as typed;
+/// Edge Functions client (`rp-supabase-functions`).
 #[cfg(feature = "functions")]
-pub use rp_supabase_functions;
+pub use rp_supabase_functions as functions;
+/// Realtime changes, broadcast, and presence (`rp-supabase-realtime`).
 #[cfg(feature = "realtime")]
-pub use rp_supabase_realtime;
+pub use rp_supabase_realtime as realtime;
+/// Storage buckets and objects (`rp-supabase-storage`).
 #[cfg(feature = "storage")]
-pub use rp_supabase_storage;
+pub use rp_supabase_storage as storage;
 pub use url::Url;
 
 /// Header that carries the project API key.
@@ -89,17 +95,41 @@ impl core::fmt::Debug for Client {
     }
 }
 
+/// Follows up to 10 redirects, but only to the same origin (scheme, host, port), so
+/// credential headers never reach another host.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same_origin = attempt
+            .previous()
+            .last()
+            .is_some_and(|prev| prev.origin() == attempt.url().origin());
+        if !same_origin {
+            attempt.stop()
+        } else if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 impl Client {
     /// Creates a client for the project at `project_url`, for example `https://abc.supabase.co/`.
+    ///
+    /// The default HTTP client follows up to 10 redirects, only to the same origin.
     ///
     /// # Errors
     /// Returns [`Error::UrlParse`] or [`Error::InvalidProjectUrl`] for a bad URL, and a
     /// sub-client error when a credential is not a valid header value.
     pub fn new(project_url: &str, api_key: &str) -> Result<Self, Error> {
-        Self::new_with_client(project_url, api_key, reqwest::Client::builder().build()?)
+        let http = reqwest::Client::builder()
+            .redirect(same_origin_redirects())
+            .build()?;
+        Self::new_with_client(project_url, api_key, http)
     }
 
     /// Creates a client that reuses the connection pool and policies of `http`.
+    /// The redirect policy of `http` applies unchanged.
     ///
     /// # Errors
     /// Same as [`Client::new`].

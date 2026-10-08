@@ -2,7 +2,7 @@
 
 Checked in 2026-10. Projects change often; read their current docs before you decide.
 
-This page compares this workspace (`rp-supabase` and its crates) with three other crates:
+This page compares this workspace (`supabase-rp` and its crates) with three other crates:
 
 - [supabase_rs](https://github.com/xylex-group/supabase_rs) 0.8.0 ([README](https://raw.githubusercontent.com/xylex-group/supabase_rs/main/README.md), [Cargo.toml](https://raw.githubusercontent.com/xylex-group/supabase_rs/main/Cargo.toml), [crates.io](https://crates.io/crates/supabase_rs)).
 - [postgrest](https://github.com/supabase-community/postgrest-rs) 1.6.0, last released 2023-07 ([README](https://raw.githubusercontent.com/supabase-community/postgrest-rs/master/README.md), [crates.io](https://crates.io/crates/postgrest)).
@@ -10,7 +10,7 @@ This page compares this workspace (`rp-supabase` and its crates) with three othe
 
 "Unknown" means the primary sources above do not say.
 
-| Topic | rp-supabase (this workspace) | supabase_rs | postgrest | rust_supabase_sdk |
+| Topic | supabase-rp (this workspace) | supabase_rs | postgrest | rust_supabase_sdk |
 |-------|------------------------------|-------------|-----------|-------------------|
 | Typed results | `fetch::<T>()` decodes into your serde types | No. Rows are `serde_json::Value`. | No. Returns the raw HTTP response; you decode the body. | Yes. `Vec<T>` from the string builder and typed builder. |
 | Compile-time column checks | Yes, with generated types (`select!`, typed columns) | No. Columns and values are strings. | No | Yes, with generated `Column<R, V>` constants |

@@ -8,7 +8,7 @@
 #![expect(clippy::tests_outside_test_module, reason = "integration test crate")]
 
 use mockito::{Matcher, Mock, ServerGuard};
-use rp_supabase::Client;
+use supabase_rp::Client;
 
 const LEGACY_KEY: &str = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2lnbmF0dXJl";
 const PUBLISHABLE_KEY: &str = "sb_publishable_abc123";
@@ -46,12 +46,12 @@ async fn call_all(client: &Client) {
 }
 
 /// Every service sends the project key as `apikey`. Before `with_access_token`, the bearer is
-/// `anonymous_bearer`; after it, the user token.
+/// `anonymous_bearer`; after it, the user token. The original client keeps its bearer rule.
 async fn check(key: &str, anonymous_bearer: Matcher) {
     let mut server = mockito::Server::new_async().await;
     let client = Client::new(&format!("{}/", server.url()), key).unwrap();
 
-    let mocks = expect_all(&mut server, key, anonymous_bearer).await;
+    let mocks = expect_all(&mut server, key, anonymous_bearer.clone()).await;
     call_all(&client).await;
     for mock in mocks {
         mock.assert_async().await;
@@ -63,7 +63,38 @@ async fn check(key: &str, anonymous_bearer: Matcher) {
     call_all(&client.with_access_token(USER_TOKEN).unwrap()).await;
     for mock in mocks {
         mock.assert_async().await;
+        mock.remove_async().await;
     }
+
+    let mocks = expect_all(&mut server, key, anonymous_bearer).await;
+    call_all(&client).await;
+    for mock in mocks {
+        mock.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn cross_origin_redirect_is_not_followed() {
+    let mut origin = mockito::Server::new_async().await;
+    let mut other = mockito::Server::new_async().await;
+    let target = other
+        .mock("GET", Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let redirect = origin
+        .mock("GET", "/rest/v1/todos?select=id")
+        .with_status(302)
+        .with_header("location", &format!("{}/rest/v1/todos", other.url()))
+        .expect(1)
+        .create_async()
+        .await;
+    let client = Client::new(&format!("{}/", origin.url()), LEGACY_KEY).unwrap();
+
+    drop(client.from("todos").select("id").execute().await);
+
+    redirect.assert_async().await;
+    target.assert_async().await;
 }
 
 #[tokio::test]
