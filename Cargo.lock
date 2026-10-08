@@ -546,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "examples"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "color-eyre",
  "eyre",
@@ -1979,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "rp-postgrest"
-version = "3.2.0"
+version = "3.2.1"
 dependencies = [
  "mockito",
  "reqwest",
@@ -1993,7 +1993,7 @@ dependencies = [
 
 [[package]]
 name = "rp-postgrest-error"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "http",
  "serde",
@@ -2002,7 +2002,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-auth"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "futures",
@@ -2025,7 +2025,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-client"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "futures",
  "mockito",
@@ -2041,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-client-macros"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2050,7 +2050,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-codegen"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "clap",
  "heck",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-codegen-example"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "mockito",
@@ -2096,7 +2096,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-mock"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "jsonwebtoken",
@@ -2109,7 +2109,7 @@ dependencies = [
 
 [[package]]
 name = "rp-supabase-realtime"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "bytes",
  "fastwebsockets",
@@ -3489,7 +3489,7 @@ checksum = "32ac00cd3f8ec9c1d33fb3e7958a82df6989c42d747bd326c822b1d625283547"
 
 [[package]]
 name = "xtask"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "clap",
  "color-eyre",

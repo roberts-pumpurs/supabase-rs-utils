@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-mock-v0.8.2...rp-supabase-mock-v0.9.0) - 2026-10-08
+
+### Other
+
+- *(mock)* pin the upcoming 0.9 release
+- *(mock)* keep the mock server alive in the README example
+- fix crate metadata, docs.rs links, and stale version notes
+
 ## [0.8.2](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-mock-v0.8.1...rp-supabase-mock-v0.8.2) - 2026-10-06
 
 ### Changed

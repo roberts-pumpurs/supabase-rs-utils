@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-client-macros-v0.10.0...rp-supabase-client-macros-v0.11.0) - 2026-10-08
+
+### Other
+
+- fix crate metadata, docs.rs links, and stale version notes
+
 ## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-utils/compare/rp-supabase-client-macros-v0.9.3...rp-supabase-client-macros-v0.10.0) - 2026-10-06
 
 ### Added
