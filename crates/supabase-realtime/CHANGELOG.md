@@ -20,6 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- release ([#32](https://github.com/roberts-pumpurs/supabase-rs-rp/pull/32))
+- *(realtime)* cover typed_changes ordering, missing records, and reply events
+- add crates.io and docs.rs badges; clarify realtime join replies
+
+## [0.9.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-realtime-v0.8.2...rp-supabase-realtime-v0.9.0) - 2026-10-08
+
+### Added
+
+- *(realtime)* [**breaking**] typed postgres changes, inferred channel constructors, fixed type names
+
+### Fixed
+
+- *(realtime)* decode join replies for insert, update, and delete subscriptions
+- *(realtime)* surface channel errors, keep presence name, document delete RLS limits
+
+### Other
+
 - *(realtime)* cover typed_changes ordering, missing records, and reply events
 - add crates.io and docs.rs badges; clarify realtime join replies
 
