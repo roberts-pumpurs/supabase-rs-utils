@@ -2,18 +2,18 @@
 
 [![crates.io](https://img.shields.io/crates/v/rp-supabase-client.svg)](https://crates.io/crates/rp-supabase-client) [![docs.rs](https://docs.rs/rp-supabase-client/badge.svg)](https://docs.rs/rp-supabase-client)
 
-Supabase authentication and query-first typed PostgreSQL queries. Version 0.10 uses the workspace-owned [rp-postgrest 3.2](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
+Supabase authentication and query-first typed PostgreSQL queries. Version 0.11 uses the workspace-owned [rp-postgrest 3.2](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.10"
+rp-supabase-client = "0.11"
 ```
 
 Use [rp-supabase-codegen](../supabase-codegen/README.md) in a build script to generate relation, column, relationship, payload, and function markers. The snippets below assume the generated `database` module from the [complete example](../supabase-codegen-example/README.md). Substitute your own generated names and value types.
 
 ## Query-first selections
 
-Regenerate bindings with codegen 0.10. Describe the fields at the query instead of declaring a DTO for every local result:
+Regenerate bindings with codegen 0.11. Describe the fields at the query instead of declaring a DTO for every local result:
 
 ```rust,no_run
 # use rp_supabase_codegen_example::database;
@@ -362,6 +362,12 @@ Single-relation `projection!` continues to support `alias: embed(RelationshipMar
 To-one embeds decode as `Option<Child>` and to-many embeds as `Vec<Child>`. These types remain conservative with `inner`, because RLS and filters can hide rows. Ordinary child filters preserve parent rows; `inner` filters at the embed's parent level. For UPDATE and DELETE, constrain affected rows with root filters. Child filters shape returned representations. PostgREST 16.2 rejects embed-alias existence predicates on DELETE; the client reports the canonical server error and does not rewrite them into FK null checks. See [generated relationship contracts](../supabase-codegen/README.md#typed-relationships) for edge and naming rules.
 
 Typed fetch, RPC, raw fetch, and count methods return the same flat `rp_postgrest::Error`. `error.postgrest_body()` exposes decoded code/message/details/hint; `postgrest_error()` exposes the canonical structured source. `status()`, `url()`, and `response_metadata()` retain observed HTTP metadata, including on successful-response decoding failures. HTTP 300 is an error for checked execution. Ambiguous embedding PGRST201 details can be a typed array of relationship descriptions, not only text. Malformed error-envelope bytes remain in the Decode source. See the [raw error guide](../postgrest/README.md#one-error-result).
+
+## Migration from 0.10
+
+- The re-exported `rp_supabase_auth` is now 0.9. Its request results are flat: `Response::json` returns `Result<T, AuthError>`, API errors are `AuthError::Api { status, error }`, and `RefreshStreamError` has one `AuthError` variant. See the [rp-supabase-auth README](../supabase-auth/README.md).
+- `SupabaseClientError::RefreshStreamError` wraps the new `RefreshStreamError`. Match on its `AuthError` instead of the removed `Reqwest`, `JsonParse`, `SupabaseApiError`, and `ErrorResponse` variants.
+- Regenerate Rust bindings with codegen 0.11.
 
 ## Migration from 0.8
 
