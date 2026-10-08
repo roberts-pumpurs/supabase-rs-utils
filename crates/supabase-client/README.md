@@ -319,7 +319,7 @@ Replace the function marker, arguments, and `Outcome` with your generated functi
 
 ## Configured authentication
 
-The default `anonymous_client` and `new_authenticated` constructors build a fallible default transport. Their `_with_client` variants reuse a caller's pool and policies. The authenticated stream shares that transport for REST, login, and every refresh.
+The default `anonymous_client` and `new_authenticated` constructors build a fallible default transport. That transport follows up to 10 redirects, and only to the same origin (scheme, host, port). Their `_with_client` variants reuse a caller's pool and policies. The authenticated stream shares that transport for REST, login, and every refresh.
 
 ```rust
 use std::time::Duration;
