@@ -12,7 +12,7 @@ Use it in tests only. The tokens are signed with a fixed test secret.
 
 ```toml
 [dev-dependencies]
-rp-supabase-mock = "0.8"
+rp-supabase-mock = "0.9"
 ```
 
 Requires Rust 1.85 or later.
