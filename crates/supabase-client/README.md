@@ -1,19 +1,21 @@
 # rp-supabase-client
 
-Supabase authentication and query-first typed PostgreSQL queries. Version 0.9 uses the workspace-owned [rp-postgrest 3.0](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
+Supabase authentication and query-first typed PostgreSQL queries. Version 0.10 uses the workspace-owned [rp-postgrest 3.2](../postgrest/README.md). Raw and typed requests share its checked execution, JSON decoder, and flat error type.
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.9"
+rp-supabase-client = "0.10"
 ```
 
 Use [rp-supabase-codegen](../supabase-codegen/README.md) in a build script to generate relation, column, relationship, payload, and function markers. The snippets below assume the generated `database` module from the [complete example](../supabase-codegen-example/README.md). Substitute your own generated names and value types.
 
 ## Query-first selections
 
-Regenerate bindings with codegen 0.9. Describe the fields at the query instead of declaring a DTO for every local result:
+Regenerate bindings with codegen 0.10. Describe the fields at the query instead of declaring a DTO for every local result:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use rp_supabase_client::{key, select};
 use rp_supabase_client::schema::Selection;
 
@@ -36,6 +38,8 @@ let rows = selected.query(client.clone())
         child.eq(country.column(key!(name)), "UK");
     })
     .fetch().await?;
+# Ok(())
+# }
 ```
 
 The FK determines each child relation. The result has ordinary named Rust fields with owned values. Filtering `billing.id` does not add that column to the response selection. `selected.billing.child.country` is relative to billing; `.then` composes a path from the root.
@@ -56,7 +60,9 @@ Keep named DTOs for reusable children and stable public return types. Move local
 
 A projection defines both the selection and response field types. `Projection<R>` is parameterized by the relation, so one DTO can implement several relation contracts:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use database::public::tables::{adapters, skills};
 use rp_supabase_client::projection;
 use rp_supabase_client::schema::{Count, Nulls, Order, named};
@@ -85,6 +91,8 @@ let same_dto = adapters::query(client.clone())
     .fetch()
     .await?;
 println!("{} rows, {} total", page.data.len(), page.count);
+# Ok(())
+# }
 ```
 
 The shared macro emits one DTO and a `Projection<R>` implementation for each relation. Every selected field must exist on each relation with exactly the same Rust value type and SQL response key. Unselected fields need not match. Selection preserves exact SQL response keys, including renamed identifiers. Missing selected fields are decoding errors even when their type allows null; extra fields are ignored. Named projections retain their attributes, visibility, and DTO-owned relationship handles. `projection!` resolves its runtime through `$crate`, including renamed dependencies; the hidden proc-macro support is version-owned implementation, not additional caller syntax.
@@ -93,23 +101,35 @@ The shared macro emits one DTO and a `Projection<R>` implementation for each rel
 
 Append a `filters` block after a shared projection's selected fields:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# use rp_supabase_client::projection;
 projection! {
-    struct Artifact for [database::public::tables::skill_links, database::public::tables::adapter_links] {
+    struct Artifact for [database::public::tables::skills, database::public::tables::adapters] {
         name,
     } filters {
-        artifact_id: [skill_id, adapter_id],
+        artifact_id: [id, owner_id],
     }
 }
 ```
 
-Each key maps one generated column identifier per relation, in the order of the `for [...]` list. Here `Artifact::artifact_id::<skill_links::Row>()` names SQL `skill_id`, while `Artifact::artifact_id::<adapter_links::Row>()` names SQL `adapter_id`. The compiler requires identical decoded value types and non-null filter types across the mappings. SQL names may differ. Unknown columns, missing mappings, duplicate keys, and use on another relation fail compilation.
+Each key maps one generated column identifier per relation, in the order of the `for [...]` list. Here `Artifact::artifact_id::<skills::Row>()` names SQL `id`, while `Artifact::artifact_id::<adapters::Row>()` names SQL `owner_id`. The compiler requires identical decoded value types and non-null filter types across the mappings. SQL names may differ. Unknown columns, missing mappings, duplicate keys, and use on another relation fail compilation.
 
 Filter keys are not DTO fields and do not change the selection or decoder. The example selects only `name`. Use the associated marker with any existing typed column helper:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
+use database::public::tables::{adapters, skills};
 use rp_supabase_client::{key, projection};
-use rp_supabase_client::schema::{Column, FilterColumn, Relation, SharedFilter, params};
+use rp_supabase_client::schema::{Column, FilterColumn, Relation, SharedFilter, named, params};
+# projection! {
+#     struct Artifact for [database::public::tables::skills, database::public::tables::adapters] {
+#         name,
+#     } filters {
+#         artifact_id: [id, owner_id],
+#     }
+# }
 
 fn artifact_filter<R: Relation>(id: i64) -> params::QueryPair
 where
@@ -119,11 +139,13 @@ where
     params::eq(Artifact::artifact_id::<R>(), &id)
 }
 
-let pair = artifact_filter::<skill_links::Row>(7);
-let rows = adapter_links::query(client)
+let pair = artifact_filter::<skills::Row>(7);
+let rows = adapters::query(client)
     .select(named::<_, Artifact>())
-    .eq(Artifact::artifact_id::<adapter_links::Row>(), &7)
+    .eq(Artifact::artifact_id::<adapters::Row>(), &7)
     .fetch().await?;
+# Ok(())
+# }
 ```
 
 `key!(type artifact_id)` names the key in generic bounds without a runtime discriminator. `SharedFilter` is a zero-sized relation-specific column marker. Nullable and JSON mappings retain their corresponding column capabilities for each relation. The `filters` block is available only with the shared `for [...]` grammar.
@@ -136,9 +158,15 @@ Column markers enforce relation ownership and scalar filter types. String column
 
 ## Minimal writes and raw decoding
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use database::public::tables::skills;
 use rp_supabase_client::schema::{Count, named};
+# rp_supabase_client::projection! {
+#     struct Artifact for database::public::tables::skills { id, name }
+# }
+# let patch = skills::Update::default();
 
 // `patch` is this generated table's Update payload.
 let affected = skills::query(client.clone())
@@ -158,6 +186,8 @@ let rows = skills::query(client.clone())
     .into_raw()
     .fetch::<Vec<Artifact>>()
     .await?;
+# Ok(())
+# }
 ```
 
 Write `.execute()` requests minimal return and does not decode a row body. `.execute_with_count(Count)` returns the affected-row total without fetching identifiers. Write `.fetch()` still requests and decodes representations. Generated insert/update payloads retain exact table ownership. Only base tables support typed writes; views support typed reads. A query can choose only one mutation.
@@ -170,9 +200,15 @@ Write `.execute()` requests minimal return and does not decode a row body. `.exe
 
 `schema::params` needs no `Postgrest` instance. It produces unencoded `QueryPair` values with the same typed ownership and grammar as query methods:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let http = rp_supabase_client::rp_postgrest::reqwest::Client::new();
 use database::public::tables::skills;
 use rp_supabase_client::schema::{Order, params};
+# rp_supabase_client::projection! {
+#     struct Artifact for database::public::tables::skills { id, name }
+# }
 
 let pairs = [
     params::projection::<skills::Row, Artifact>(),
@@ -187,13 +223,19 @@ let response = http.get("https://example.supabase.co/rest/v1/skills")
     .query(&pairs)
     .send()
     .await?;
+# Ok(())
+# }
 ```
 
 This example uses another Reqwest request directly; callers can pass pairs to another HTTP serializer. Do not percent-encode them first. The module also provides `neq`, `gt`, `gte`, `lt`, `lte`, nullable `is_null`, and `order_with_nulls`. Separate order pairs remain separate pairs; combine their terms into one order value if your transport/server requires multiple ordering terms. These helpers do not send requests, add auth/schema headers, or check responses.
 
 For a table chosen at runtime, use `select` and literal-column `order_by` without generated relation markers:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_client::rp_postgrest::reqwest;
+# use rp_supabase_client::schema::{Order, params};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let http = reqwest::Client::new();
 let table = "audit events";
 let mut url = reqwest::Url::parse("https://example.supabase.co/rest/v1/")?;
 url.path_segments_mut().unwrap().push(table);
@@ -203,6 +245,8 @@ let mut pairs = vec![
 ];
 pairs.extend(params::range(100, 199)?);
 let response = http.get(url).query(&pairs).send().await?;
+# Ok(())
+# }
 ```
 
 `range(low, high)` returns offset and limit pairs for an inclusive range. It rejects reversed bounds and row-count overflow with `params::RangeError`. `limit(0)` requests zero rows. `order_by` escapes a literal column name; `select` accepts selection grammar. `order_by_with_nulls` adds explicit null placement.
@@ -213,7 +257,9 @@ Use `params::scope(&["tasks"], params::limit(5))` for a runtime embedded relatio
 
 `params::filter("score", params::Op::Gt, 10)` returns an unencoded query pair. Column names are literal identifiers, not paths or expressions.
 
-```rust,ignore
+```rust
+# use rp_supabase_client::schema::params;
+# fn run() -> Result<(), Box<dyn std::error::Error>> {
 let predicate = params::or(&[
     params::filter("score", params::Op::Gt, 10),
     params::and(&[
@@ -221,6 +267,8 @@ let predicate = params::or(&[
         params::filter("visibility", params::Op::Eq, "public"),
     ])?,
 ])?;
+# Ok(())
+# }
 ```
 
 `or` and `and` quote scalar values in group context. They reject empty groups, non-filter pairs, and unsupported grammar with `CompositionError`. Supported pairs include scalar comparisons and nested groups, not IN lists or JSON paths.
@@ -229,27 +277,38 @@ let predicate = params::or(&[
 
 ## Typed RPC returns
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use database::public::functions::echo_message;
 use rp_supabase_client::schema::rpc;
 
 let args = echo_message::Args { message: Some("rpc example".into()) };
 let result = rpc::<echo_message::Function>(client.clone(), &args).fetch().await?;
+# Ok(())
+# }
 ```
 
 `args` is the generated function's `Args`; `result` is inferred as its `Returns`. Generated scalar, set-returning, composite, and void contracts decode their server representations. RPC does not require a relation projection or automatically add `select` or `single`. Serialization errors are deferred to execution.
 
 Use `fetch_as::<Outcome>()` to decode JSON/JSONB directly into a caller-defined type. Use `single()` for server-enforced single-object mode:
 
-```rust,ignore
-let outcome = rpc::<delete_lifecycle::Function>(client.clone(), &args)
+```rust,no_run
+# use rp_supabase_codegen_example::database::public::functions::echo_message;
+# use rp_supabase_client::schema::rpc;
+# type Outcome = String;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
+# let args = echo_message::Args { message: Some("rpc example".into()) };
+let outcome = rpc::<echo_message::Function>(client.clone(), &args)
     .single()
     .fetch_as::<Outcome>()
     .await?;
 
-rpc::<delete_lifecycle::Function>(client.clone(), &args)
+rpc::<echo_message::Function>(client.clone(), &args)
     .execute()
     .await?;
+# Ok(())
+# }
 ```
 
 Replace the function marker, arguments, and `Outcome` with your generated function and response type. `single()` sets the object Accept header but retains the generated return type. A set-returning function therefore needs `single().fetch_as::<Row>()`, not `single().fetch()`, to decode one row.

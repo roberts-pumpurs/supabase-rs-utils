@@ -10,7 +10,7 @@ Keep a schema snapshot in source control. Ordinary builds need no database or cr
 
 ```toml
 [dependencies]
-rp-supabase-client = "0.9"
+rp-supabase-client = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 # Add these when your schema has UUID or temporal columns.
@@ -18,14 +18,14 @@ uuid = { version = "1", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]
-rp-supabase-codegen = "0.9"
+rp-supabase-codegen = "0.10"
 ```
 
 Generated bindings only need the `schema` runtime. Applications with their own HTTP client and
-response handling can use `rp-supabase-client = { version = "0.9", default-features = false }`.
+response handling can use `rp-supabase-client = { version = "0.10", default-features = false }`.
 That leaves out authentication and does not enable `serde_json/arbitrary_precision`.
 
-```rust
+```rust,no_run
 // build.rs
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     rp_supabase_codegen::Generator::new()
@@ -53,10 +53,10 @@ Enable the `database` build-dependency feature. Database and TLS dependencies do
 
 ```toml
 [build-dependencies]
-rp-supabase-codegen = { version = "0.9", features = ["database"] }
+rp-supabase-codegen = { version = "0.10", features = ["database"] }
 ```
 
-```rust
+```rust,no_run
 // build.rs
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo::rerun-if-changed=supabase/migrations");
@@ -93,7 +93,7 @@ Both commands default to `public` and `schema.json`. Repeat `--schema` to select
 
 The library also exports metadata without generating Rust bindings:
 
-```rust
+```rust,no_run
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     rp_supabase_codegen::Generator::new()
         .snapshot_from_database(&std::env::var("DATABASE_URL")?)?
@@ -118,18 +118,25 @@ It consumes the client, so cloning remains explicit. Regenerate previously emitt
 with current codegen before using the matching runtime. The snapshot format is version 3.
 JSON and JSONB column markers, including domains over those types, implement `schema::JsonColumn`.
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use database::public::tables::messages;
 
 let rows = messages::query(client.clone()).fetch().await?;
 // rows has type Vec<messages::Row>.
+# Ok(())
+# }
 ```
 
 ### Typed projections and filters
 
 Use a query-first selection for local results. Do not repeat Rust field types or a selection string:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# use database::public::tables::messages;
+# async fn run(client: rp_supabase_client::Postgrest, message_id: i64) -> Result<(), Box<dyn std::error::Error>> {
 use rp_supabase_client::{select, schema::Selection};
 let selected = {
     use database::public::tables::messages::Row as Message;
@@ -139,6 +146,8 @@ let rows = selected.query(client.clone())
     .eq(messages::columns::id, &message_id)
     .fetch()
     .await?;
+# Ok(())
+# }
 ```
 
 Each generated `columns` marker records its owning relation, readable field type, non-null
@@ -164,7 +173,8 @@ have separate error variants.
 
 One DTO can implement the projection contract for several relations:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
 rp_supabase_client::projection! {
     struct Artifact for [database::public::tables::skills, database::public::tables::adapters] {
         id, name, owner_id
@@ -185,7 +195,10 @@ the total without decoding rows. Missing or invalid totals are errors, never an 
 
 `schema::params` renders the same unencoded query pairs without a `Postgrest` instance:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# use database::public::tables::messages;
+# fn run(http: &rp_supabase_client::rp_postgrest::reqwest::Client, endpoint: &str, message_id: i64) {
 use rp_supabase_client::schema::params;
 rp_supabase_client::projection! {
     struct MessageSummary for database::public::tables::messages { id, body, note }
@@ -195,6 +208,7 @@ let pairs = [
     params::eq(messages::columns::id, &message_id),
 ];
 let request = http.get(endpoint).query(&pairs);
+# }
 ```
 
 It also provides typed comparison, null, IN, order, and JSON text-path helpers. Pass pairs directly
@@ -207,7 +221,9 @@ constraint name. Reverse markers add the referencing table name, such as `orders
 The generator emits markers for nonpartition base tables in the same explicitly selected schema.
 Referenced types can add dependency schemas, but do not add endpoints.
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use database::public::tables::{addresses, customers, orders};
 
 rp_supabase_client::projection! {
@@ -239,6 +255,8 @@ let rows = customers::query(client.clone())
     .exists(CustomerSummary::matching_orders)
     .fetch()
     .await?;
+# Ok(())
+# }
 ```
 
 Aliases become response keys and typed filter handles. The compiler checks the source relation,
@@ -265,7 +283,9 @@ Nested selections append into one parent buffer using `Projection<R>::SELECT_LEN
 
 Local nested selections infer the child relation from the FK:
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database::public::tables::customers;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 use rp_supabase_client::{key, select, schema::Selection};
 let selected = select!(customers::Row => {
     id,
@@ -283,6 +303,8 @@ let rows = selected.query(client.clone())
     })
     .exists(selected.matching_orders)
     .fetch().await?;
+# Ok(())
+# }
 ```
 
 The generator emits finite `ColumnByKey` and `RelationshipByKey` implementations directly
@@ -352,13 +374,18 @@ Named-object RPCs emit `public::functions::<name>::Args`, `Returns`, and `Functi
 
 By default, non-default arguments use `Option<T>` because PostgreSQL functions can accept null. `.strict_args()` makes them `T` globally; `.strict_args_for("public.functions.finalize_flow_publish")` does so for one generated function module. A function comment such as `@nullable p_version` opts an argument back into `Option<T>` and persists that contract in the snapshot. Unknown annotation argument names fail introspection. Default arguments always use `Field<Option<T>>`, preserving omission versus explicit null. Custom JSON and SQL type mappings follow the same policy. Scalar results are nullable. Set results use vectors. Non-set composite and OUT results use a single struct. OUT and TABLE fields have a generated `Record` type, including singleton OUT and INOUT results.
 
-```rust,ignore
+```rust,no_run
+# use rp_supabase_codegen_example::database;
+# use rp_supabase_client::schema;
+# async fn run(client: rp_supabase_client::Postgrest) -> Result<(), Box<dyn std::error::Error>> {
 let echoed = schema::rpc::<database::public::functions::echo_message::Function>(
     client.clone(),
     &database::public::functions::echo_message::Args {
         message: Some("hello".to_owned()),
     },
 ).fetch().await?;
+# Ok(())
+# }
 ```
 
 The generated function marker determines the return type, so no manual decode or result annotation

@@ -1,7 +1,4 @@
-//! Generate Rust bindings in `build.rs`, using a versioned snapshot or a `PostgreSQL` connection.
-//!
-//! Prefer committed snapshots for reproducible builds. Live introspection is explicit and
-//! never falls back to stale metadata after an error. Database credentials stay on the host.
+#![cfg_attr(all(doc, not(doctest)), doc = include_str!("../README.md"))]
 
 extern crate alloc;
 

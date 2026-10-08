@@ -23,3 +23,4 @@ rp-supabase-codegen = { path = "../supabase-codegen", features = ["database"] }
 
 [dev-dependencies]
 mockito.workspace = true
+rp-supabase-codegen = { path = "../supabase-codegen", features = ["database"] }

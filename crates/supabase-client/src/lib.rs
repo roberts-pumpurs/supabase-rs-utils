@@ -1,7 +1,4 @@
-//! Supabase `PostgREST` client and the runtime for generated schema bindings.
-//!
-//! The default `client` feature provides authentication and response decoding.
-//! Disable default features to depend on the generated-binding runtime ([`schema`]) alone.
+#![cfg_attr(all(doc, not(doctest)), doc = include_str!("../README.md"))]
 
 extern crate alloc;
 
