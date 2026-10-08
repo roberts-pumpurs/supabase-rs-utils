@@ -28,7 +28,8 @@ You need only this one dependency.
 
 ## Quickstart
 
-Pass the project base URL, for example `https://abc.supabase.co/`, and the project API key.
+Pass the project root URL, for example `https://abc.supabase.co/`, and the project API key.
+A URL with a path, such as `https://gateway.example/supabase`, is rejected.
 
 ```rust,no_run
 use rp_supabase::Client;

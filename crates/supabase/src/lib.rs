@@ -260,6 +260,12 @@ fn parse_project_url(input: &str) -> Result<Url, Error> {
     if url.fragment().is_some() {
         return Err(Error::InvalidProjectUrl("fragment is not allowed"));
     }
+    // Auth joins `/auth/v1/` from the host root, so a path prefix would route services apart.
+    if url.path() != "/" {
+        return Err(Error::InvalidProjectUrl(
+            "path is not allowed; pass the project root URL",
+        ));
+    }
     Ok(url)
 }
 
@@ -318,6 +324,7 @@ mod tests {
             "https://user:pass@abc.supabase.co/",
             "https://abc.supabase.co/?x=1",
             "https://abc.supabase.co/#frag",
+            "https://gateway.example/supabase",
         ] {
             assert!(
                 Client::new(input, "key").is_err(),
