@@ -12,8 +12,8 @@ Utilities for interacting with Supabase from Rust
 """
 keywords = ["supabase", "postgrest", "auth", "realtime", "jwt"]
 categories = ["database", "authentication", "asynchronous"]
-repository = "https://github.com/roberts-pumpurs/supabase-rs-utils"
-homepage = "https://github.com/roberts-pumpurs/supabase-rs-utils"
+repository = "https://github.com/roberts-pumpurs/supabase-rs-rp"
+homepage = "https://github.com/roberts-pumpurs/supabase-rs-rp"
 license = "MIT OR Apache-2.0"
 edition = "2024"
 exclude = [
