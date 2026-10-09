@@ -9,7 +9,7 @@ It manages buckets, uploads and downloads objects, and creates signed and public
 
 ```toml
 [dependencies]
-rp-supabase-storage = "0.1"
+rp-supabase-storage = "0.2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -103,8 +103,8 @@ request.
 All operations return `StorageError`:
 
 - `Api { status, body }`: the server answered with a non-success status. `body` is
-  `ApiErrorBody::Storage` with `status_code`, `error`, and `message` when the server sent the
-  standard Storage error JSON, else `ApiErrorBody::Raw` with the body text.
+  `ApiErrorBody::Storage` with optional `status_code`, `code`, `error`, and `message` when the
+  server sent the standard Storage error JSON, else `ApiErrorBody::Raw` with the body text.
 - `InvalidPath`: a bucket id or object path is not valid.
 - `MissingSignedToken`: a signed URL from the server has no `?token=` query.
 - `SignFailed { path, message }`: `create_signed_url` got no URL for the object, for example
@@ -112,23 +112,31 @@ All operations return `StorageError`:
 - `Http`, `Json`, `Url`, `InvalidHeader`, `InvalidBaseUrl`: transport, decoding, and input errors.
 
 ```rust,no_run
-# use rp_supabase_storage::{ApiErrorBody, StorageClient, StorageError, url::Url};
-# async fn run(storage: StorageClient) {
-match storage.get_bucket("missing").await {
-    Err(StorageError::Api { status, body: ApiErrorBody::Storage(body) }) => {
-        eprintln!("{status}: {}", body.message);
-    }
-    other => drop(other),
+# use rp_supabase_storage::{FileOptions, StorageClient, StorageError, StorageErrorCode};
+# async fn run(storage: StorageClient) -> Result<(), StorageError> {
+match storage.from("blobs").upload("a.bin", vec![1_u8], &FileOptions::default()).await {
+    Ok(_) => {}
+    Err(error) => match error.code() {
+        Some(StorageErrorCode::KeyAlreadyExists | StorageErrorCode::ResourceAlreadyExists) => {
+            println!("already uploaded");
+        }
+        _ => return Err(error),
+    },
 }
+# Ok(())
 # }
 ```
+
+`StorageError::code()` returns the body's machine-readable `code` as a `StorageErrorCode`. A code
+this crate does not know is `StorageErrorCode::Other`.
 
 Most object errors arrive as HTTP `400` with the real status in the body's `statusCode`.
 `StorageError::api_status()` returns that status, or the HTTP status when the body has none.
 
 `Bucket::remove` is the bulk endpoint. It skips missing paths and paths that row level security
 hides, without an error. `Bucket::remove_object` deletes one object and fails when nothing is
-deleted: `api_status()` is `404` for a missing object and `403` for a denied delete.
+deleted: `api_status()` is `404` and `code()` is `NoSuchKey` for a missing object, and
+`api_status()` is `403` and `code()` is `AccessDenied` for a denied delete.
 
 `Bucket::download` reads the whole body into memory. `Bucket::download_stream` returns after the
 headers arrive. Read the body with `chunk()` or `into_stream()`, and stop when the byte count

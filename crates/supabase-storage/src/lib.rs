@@ -7,7 +7,7 @@ mod types;
 
 pub use bucket::{Bucket, ObjectDownload};
 pub use client::StorageClient;
-pub use error::{ApiErrorBody, PathError, StorageError, StorageErrorBody};
+pub use error::{ApiErrorBody, PathError, StorageError, StorageErrorBody, StorageErrorCode};
 pub use types::{
     BucketInfo, BucketOptions, FileObject, FileOptions, ListOptions, ObjectKey, SignedUrl, SortBy,
     SortColumn, SortOrder,

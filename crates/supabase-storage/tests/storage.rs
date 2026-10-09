@@ -15,7 +15,7 @@ use rp_supabase_storage::reqwest::StatusCode;
 use rp_supabase_storage::url::Url;
 use rp_supabase_storage::{
     ApiErrorBody, BucketOptions, FileOptions, ListOptions, PathError, SortBy, SortColumn,
-    SortOrder, StorageClient, StorageError, StorageErrorBody,
+    SortOrder, StorageClient, StorageError, StorageErrorBody, StorageErrorCode,
 };
 use serde_json::json;
 
@@ -613,7 +613,7 @@ async fn api_error_json_is_decoded() {
         .mock("GET", "/storage/v1/bucket/missing")
         .with_status(400)
         .with_body(
-            r#"{"statusCode":"404","error":"Bucket not found","message":"Bucket not found"}"#,
+            r#"{"statusCode":"404","code":"NoSuchBucket","error":"Bucket not found","message":"Bucket not found"}"#,
         )
         .create_async()
         .await;
@@ -627,9 +627,72 @@ async fn api_error_json_is_decoded() {
         body,
         ApiErrorBody::Storage(StorageErrorBody {
             status_code: Some("404".to_owned()),
+            code: Some(StorageErrorCode::NoSuchBucket),
             error: Some("Bucket not found".to_owned()),
-            message: "Bucket not found".to_owned(),
+            message: Some("Bucket not found".to_owned()),
         })
+    );
+}
+
+/// Body that supabase/storage sends when a create-only upload hits an existing key.
+#[tokio::test]
+async fn create_only_collision_exposes_code() {
+    let (mut server, client) = setup().await;
+    let mock = server
+        .mock("POST", "/storage/v1/object/b/taken.txt")
+        .with_status(400)
+        .with_body(
+            r#"{"statusCode":"409","code":"KeyAlreadyExists","error":"Duplicate","message":"The resource already exists"}"#,
+        )
+        .create_async()
+        .await;
+    let error = client
+        .from("b")
+        .upload("taken.txt", "x", &FileOptions::default())
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert_eq!(error.code(), Some(&StorageErrorCode::KeyAlreadyExists));
+    assert_eq!(error.api_status(), Some(StatusCode::CONFLICT));
+    assert_eq!(
+        error.to_string(),
+        "storage API error (400 Bad Request): KeyAlreadyExists: The resource already exists"
+    );
+}
+
+#[tokio::test]
+async fn error_body_fields_are_optional_and_unknown_codes_are_kept() {
+    let (mut server, client) = setup().await;
+    server
+        .mock("GET", "/storage/v1/bucket/new")
+        .with_status(400)
+        .with_body(r#"{"statusCode":"500","code":"BrandNewCode"}"#)
+        .create_async()
+        .await;
+    server
+        .mock("GET", "/storage/v1/bucket/other")
+        .with_status(502)
+        .with_body(r#"{"detail":"upstream"}"#)
+        .create_async()
+        .await;
+
+    let unknown = client.get_bucket("new").await.unwrap_err();
+    assert_eq!(
+        unknown.code(),
+        Some(&StorageErrorCode::Other("BrandNewCode".to_owned()))
+    );
+    assert_eq!(
+        unknown.to_string(),
+        "storage API error (400 Bad Request): BrandNewCode"
+    );
+
+    let foreign = client.get_bucket("other").await.unwrap_err();
+    let StorageError::Api { body, .. } = foreign else {
+        panic!("unexpected error: {foreign:?}");
+    };
+    assert_eq!(
+        body,
+        ApiErrorBody::Raw(r#"{"detail":"upstream"}"#.to_owned())
     );
 }
 
