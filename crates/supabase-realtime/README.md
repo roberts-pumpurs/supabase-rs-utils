@@ -13,7 +13,7 @@ It connects over a websocket, signs in with Supabase Auth, and gives you three c
 
 ```toml
 [dependencies]
-rp-supabase-realtime = "0.9"
+rp-supabase-realtime = "0.10"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -39,10 +39,7 @@ let config = SupabaseAuthConfig {
     max_reconnect_attempts: 5,
     reconnect_interval: Duration::from_secs(3),
 };
-let login = LoginCredentials::builder()
-    .email("user@example.com".to_owned())
-    .password("password".to_owned())
-    .build();
+let login = LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 # Ok(())
 # }
 ```
