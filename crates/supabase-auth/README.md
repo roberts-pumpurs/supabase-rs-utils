@@ -6,7 +6,7 @@ Typed async client for [Supabase Auth](https://supabase.com/docs/guides/auth) (G
 
 ```toml
 [dependencies]
-rp-supabase-auth = "0.9"
+rp-supabase-auth = "0.10"
 ```
 
 The client talks to `<project-url>/auth/v1/`. Pass the project base URL, for example `https://abc.supabase.co/`, and the project API key (anon or service role).
@@ -25,10 +25,7 @@ let url: url::Url = "https://abc.supabase.co/".parse()?;
 let api_key = "your-anon-key";
 
 let anonymous = ApiClient::new_unauthenticated(&url, api_key)?;
-let credentials = LoginCredentials::builder()
-    .email("user@example.com".to_owned())
-    .password("password".to_owned())
-    .build();
+let credentials = LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 let session = anonymous.sign_in_with_password(&credentials).await?;
 
 let access_token = session.access_token.ok_or("no access token")?;
@@ -48,6 +45,7 @@ client.sign_out().await?;
 | `sign_up` | `POST /signup` |
 | `sign_in_with_password` | `POST /token?grant_type=password` |
 | `refresh_session` | `POST /token?grant_type=refresh_token` |
+| `exchange_code_for_session` | `POST /token?grant_type=pkce` |
 | `sign_in_with_otp` | `POST /otp` |
 | `verify_otp` | `POST /verify` |
 | `reset_password_for_email` | `POST /recover` |
@@ -78,10 +76,7 @@ let config = SupabaseAuthConfig {
     reconnect_interval: Duration::from_secs(3),
     url: "https://abc.supabase.co/".parse()?,
 };
-let credentials = LoginCredentials::builder()
-    .email("user@example.com".to_owned())
-    .password("password".to_owned())
-    .build();
+let credentials = LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 
 let clients = new_authenticated_stream(config, credentials)?;
 let mut clients = std::pin::pin!(clients);
@@ -144,6 +139,8 @@ let user = response.json().await?;
 
 Use `Response::ok` instead of `Response::json` for endpoints that return no body.
 
+`TokenRequest` is an enum with one variant per grant: `Password`, `RefreshToken`, `IdToken`, and `Pkce`. The variant sets the `grant_type` query parameter, and each grant body holds only the fields Supabase Auth reads for that grant.
+
 ## Errors
 
 Every call returns `Result<_, AuthError>`. A non-success HTTP status becomes `AuthError::Api`. It holds the status and the decoded `ErrorSchema`. `ErrorSchema` reads both the legacy error format and the `2024-01-01` API version format: `error_code` holds the machine-readable code and `msg` holds the message. If the body is not a JSON error object, `ErrorSchema::msg` holds the raw body text.
@@ -169,4 +166,12 @@ The other variants cover transport failures, invalid URLs, invalid header values
 ## Limits
 
 - The client does not store sessions. Keep the tokens yourself, or use the refresh stream.
-- OAuth redirects and PKCE code exchange need your own redirect handling. The request types exist, but there are no convenience methods for them.
+- OAuth redirects need your own redirect handling. Start the flow with `AuthorizeRequest` and a code challenge, then call `exchange_code_for_session` with the returned `code` and your verifier.
+
+## Migration from 0.9
+
+- `LoginCredentials` has no builder. Use `LoginCredentials::email(email, password)` or `LoginCredentials::phone(phone, password)`. The password is required, and `Debug` hides it.
+- `TokenRequest` is an enum of grants: `Password(PasswordGrant)`, `RefreshToken(RefreshTokenGrant)`, `IdToken(IdTokenGrant)`, and `Pkce(PkceGrant)`. `TokenRequestBody` and `GrantType` are gone. `PkceGrant` sends `auth_code`, which Supabase Auth reads for the PKCE exchange.
+- `SignupPayload` takes `credentials: Option<LoginCredentials>`. Leave it unset to create an anonymous user.
+- `code_challenge_method` fields take `CodeChallengeMethod::S256` or `CodeChallengeMethod::Plain`.
+- `AuthorizeRequest` takes an `OAuthProvider`, `scopes: Vec<String>`, a `Url` for `redirect_to`, and now sends `code_challenge`.

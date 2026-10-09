@@ -16,9 +16,9 @@ use mockito::Matcher;
 use rp_supabase_auth::{
     auth_client::{
         ApiClient,
-        requests::{GrantType, TokenRequest, VerifyGetRequest},
+        requests::{TokenRequest, VerifyGetRequest},
     },
-    types::TokenRequestBody,
+    types::{LoginCredentials, PasswordGrant},
 };
 
 const PASSWORD: &str = "secret-password-value";
@@ -76,15 +76,10 @@ async fn logs_do_not_contain_secrets() {
     let url = url::Url::parse(&server.url()).unwrap();
     let client = ApiClient::new_unauthenticated(&url, "key").unwrap();
 
-    let request = TokenRequest::builder()
-        .grant_type(GrantType::Password)
-        .payload(
-            TokenRequestBody::builder()
-                .email(Some("user@example.com".into()))
-                .password(Some(PASSWORD.into()))
-                .build(),
-        )
-        .build();
+    let request = TokenRequest::Password(PasswordGrant::from(LoginCredentials::email(
+        "user@example.com".to_owned(),
+        PASSWORD.to_owned(),
+    )));
     client
         .build_request(&request)
         .unwrap()

@@ -79,12 +79,10 @@ async fn sign_in_with_password_posts_credentials_and_decodes_session() {
         .await;
 
     let session = anonymous(&server)
-        .sign_in_with_password(
-            &LoginCredentials::builder()
-                .email("user@example.com".to_owned())
-                .password("secret".to_owned())
-                .build(),
-        )
+        .sign_in_with_password(&LoginCredentials::email(
+            "user@example.com".to_owned(),
+            "secret".to_owned(),
+        ))
         .await
         .unwrap();
 
@@ -140,8 +138,10 @@ async fn sign_up_posts_payload_and_decodes_session() {
     let response = anonymous(&server)
         .sign_up(
             SignupPayload::builder()
-                .email("new@example.com".to_owned())
-                .password("secret".to_owned())
+                .credentials(LoginCredentials::email(
+                    "new@example.com".to_owned(),
+                    "secret".to_owned(),
+                ))
                 .build(),
         )
         .await
@@ -169,8 +169,10 @@ async fn sign_up_with_confirmation_required_decodes_user() {
     let response = anonymous(&server)
         .sign_up(
             SignupPayload::builder()
-                .email("user@example.com".to_owned())
-                .password("secret".to_owned())
+                .credentials(LoginCredentials::email(
+                    "user@example.com".to_owned(),
+                    "secret".to_owned(),
+                ))
                 .build(),
         )
         .await
@@ -326,12 +328,10 @@ async fn gotrue_error_body_maps_to_api_error_with_status_and_message(
         .await;
 
     let error = anonymous(&server)
-        .sign_in_with_password(
-            &LoginCredentials::builder()
-                .email("user@example.com".to_owned())
-                .password("wrong".to_owned())
-                .build(),
-        )
+        .sign_in_with_password(&LoginCredentials::email(
+            "user@example.com".to_owned(),
+            "wrong".to_owned(),
+        ))
         .await
         .unwrap_err();
 

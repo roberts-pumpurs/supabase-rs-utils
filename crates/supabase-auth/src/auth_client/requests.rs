@@ -1,5 +1,5 @@
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use url::Url;
 
 use crate::error::AuthError;
@@ -43,42 +43,46 @@ impl AuthModuleRequest for HealthCheckRequest {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum GrantType {
-    Password,
-    RefreshToken,
-    IdToken,
-    Pkce,
+/// Request to `POST /token`. The variant sets the `grant_type` query parameter and the body.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum TokenRequest {
+    /// Sign in with email or phone and a password.
+    Password(types::PasswordGrant),
+    /// Exchange a refresh token for a new session.
+    RefreshToken(types::RefreshTokenGrant),
+    /// Sign in with an OIDC ID token.
+    IdToken(types::IdTokenGrant),
+    /// Exchange a PKCE auth code for a session.
+    Pkce(types::PkceGrant),
 }
 
-/// Token Request
-#[derive(Debug, Clone, typed_builder::TypedBuilder)]
-pub struct TokenRequest {
-    pub grant_type: GrantType,
-    pub payload: types::TokenRequestBody,
+impl TokenRequest {
+    const fn grant_type(&self) -> &'static str {
+        match self {
+            Self::Password(_) => "password",
+            Self::RefreshToken(_) => "refresh_token",
+            Self::IdToken(_) => "id_token",
+            Self::Pkce(_) => "pkce",
+        }
+    }
 }
 
 impl AuthModuleRequest for TokenRequest {
     type Res = types::AccessTokenResponseSchema;
-    type Payload = types::TokenRequestBody;
+    type Payload = Self;
 
     const METHOD: Method = Method::POST;
 
     fn path(&self, base_url: &Url) -> Result<Url, AuthError> {
         let mut url = base_url.join("token").map_err(AuthError::from)?;
-        let grant_type = match self.grant_type {
-            GrantType::Password => "password",
-            GrantType::RefreshToken => "refresh_token",
-            GrantType::IdToken => "id_token",
-            GrantType::Pkce => "pkce",
-        };
-        url.query_pairs_mut().append_pair("grant_type", grant_type);
+        url.query_pairs_mut()
+            .append_pair("grant_type", self.grant_type());
         Ok(url)
     }
 
     fn payload(&self) -> &Self::Payload {
-        &self.payload
+        self
     }
 }
 
@@ -175,14 +179,23 @@ impl AuthModuleRequest for VerifyPostRequest {
     }
 }
 
-/// Authorize Request
+/// Start of an OAuth sign-in (`GET /authorize`).
+///
+/// Send the user's browser to the URL from [`AuthModuleRequest::path`]. Supabase redirects to
+/// the provider and then to `redirect_to`. With a PKCE challenge, the redirect carries a `code`
+/// for [`ApiClient::exchange_code_for_session`](crate::auth_client::ApiClient::exchange_code_for_session).
 #[derive(Debug, Clone, typed_builder::TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct AuthorizeRequest {
-    pub provider: String,
-    pub scopes: String,
+    #[builder(!default, setter(!strip_option))]
+    pub provider: types::OAuthProvider,
+    /// Extra provider scopes, sent space-separated.
+    #[builder(setter(!strip_option))]
+    pub scopes: Vec<String>,
     pub invite_token: Option<String>,
-    pub redirect_to: Option<String>,
-    pub code_challenge_method: Option<String>,
+    pub redirect_to: Option<Url>,
+    pub code_challenge: Option<String>,
+    pub code_challenge_method: Option<types::CodeChallengeMethod>,
 }
 
 impl AuthModuleRequest for AuthorizeRequest {
@@ -193,20 +206,24 @@ impl AuthModuleRequest for AuthorizeRequest {
 
     fn path(&self, base_url: &Url) -> Result<Url, AuthError> {
         let mut url = base_url.join("authorize").map_err(AuthError::from)?;
-        url.query_pairs_mut()
-            .append_pair("provider", &self.provider)
-            .append_pair("scopes", &self.scopes);
-        if let Some(ref invite_token) = self.invite_token {
-            url.query_pairs_mut()
-                .append_pair("invite_token", invite_token);
-        }
-        if let Some(ref redirect_to) = self.redirect_to {
-            url.query_pairs_mut()
-                .append_pair("redirect_to", redirect_to);
-        }
-        if let Some(ref code_challenge_method) = self.code_challenge_method {
-            url.query_pairs_mut()
-                .append_pair("code_challenge_method", code_challenge_method);
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("provider", &self.provider.to_string());
+            if !self.scopes.is_empty() {
+                query.append_pair("scopes", &self.scopes.join(" "));
+            }
+            if let Some(invite_token) = &self.invite_token {
+                query.append_pair("invite_token", invite_token);
+            }
+            if let Some(redirect_to) = &self.redirect_to {
+                query.append_pair("redirect_to", redirect_to.as_str());
+            }
+            if let Some(code_challenge) = &self.code_challenge {
+                query.append_pair("code_challenge", code_challenge);
+            }
+            if let Some(method) = self.code_challenge_method {
+                query.append_pair("code_challenge_method", method.as_str());
+            }
         }
         Ok(url)
     }
@@ -246,7 +263,7 @@ pub struct RecoverRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge_method: Option<String>,
+    pub code_challenge_method: Option<types::CodeChallengeMethod>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
@@ -329,7 +346,7 @@ pub struct OtpRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<types::UserMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge_method: Option<String>,
+    pub code_challenge_method: Option<types::CodeChallengeMethod>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -563,7 +580,7 @@ pub struct SsoRequest {
     pub redirect_to: Option<String>,
     pub skip_http_redirect: Option<bool>,
     pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<String>,
+    pub code_challenge_method: Option<types::CodeChallengeMethod>,
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
 

@@ -13,10 +13,13 @@ use mockito::Matcher;
 use rp_supabase_auth::{
     auth_client::{
         ApiClient, new_authenticated_stream_with_client,
-        requests::{GrantType, TokenRequest},
+        requests::{AuthModuleRequest as _, AuthorizeRequest, TokenRequest},
     },
     jwt_stream::{JwtStream, SupabaseAuthConfig},
-    types::{LoginCredentials, TokenRequestBody},
+    types::{
+        CodeChallengeMethod, IdTokenGrant, IdTokenProvider, LoginCredentials, OAuthProvider,
+        PasswordGrant, PkceGrant, RefreshTokenGrant, SignupPayload,
+    },
 };
 
 fn http() -> reqwest::Client {
@@ -37,10 +40,11 @@ fn http() -> reqwest::Client {
 }
 
 fn request() -> TokenRequest {
-    TokenRequest::builder()
-        .grant_type(GrantType::Password)
-        .payload(TokenRequestBody::builder().build())
-        .build()
+    TokenRequest::Password(PasswordGrant::from(credentials()))
+}
+
+fn credentials() -> LoginCredentials {
+    LoginCredentials::email("user@example.com".to_owned(), "p".to_owned())
 }
 
 fn config(url: &str) -> SupabaseAuthConfig {
@@ -120,7 +124,7 @@ async fn sign_in_configured_transport_preserves_redirect_policy() {
         .create_async()
         .await;
     let mut stream = JwtStream::new(config(&server.url()))
-        .sign_in_with_client(LoginCredentials::builder().build(), http())
+        .sign_in_with_client(credentials(), http())
         .unwrap();
     let result = tokio::time::timeout(Duration::from_secs(3), stream.next())
         .await
@@ -163,12 +167,8 @@ async fn authenticated_auth_stream_reuses_transport_after_refresh() {
         .with_body("{}")
         .create_async()
         .await;
-    let stream = new_authenticated_stream_with_client(
-        config(&server.url()),
-        LoginCredentials::builder().build(),
-        http(),
-    )
-    .unwrap();
+    let stream =
+        new_authenticated_stream_with_client(config(&server.url()), credentials(), http()).unwrap();
     futures::pin_mut!(stream);
     let _first = tokio::time::timeout(Duration::from_secs(3), stream.next())
         .await
@@ -215,7 +215,7 @@ async fn configured_sign_in_preserves_total_timeout() {
         .build()
         .unwrap();
     let mut stream = JwtStream::new(config(&server.url()))
-        .sign_in_with_client(LoginCredentials::builder().build(), transport)
+        .sign_in_with_client(credentials(), transport)
         .unwrap();
     let error = tokio::time::timeout(Duration::from_secs(3), stream.next())
         .await
@@ -281,37 +281,98 @@ async fn default_client_follows_same_origin_redirect() {
     target.assert_async().await;
 }
 
+/// Each grant sends its `grant_type` and only the body fields Supabase Auth reads for it.
+#[rstest::rstest]
+#[case::password(
+    TokenRequest::Password(PasswordGrant::from(LoginCredentials::phone("+1".to_owned(), "p".to_owned()))),
+    "password",
+    r#"{"phone":"+1","password":"p"}"#
+)]
+#[case::refresh_token(
+    TokenRequest::RefreshToken(RefreshTokenGrant { refresh_token: "r".into() }),
+    "refresh_token",
+    r#"{"refresh_token":"r"}"#
+)]
+#[case::pkce(
+    TokenRequest::Pkce(PkceGrant { auth_code: "c".into(), code_verifier: "v".into() }),
+    "pkce",
+    r#"{"auth_code":"c","code_verifier":"v"}"#
+)]
+#[case::id_token(
+    TokenRequest::IdToken(
+        IdTokenGrant::builder()
+            .provider(IdTokenProvider::Custom("corp".into()))
+            .id_token("t".into())
+            .nonce("n".into())
+            .build()
+    ),
+    "id_token",
+    r#"{"provider":"custom:corp","id_token":"t","nonce":"n"}"#
+)]
 #[tokio::test]
-async fn refresh_token_body_omits_unset_fields() {
+async fn token_grants_send_grant_type_and_exact_body(
+    #[case] request: TokenRequest,
+    #[case] grant_type: &str,
+    #[case] body: &str,
+) {
     let mut server = mockito::Server::new_async().await;
-    let refresh = server
+    let token = server
         .mock("POST", "/auth/v1/token")
-        .match_query(Matcher::UrlEncoded(
-            "grant_type".into(),
-            "refresh_token".into(),
-        ))
-        .match_body(Matcher::JsonString(r#"{"refresh_token":"r"}"#.into()))
+        .match_query(Matcher::UrlEncoded("grant_type".into(), grant_type.into()))
+        .match_body(Matcher::JsonString(body.into()))
         .with_body("{}")
         .create_async()
         .await;
     let url = url::Url::parse(&server.url()).unwrap();
-    let request = TokenRequest::builder()
-        .grant_type(GrantType::RefreshToken)
-        .payload(
-            TokenRequestBody::builder()
-                .refresh_token("r".into())
-                .build(),
-        )
-        .build();
     ApiClient::new_unauthenticated(&url, "key")
         .unwrap()
-        .build_request(&request)
-        .unwrap()
-        .execute()
-        .await
-        .unwrap()
-        .json()
+        .send(&request)
         .await
         .unwrap();
-    refresh.assert_async().await;
+    token.assert_async().await;
+}
+
+#[tokio::test]
+async fn signup_flattens_credentials_and_sends_challenge_method() {
+    let mut server = mockito::Server::new_async().await;
+    let signup = server
+        .mock("POST", "/auth/v1/signup")
+        .match_body(Matcher::JsonString(
+            r#"{"email":"a@b.c","password":"p","code_challenge":"c","code_challenge_method":"s256"}"#
+                .into(),
+        ))
+        .with_body(r#"{"id":"7d1e5b4c-7f1e-4d0a-9a39-0c2b4c4f2d11"}"#)
+        .create_async()
+        .await;
+    let url = url::Url::parse(&server.url()).unwrap();
+    let payload = SignupPayload::builder()
+        .credentials(LoginCredentials::email("a@b.c".into(), "p".into()))
+        .code_challenge("c".into())
+        .code_challenge_method(CodeChallengeMethod::S256)
+        .build();
+    drop(
+        ApiClient::new_unauthenticated(&url, "key")
+            .unwrap()
+            .sign_up(payload)
+            .await,
+    );
+    signup.assert_async().await;
+}
+
+#[test]
+fn authorize_url_carries_provider_scopes_and_pkce_challenge() {
+    let base = url::Url::parse("https://abc.supabase.co/auth/v1/").unwrap();
+    let request = AuthorizeRequest::builder()
+        .provider(OAuthProvider::GitHub)
+        .scopes(vec!["repo".into(), "read:user".into()])
+        .redirect_to(url::Url::parse("http://localhost:3000/callback").unwrap())
+        .code_challenge("c".into())
+        .code_challenge_method(CodeChallengeMethod::S256)
+        .build();
+    assert_eq!(
+        request.path(&base).unwrap().as_str(),
+        "https://abc.supabase.co/auth/v1/authorize?provider=github&scopes=repo+read%3Auser\
+         &redirect_to=http%3A%2F%2Flocalhost%3A3000%2Fcallback&code_challenge=c\
+         &code_challenge_method=s256"
+    );
 }

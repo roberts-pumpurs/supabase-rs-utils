@@ -8,10 +8,10 @@ use reqwest::header::InvalidHeaderValue;
 use thiserror::Error;
 use tokio::task::JoinSet;
 
-use crate::auth_client::requests::{GrantType, TokenRequest};
+use crate::auth_client::requests::TokenRequest;
 use crate::auth_client::{ApiClient, Request};
 use crate::error::AuthError;
-use crate::types::{AccessTokenResponseSchema, LoginCredentials, TokenRequestBody};
+use crate::types::{AccessTokenResponseSchema, LoginCredentials, RefreshTokenGrant};
 
 #[derive(Clone, Debug, PartialEq, Eq, typed_builder::TypedBuilder)]
 pub struct SupabaseAuthConfig {
@@ -82,18 +82,9 @@ pub struct JwtRefreshStream {
 
 impl JwtRefreshStream {
     fn login_request(&self) -> Result<Request<AccessTokenResponseSchema>, RefreshStreamError> {
-        let req = self.client.build_request(
-            &TokenRequest::builder()
-                .grant_type(GrantType::Password)
-                .payload(
-                    TokenRequestBody::builder()
-                        .email(self.token_body.email.clone())
-                        .password(self.token_body.password.clone())
-                        .phone(self.token_body.phone.clone())
-                        .build(),
-                )
-                .build(),
-        )?;
+        let req = self
+            .client
+            .build_request(&TokenRequest::Password(self.token_body.clone().into()))?;
         Ok(req)
     }
 
@@ -124,16 +115,7 @@ impl JwtRefreshStream {
             return;
         };
 
-        // Build the TokenRequestBody
-        let token_request_body = TokenRequestBody::builder()
-            .refresh_token(refresh_token)
-            .build();
-
-        // Build the TokenRequest
-        let token_request = TokenRequest::builder()
-            .grant_type(GrantType::RefreshToken)
-            .payload(token_request_body)
-            .build();
+        let token_request = TokenRequest::RefreshToken(RefreshTokenGrant { refresh_token });
 
         // Attempt to build the request
         let Ok(request) = self.client.build_request(&token_request) else {
@@ -270,10 +252,8 @@ mod auth_tests {
             reconnect_interval: Duration::from_secs(1),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials::builder()
-            .email("user@example.com".to_owned())
-            .password("password".to_owned())
-            .build();
+        let token_body =
+            LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -312,10 +292,8 @@ mod auth_tests {
             reconnect_interval: Duration::from_secs(1),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials::builder()
-            .email("user@example.com".to_owned())
-            .password("password".to_owned())
-            .build();
+        let token_body =
+            LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -345,10 +323,8 @@ mod auth_tests {
             reconnect_interval: Duration::from_secs(1),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials::builder()
-            .email("user@example.com".to_owned())
-            .password("password".to_owned())
-            .build();
+        let token_body =
+            LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -377,10 +353,8 @@ mod auth_tests {
             reconnect_interval: Duration::from_millis(20),
         };
         let supabase_auth = JwtStream::new(config);
-        let token_body = LoginCredentials::builder()
-            .email("user@example.com".to_owned())
-            .password("password".to_owned())
-            .build();
+        let token_body =
+            LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
@@ -423,10 +397,8 @@ mod auth_tests {
         let supabase_auth = JwtStream::new(config);
 
         // action
-        let token_body = LoginCredentials::builder()
-            .email("user@example.com".to_owned())
-            .password("password".to_owned())
-            .build();
+        let token_body =
+            LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
         let mut stream = supabase_auth.sign_in(token_body).unwrap();
 
         // Get the initial token

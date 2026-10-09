@@ -32,12 +32,10 @@ async fn main() -> eyre::Result<()> {
         url: credentials.supabase_api_url,
     };
     let supabase_auth = JwtStream::new(config);
-    let mut token_refresh = supabase_auth.sign_in(
-        LoginCredentials::builder()
-            .email(credentials.email)
-            .password(credentials.password)
-            .build(),
-    )?;
+    let mut token_refresh = supabase_auth.sign_in(LoginCredentials::email(
+        credentials.email,
+        credentials.password,
+    ))?;
 
     while let Some(msg) = token_refresh.next().await {
         tracing::debug!(?msg, "reading protocol message");

@@ -30,10 +30,7 @@ async fn main() -> eyre::Result<()> {
         reconnect_interval: Duration::from_secs(3),
         url: credentials.supabase_api_url,
     };
-    let login_credentials = LoginCredentials::builder()
-        .email(credentials.email)
-        .password(credentials.password)
-        .build();
+    let login_credentials = LoginCredentials::email(credentials.email, credentials.password);
 
     // One-off session: sign in, read the user, sign out.
     let anonymous = ApiClient::new_unauthenticated(&config.url, &config.api_key)?;

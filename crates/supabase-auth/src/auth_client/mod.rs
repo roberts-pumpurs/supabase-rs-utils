@@ -3,8 +3,8 @@ use core::marker::PhantomData;
 
 use futures::{Stream, StreamExt as _};
 use requests::{
-    AuthModuleRequest, GrantType, LogoutRequest, OtpRequest, RecoverRequest, SignupRequest,
-    TokenRequest, UserGetRequest, UserUpdateRequest, VerifyPostRequest,
+    AuthModuleRequest, LogoutRequest, OtpRequest, RecoverRequest, SignupRequest, TokenRequest,
+    UserGetRequest, UserUpdateRequest, VerifyPostRequest,
 };
 use reqwest::header;
 use tracing::instrument;
@@ -12,8 +12,8 @@ use tracing::instrument;
 use crate::error::AuthError;
 use crate::jwt_stream::{RefreshStreamError, SupabaseAuthConfig};
 use crate::types::{
-    AccessTokenResponseSchema, ErrorSchema, LoginCredentials, OtpResponse, SignupPayload,
-    SignupResponse, TokenRequestBody, UserSchema,
+    AccessTokenResponseSchema, ErrorSchema, LoginCredentials, OtpResponse, PkceGrant,
+    RefreshTokenGrant, SignupPayload, SignupResponse, UserSchema,
 };
 use crate::{SUPABASE_KEY, jwt_stream};
 
@@ -182,18 +182,8 @@ impl ApiClient {
         &self,
         credentials: &LoginCredentials,
     ) -> Result<AccessTokenResponseSchema, AuthError> {
-        let payload = TokenRequestBody::builder()
-            .email(credentials.email.clone())
-            .phone(credentials.phone.clone())
-            .password(credentials.password.clone())
-            .build();
-        self.send(
-            &TokenRequest::builder()
-                .grant_type(GrantType::Password)
-                .payload(payload)
-                .build(),
-        )
-        .await
+        self.send(&TokenRequest::Password(credentials.clone().into()))
+            .await
     }
 
     /// Exchange a refresh token for a new session (`POST /token?grant_type=refresh_token`).
@@ -204,15 +194,28 @@ impl ApiClient {
         &self,
         refresh_token: &str,
     ) -> Result<AccessTokenResponseSchema, AuthError> {
-        let payload = TokenRequestBody::builder()
-            .refresh_token(refresh_token.to_owned())
-            .build();
-        self.send(
-            &TokenRequest::builder()
-                .grant_type(GrantType::RefreshToken)
-                .payload(payload)
-                .build(),
-        )
+        self.send(&TokenRequest::RefreshToken(RefreshTokenGrant {
+            refresh_token: refresh_token.to_owned(),
+        }))
+        .await
+    }
+
+    /// Exchange the `code` from a PKCE OAuth or magic link redirect for a session
+    /// (`POST /token?grant_type=pkce`). `code_verifier` is the verifier whose challenge started
+    /// the flow.
+    ///
+    /// # Errors
+    /// Returns [`AuthError::Api`] when the code is invalid, expired, or does not match the
+    /// verifier.
+    pub async fn exchange_code_for_session(
+        &self,
+        auth_code: &str,
+        code_verifier: &str,
+    ) -> Result<AccessTokenResponseSchema, AuthError> {
+        self.send(&TokenRequest::Pkce(PkceGrant {
+            auth_code: auth_code.to_owned(),
+            code_verifier: code_verifier.to_owned(),
+        }))
         .await
     }
 

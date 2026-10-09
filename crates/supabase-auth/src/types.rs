@@ -8,87 +8,250 @@ use typed_builder::TypedBuilder;
 pub type UserMetadata = OwnedValue;
 pub type AppMetadata = OwnedValue;
 
-/// Login credentials for authentication.
-#[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
-pub struct LoginCredentials {
-    #[builder(setter(strip_option), default)]
-    pub email: Option<String>,
-    #[builder(setter(strip_option), default)]
-    pub password: Option<String>,
-    #[builder(setter(strip_option), default)]
-    pub phone: Option<String>,
+/// How the user identifies when signing in or signing up with a password.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoginIdentity {
+    /// Sent as `email`.
+    Email(String),
+    /// Sent as `phone`.
+    Phone(String),
 }
 
-/// Token request body for the `/token` endpoint.
-#[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
-pub struct TokenRequestBody {
-    #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub email: Option<String>,
-    #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub phone: Option<String>,
-    #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub password: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub grant_type: Option<String>,
+/// Email or phone and a password. `Debug` hides the password.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct LoginCredentials {
+    #[serde(flatten)]
+    pub identity: LoginIdentity,
+    pub password: String,
+}
+
+impl LoginCredentials {
+    /// Credentials for an email user.
+    #[must_use]
+    pub const fn email(email: String, password: String) -> Self {
+        Self {
+            identity: LoginIdentity::Email(email),
+            password,
+        }
+    }
+
+    /// Credentials for a phone user.
+    #[must_use]
+    pub const fn phone(phone: String, password: String) -> Self {
+        Self {
+            identity: LoginIdentity::Phone(phone),
+            password,
+        }
+    }
+}
+
+impl core::fmt::Debug for LoginCredentials {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("LoginCredentials")
+            .field("identity", &self.identity)
+            .field("password", &"[redacted]")
+            .finish()
+    }
+}
+
+/// Body of `POST /token?grant_type=password`.
+#[derive(Debug, Serialize, Clone, TypedBuilder)]
+pub struct PasswordGrant {
+    #[serde(flatten)]
+    pub credentials: LoginCredentials,
     #[builder(setter(strip_option), default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<GoTrueMetaSecurity>,
-    #[builder(setter(strip_option), default)]
+}
+
+impl From<LoginCredentials> for PasswordGrant {
+    fn from(credentials: LoginCredentials) -> Self {
+        Self {
+            credentials,
+            gotrue_meta_security: None,
+        }
+    }
+}
+
+/// Body of `POST /token?grant_type=refresh_token`.
+#[derive(Debug, Serialize, Clone)]
+pub struct RefreshTokenGrant {
+    pub refresh_token: String,
+}
+
+/// Body of `POST /token?grant_type=pkce`. Exchanges the `code` from the OAuth or magic link
+/// redirect for a session.
+#[derive(Debug, Serialize, Clone)]
+pub struct PkceGrant {
+    /// The `code` query parameter of the redirect.
+    pub auth_code: String,
+    /// The verifier whose challenge started the flow.
+    pub code_verifier: String,
+}
+
+/// How the PKCE `code_challenge` is derived from the code verifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeChallengeMethod {
+    /// `BASE64URL(SHA256(verifier))`. Use this one.
+    S256,
+    /// The challenge is the verifier itself.
+    Plain,
+}
+
+impl CodeChallengeMethod {
+    /// Wire value: `s256` or `plain`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::S256 => "s256",
+            Self::Plain => "plain",
+        }
+    }
+}
+
+/// Provider that issued the ID token for [`IdTokenGrant`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdTokenProvider {
+    Apple,
+    Azure,
+    Facebook,
+    Google,
+    Kakao,
+    Keycloak,
+    Snapchat,
+    VercelMarketplace,
+    /// A custom OIDC provider, by its identifier without the `custom:` prefix.
+    Custom(String),
+}
+
+impl core::fmt::Display for IdTokenProvider {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Apple => "apple",
+            Self::Azure => "azure",
+            Self::Facebook => "facebook",
+            Self::Google => "google",
+            Self::Kakao => "kakao",
+            Self::Keycloak => "keycloak",
+            Self::Snapchat => "snapchat",
+            Self::VercelMarketplace => "vercel_marketplace",
+            Self::Custom(id) => return write!(f, "custom:{id}"),
+        })
+    }
+}
+
+impl Serialize for IdTokenProvider {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+/// External OAuth provider for [`AuthorizeRequest`](crate::auth_client::requests::AuthorizeRequest).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OAuthProvider {
+    Apple,
+    Azure,
+    Bitbucket,
+    Discord,
+    Facebook,
+    Figma,
+    Fly,
+    GitHub,
+    GitLab,
+    Google,
+    Kakao,
+    Keycloak,
+    /// Legacy `LinkedIn` provider. New projects use [`OAuthProvider::LinkedInOidc`].
+    LinkedIn,
+    LinkedInOidc,
+    Notion,
+    /// Legacy Slack provider. New projects use [`OAuthProvider::SlackOidc`].
+    Slack,
+    SlackOidc,
+    Snapchat,
+    Spotify,
+    Twitch,
+    Twitter,
+    VercelMarketplace,
+    WorkOs,
+    #[expect(clippy::min_ident_chars, reason = "the provider is named X")]
+    X,
+    Zoom,
+    /// A custom OAuth or OIDC provider, by its identifier without the `custom:` prefix.
+    Custom(String),
+}
+
+impl core::fmt::Display for OAuthProvider {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Apple => "apple",
+            Self::Azure => "azure",
+            Self::Bitbucket => "bitbucket",
+            Self::Discord => "discord",
+            Self::Facebook => "facebook",
+            Self::Figma => "figma",
+            Self::Fly => "fly",
+            Self::GitHub => "github",
+            Self::GitLab => "gitlab",
+            Self::Google => "google",
+            Self::Kakao => "kakao",
+            Self::Keycloak => "keycloak",
+            Self::LinkedIn => "linkedin",
+            Self::LinkedInOidc => "linkedin_oidc",
+            Self::Notion => "notion",
+            Self::Slack => "slack",
+            Self::SlackOidc => "slack_oidc",
+            Self::Snapchat => "snapchat",
+            Self::Spotify => "spotify",
+            Self::Twitch => "twitch",
+            Self::Twitter => "twitter",
+            Self::VercelMarketplace => "vercel_marketplace",
+            Self::WorkOs => "workos",
+            Self::X => "x",
+            Self::Zoom => "zoom",
+            Self::Custom(id) => return write!(f, "custom:{id}"),
+        })
+    }
+}
+
+/// Body of `POST /token?grant_type=id_token`: sign in with an OIDC ID token from a provider.
+#[derive(Debug, Serialize, Clone, TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
+pub struct IdTokenGrant {
+    #[builder(!default, setter(!strip_option))]
+    pub provider: IdTokenProvider,
+    #[builder(!default, setter(!strip_option))]
+    pub id_token: String,
+    /// Required when the ID token has an `at_hash` claim.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub redirect_to: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_id: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_secret: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id_token: Option<String>,
-    #[builder(setter(strip_option), default)]
+    pub access_token: Option<String>,
+    /// Required when the ID token has a `nonce` claim.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
-    #[builder(setter(strip_option), default)]
+    /// Link the identity to the signed-in user instead of signing in.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub invite_token: Option<String>,
-    #[builder(setter(strip_option), default)]
+    pub link_identity: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_token: Option<String>,
-    #[builder(setter(strip_option), default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_verifier: Option<String>,
+    pub gotrue_meta_security: Option<GoTrueMetaSecurity>,
 }
 
-/// Payload for the `/signup` endpoint.
-#[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
+/// Payload for the `/signup` endpoint. Without `credentials`, Supabase creates an anonymous
+/// user.
+#[derive(Debug, Serialize, Clone, TypedBuilder)]
+#[builder(field_defaults(default, setter(strip_option)))]
 pub struct SignupPayload {
-    #[builder(setter(strip_option), default)]
-    pub email: Option<String>,
-    #[builder(setter(strip_option), default)]
-    pub password: Option<String>,
-    #[builder(setter(strip_option), default)]
-    pub phone: Option<String>,
-    #[builder(setter(strip_option), default)]
+    #[serde(flatten)]
+    pub credentials: Option<LoginCredentials>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<UserMetadata>,
-    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<GoTrueMetaSecurity>,
-    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_challenge: Option<String>,
-    #[builder(setter(strip_option), default)]
-    pub code_challenge_method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_challenge_method: Option<CodeChallengeMethod>,
 }
 
 /// Response from the `/signup` endpoint.
