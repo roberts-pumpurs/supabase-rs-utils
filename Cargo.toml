@@ -77,7 +77,8 @@ assert_is_empty = "allow"
 
 [workspace.dependencies]
 # our cretes
-rp-supabase-mock = { path = "crates/supabase-mock", version = "0.9" }
+# rp-supabase-mock has no entry here: workspace crates use it only as a path-only
+# dev-dependency, so publishing never waits for the mock release.
 rp-supabase-auth = { path = "crates/supabase-auth", version = "0.9" }
 rp-supabase-client = { path = "crates/supabase-client", version = "0.11", default-features = false }
 rp-supabase-storage = { path = "crates/supabase-storage", version = "0.1" }

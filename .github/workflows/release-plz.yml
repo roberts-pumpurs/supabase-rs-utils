@@ -31,6 +31,9 @@ jobs:
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
+    # Open the next release PR only after publishing finishes. Otherwise release-pr reads the
+    # registry mid-publish and proposes the versions that are being released again.
+    needs: release-plz-release
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false

@@ -25,3 +25,15 @@ jobs:
 
       - name: cargo xtask check
         run: cargo xtask check
+
+      # release-plz publishes in normal-dependency order and ignores dev-dependencies.
+      # A versioned dev-dependency on a workspace crate that is bumped in the same release
+      # makes crates.io reject the publish. Path-only dev-dependencies are stripped on publish.
+      - name: Workspace dev-dependencies are path-only
+        run: |
+          bad=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] as $p | $p.dependencies[] | select(.kind == "dev" and .path != null and .req != "*") | "\($p.name) -> \(.name) \(.req)"')
+          if [ -n "$bad" ]; then
+            echo "Remove the version from these workspace dev-dependencies:"
+            echo "$bad"
+            exit 1
+          fi
