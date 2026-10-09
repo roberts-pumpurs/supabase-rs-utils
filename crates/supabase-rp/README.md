@@ -10,7 +10,7 @@ It gives you REST, auth, storage, edge functions, and realtime configuration.
 
 ```toml
 [dependencies]
-supabase-rp = { version = "0.1", features = ["full"] }
+supabase-rp = { version = "0.2", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
