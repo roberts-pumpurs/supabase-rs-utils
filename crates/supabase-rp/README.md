@@ -10,7 +10,7 @@ It gives you REST, auth, storage, edge functions, and realtime configuration.
 
 ```toml
 [dependencies]
-supabase-rp = { version = "0.2", features = ["full"] }
+supabase-rp = { version = "0.3", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -66,10 +66,7 @@ The `apikey` header keeps the project key. The connection pool is shared.
 # async fn run(client: supabase_rp::Client) -> Result<(), Box<dyn std::error::Error>> {
 use supabase_rp::auth::types::LoginCredentials;
 
-let login = LoginCredentials::builder()
-    .email("user@example.com".to_owned())
-    .password("password".to_owned())
-    .build();
+let login = LoginCredentials::email("user@example.com".to_owned(), "password".to_owned());
 let session = client.auth().sign_in_with_password(&login).await?;
 let token = session.access_token.ok_or("sign-in returned no access token")?;
 let user_client = client.with_access_token(&token)?;
