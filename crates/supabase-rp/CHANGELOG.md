@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/supabase-rp-v0.2.0...supabase-rp-v0.3.0) - 2026-10-09
+
+### Other
+
+- *(supabase-rp)* [**breaking**] re-exported auth and realtime move to 0.10
+
 ## [0.2.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/supabase-rp-v0.1.0...supabase-rp-v0.2.0) - 2026-10-09
 
 ### Added
