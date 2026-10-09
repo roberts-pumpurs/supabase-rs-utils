@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-realtime-v0.9.0...rp-supabase-realtime-v0.9.1) - 2026-10-09
+
+### Other
+
+- *(realtime)* remove duplicated 0.1.1 changelog sections that break release notes
+
 ## [0.9.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-realtime-v0.8.2...rp-supabase-realtime-v0.9.0) - 2026-10-08
 
 ### Added

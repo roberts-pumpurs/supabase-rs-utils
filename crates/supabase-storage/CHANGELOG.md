@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-storage-v0.1.0...rp-supabase-storage-v0.1.1) - 2026-10-09
+
+### Added
+
+- *(storage)* add StorageClient::with_project_url to change the base URL and keep headers
+
 ## [0.1.0](https://github.com/roberts-pumpurs/supabase-rs-rp/releases/tag/rp-supabase-storage-v0.1.0) - 2026-10-08
 
 ### Added

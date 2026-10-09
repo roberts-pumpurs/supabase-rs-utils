@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/supabase-rp-v0.1.0...supabase-rp-v0.2.0) - 2026-10-09
+
+### Added
+
+- *(supabase-rp)* [**breaking**] typed enables only the schema runtime, and add typed-client, test-util, and with_storage_url
+
+### Other
+
+- *(supabase-rp)* pin the upcoming 0.2 release
+
 ## [0.1.0](https://github.com/roberts-pumpurs/supabase-rs-rp/releases/tag/supabase-rp-v0.1.0) - 2026-10-08
 
 ### Added

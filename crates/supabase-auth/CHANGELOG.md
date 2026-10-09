@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-auth-v0.9.0...rp-supabase-auth-v0.9.1) - 2026-10-09
+
+### Fixed
+
+- *(auth)* omit unset TokenRequestBody fields instead of sending null
+- *(auth)* stop logging bodies, tokens, and URL queries, and never log at error level
+
+### Other
+
+- *(auth)* use a path-only mock dev-dependency so publishing auth does not wait on the mock crate
+
 ## [0.9.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-auth-v0.8.2...rp-supabase-auth-v0.9.0) - 2026-10-08
 
 ### Added
