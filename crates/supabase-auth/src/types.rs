@@ -23,36 +23,52 @@ pub struct LoginCredentials {
 #[derive(Debug, Serialize, Deserialize, Clone, TypedBuilder)]
 pub struct TokenRequestBody {
     #[builder(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     #[builder(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
     #[builder(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub grant_type: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<GoTrueMetaSecurity>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub redirect_to: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_secret: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id_token: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub invite_token: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_token: Option<String>,
     #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_verifier: Option<String>,
 }
 

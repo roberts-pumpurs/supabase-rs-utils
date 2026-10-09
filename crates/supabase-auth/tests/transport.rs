@@ -280,3 +280,38 @@ async fn default_client_follows_same_origin_redirect() {
     redirect.assert_async().await;
     target.assert_async().await;
 }
+
+#[tokio::test]
+async fn refresh_token_body_omits_unset_fields() {
+    let mut server = mockito::Server::new_async().await;
+    let refresh = server
+        .mock("POST", "/auth/v1/token")
+        .match_query(Matcher::UrlEncoded(
+            "grant_type".into(),
+            "refresh_token".into(),
+        ))
+        .match_body(Matcher::JsonString(r#"{"refresh_token":"r"}"#.into()))
+        .with_body("{}")
+        .create_async()
+        .await;
+    let url = url::Url::parse(&server.url()).unwrap();
+    let request = TokenRequest::builder()
+        .grant_type(GrantType::RefreshToken)
+        .payload(
+            TokenRequestBody::builder()
+                .refresh_token("r".into())
+                .build(),
+        )
+        .build();
+    ApiClient::new_unauthenticated(&url, "key")
+        .unwrap()
+        .build_request(&request)
+        .unwrap()
+        .execute()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    refresh.assert_async().await;
+}
