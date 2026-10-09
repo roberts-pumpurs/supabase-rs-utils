@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-storage-v0.1.2...rp-supabase-storage-v0.2.0) - 2026-10-09
+
+### Added
+
+- *(storage)* [**breaking**] decode the error body code as StorageErrorCode and make message optional
+
 ## [0.1.2](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-storage-v0.1.1...rp-supabase-storage-v0.1.2) - 2026-10-09
 
 ### Added
