@@ -49,6 +49,34 @@ pub enum StorageError {
     InvalidHeader(#[from] reqwest::header::InvalidHeaderValue),
 }
 
+impl StorageError {
+    /// Status the Storage API reports for an [`StorageError::Api`] error, `None` for other
+    /// errors.
+    ///
+    /// The object routes answer most errors with HTTP `400` and put the real status in the
+    /// body's `statusCode`, for example `"404"` for a missing object and `"403"` when row level
+    /// security denies access. This returns the body status when it is a valid status code and
+    /// the HTTP status otherwise.
+    #[must_use]
+    pub fn api_status(&self) -> Option<StatusCode> {
+        let Self::Api { status, body } = self else {
+            return None;
+        };
+        let reported = match body {
+            ApiErrorBody::Storage(StorageErrorBody {
+                status_code: Some(code),
+                ..
+            }) => code.parse::<u16>().ok(),
+            ApiErrorBody::Storage(_) | ApiErrorBody::Raw(_) => None,
+        };
+        Some(
+            reported
+                .and_then(|code| StatusCode::from_u16(code).ok())
+                .unwrap_or(*status),
+        )
+    }
+}
+
 /// Reason for [`StorageError::InvalidPath`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum PathError {

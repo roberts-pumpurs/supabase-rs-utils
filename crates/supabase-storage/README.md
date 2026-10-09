@@ -123,6 +123,32 @@ match storage.get_bucket("missing").await {
 # }
 ```
 
+Most object errors arrive as HTTP `400` with the real status in the body's `statusCode`.
+`StorageError::api_status()` returns that status, or the HTTP status when the body has none.
+
+`Bucket::remove` is the bulk endpoint. It skips missing paths and paths that row level security
+hides, without an error. `Bucket::remove_object` deletes one object and fails when nothing is
+deleted: `api_status()` is `404` for a missing object and `403` for a denied delete.
+
+`Bucket::download` reads the whole body into memory. `Bucket::download_stream` returns after the
+headers arrive. Read the body with `chunk()` or `into_stream()`, and stop when the byte count
+passes your limit:
+
+```rust,no_run
+# use rp_supabase_storage::{Bucket, StorageError};
+# async fn run(bucket: Bucket<'_>, limit: usize) -> Result<Option<Vec<u8>>, StorageError> {
+let mut download = bucket.download_stream("blobs/1.bin").await?;
+let mut body = Vec::new();
+while let Some(chunk) = download.chunk().await? {
+    if body.len() + chunk.len() > limit {
+        return Ok(None);
+    }
+    body.extend_from_slice(&chunk);
+}
+# Ok(Some(body))
+# }
+```
+
 ## Limits
 
 - No resumable (TUS) uploads. Each upload sends the whole body in one request.

@@ -119,15 +119,27 @@ impl<'a> Bucket<'a> {
         StorageClient::json(request).await
     }
 
-    /// Downloads an object.
+    /// Downloads an object into memory. Use [`Bucket::download_stream`] for large objects or
+    /// to enforce a size limit while reading.
     ///
     /// # Errors
     ///
     /// Returns an error on an invalid path, transport failure, or non-success status.
     pub async fn download(&self, path: &str) -> Result<Bytes, StorageError> {
+        Ok(self.download_stream(path).await?.response.bytes().await?)
+    }
+
+    /// Starts a download and returns after the response headers arrive. Read the body in
+    /// chunks with [`ObjectDownload::chunk`] or [`ObjectDownload::into_stream`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on an invalid path, transport failure, or non-success status. A missing
+    /// object is an error here, before any body is read.
+    pub async fn download_stream(&self, path: &str) -> Result<ObjectDownload, StorageError> {
         let url = self.object_url(&["object"], path)?;
         let response = StorageClient::send(self.client.request(Method::GET, url)).await?;
-        Ok(response.bytes().await?)
+        Ok(ObjectDownload { response })
     }
 
     /// Lists objects and folders directly under `prefix` (use `""` for the bucket root).
@@ -146,7 +158,9 @@ impl<'a> Bucket<'a> {
         StorageClient::json(self.client.request(Method::POST, url).json(&body)).await
     }
 
-    /// Deletes objects and returns the deleted entries. Missing paths are skipped by the API.
+    /// Deletes objects and returns the deleted entries. The API skips missing paths and paths
+    /// that row level security hides, without an error. Use [`Bucket::remove_object`] to tell
+    /// these cases apart.
     ///
     /// # Errors
     ///
@@ -159,6 +173,21 @@ impl<'a> Bucket<'a> {
         let url = self.client.url(["object", path::bucket(self.id)?]);
         let body = RemoveBody { prefixes: paths };
         StorageClient::json(self.client.request(Method::DELETE, url).json(&body)).await
+    }
+
+    /// Deletes one object (`DELETE /object/<bucket>/<path>`).
+    ///
+    /// Unlike [`Bucket::remove`], this fails when nothing is deleted.
+    /// [`StorageError::api_status`] is `404 Not Found` for a missing object and `403 Forbidden`
+    /// when row level security denies the delete.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on an invalid path, transport failure, or non-success status.
+    pub async fn remove_object(&self, path: &str) -> Result<(), StorageError> {
+        let url = self.object_url(&["object"], path)?;
+        StorageClient::send(self.client.request(Method::DELETE, url)).await?;
+        Ok(())
     }
 
     /// Moves (renames) an object inside this bucket.
@@ -302,5 +331,38 @@ impl<'a> Bucket<'a> {
                 .chain(core::iter::once(bucket))
                 .chain(segments),
         ))
+    }
+}
+
+/// Body of an object download that is read in chunks. Create it with
+/// [`Bucket::download_stream`]. The status is already checked, so only transport errors
+/// remain.
+#[derive(Debug)]
+pub struct ObjectDownload {
+    response: reqwest::Response,
+}
+
+impl ObjectDownload {
+    /// Body length from the `Content-Length` header, if the server sent one. Use it to reject
+    /// an object that is too large before reading. It is not a limit: count the bytes you read.
+    #[must_use]
+    pub fn content_length(&self) -> Option<u64> {
+        self.response.content_length()
+    }
+
+    /// Reads the next chunk of the body. Returns `None` at the end.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on transport failure.
+    pub async fn chunk(&mut self) -> Result<Option<Bytes>, StorageError> {
+        Ok(self.response.chunk().await?)
+    }
+
+    /// Converts the body into a stream of chunks, for example to forward it as an HTTP body.
+    pub fn into_stream(
+        self,
+    ) -> impl futures_util::Stream<Item = Result<Bytes, StorageError>> + Send + 'static {
+        futures_util::TryStreamExt::map_err(self.response.bytes_stream(), StorageError::from)
     }
 }

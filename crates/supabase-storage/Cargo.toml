@@ -19,6 +19,7 @@ name = "rp_supabase_storage"
 [dependencies]
 bytes.workspace = true
 chrono.workspace = true
+futures-util.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

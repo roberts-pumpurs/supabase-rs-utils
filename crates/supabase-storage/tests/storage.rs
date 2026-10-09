@@ -243,6 +243,56 @@ async fn download_returns_bytes() {
 }
 
 #[tokio::test]
+async fn download_stream_reads_chunks_and_reports_length() {
+    let (mut server, client) = setup().await;
+    let body = vec![7_u8; 64 * 1024];
+    let mock = authed(server.mock("GET", "/storage/v1/object/b/big.bin"), KEY)
+        .with_body(&body)
+        .expect(2)
+        .create_async()
+        .await;
+    let bucket = client.from("b");
+
+    let mut download = bucket.download_stream("big.bin").await.unwrap();
+    assert_eq!(download.content_length(), Some(64 * 1024));
+    let mut read = Vec::new();
+    while let Some(chunk) = download.chunk().await.unwrap() {
+        read.extend_from_slice(&chunk);
+    }
+    assert_eq!(read, body);
+
+    let chunks: Vec<_> = futures_util::TryStreamExt::try_collect(
+        bucket
+            .download_stream("big.bin")
+            .await
+            .unwrap()
+            .into_stream(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(chunks.concat(), body);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn download_stream_fails_on_missing_object_before_reading() {
+    let (mut server, client) = setup().await;
+    let mock = server
+        .mock("GET", "/storage/v1/object/b/gone.bin")
+        .with_status(400)
+        .with_body(r#"{"statusCode":"404","error":"not_found","message":"Object not found"}"#)
+        .create_async()
+        .await;
+    let error = client
+        .from("b")
+        .download_stream("gone.bin")
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert_eq!(error.api_status(), Some(StatusCode::NOT_FOUND));
+}
+
+#[tokio::test]
 async fn list_sends_prefix_and_options() {
     let (mut server, client) = setup().await;
     let mock = server
@@ -330,6 +380,43 @@ async fn remove_move_copy_requests() {
     remove.assert_async().await;
     moved.assert_async().await;
     copied.assert_async().await;
+}
+
+/// The API answers object errors with HTTP 400 and the real status in the body, as
+/// supabase/storage does for a missing object and for a delete that RLS denies.
+#[tokio::test]
+async fn remove_object_tells_deleted_missing_and_denied_apart() {
+    let (mut server, client) = setup().await;
+    let deleted = authed(
+        server.mock("DELETE", "/storage/v1/object/b/d/a%20b.txt"),
+        KEY,
+    )
+    .with_body(r#"{"message":"Successfully deleted"}"#)
+    .create_async()
+    .await;
+    let missing = server
+        .mock("DELETE", "/storage/v1/object/b/missing.txt")
+        .with_status(400)
+        .with_body(r#"{"statusCode":"404","error":"not_found","message":"Object not found"}"#)
+        .create_async()
+        .await;
+    let denied = server
+        .mock("DELETE", "/storage/v1/object/b/private.txt")
+        .with_status(400)
+        .with_body(r#"{"statusCode":"403","error":"Unauthorized","message":"Access denied"}"#)
+        .create_async()
+        .await;
+    let bucket = client.from("b");
+
+    bucket.remove_object("d/a b.txt").await.unwrap();
+    let missing_error = bucket.remove_object("missing.txt").await.unwrap_err();
+    let denied_error = bucket.remove_object("private.txt").await.unwrap_err();
+
+    deleted.assert_async().await;
+    missing.assert_async().await;
+    denied.assert_async().await;
+    assert_eq!(missing_error.api_status(), Some(StatusCode::NOT_FOUND));
+    assert_eq!(denied_error.api_status(), Some(StatusCode::FORBIDDEN));
 }
 
 #[tokio::test]
@@ -557,6 +644,7 @@ async fn api_error_non_json_keeps_text() {
         .await;
     let error = client.from("b").download("f").await.unwrap_err();
     mock.assert_async().await;
+    assert_eq!(error.api_status(), Some(StatusCode::BAD_GATEWAY));
     let StorageError::Api { status, body } = error else {
         panic!("unexpected error: {error:?}");
     };

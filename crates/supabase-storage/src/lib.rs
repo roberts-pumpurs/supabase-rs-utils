@@ -5,7 +5,7 @@ mod error;
 mod path;
 mod types;
 
-pub use bucket::Bucket;
+pub use bucket::{Bucket, ObjectDownload};
 pub use client::StorageClient;
 pub use error::{ApiErrorBody, PathError, StorageError, StorageErrorBody};
 pub use types::{

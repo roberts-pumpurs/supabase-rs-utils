@@ -2140,6 +2140,7 @@ version = "0.1.1"
 dependencies = [
  "bytes",
  "chrono",
+ "futures-util",
  "mockito",
  "reqwest",
  "serde",
