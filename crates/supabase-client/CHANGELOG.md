@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-client-v0.11.0...rp-supabase-client-v0.12.0) - 2026-10-09
+
+### Other
+
+- *(client)* [**breaking**] re-exported rp-supabase-auth moves to 0.10 with typed credentials
+
 ## [0.11.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-client-v0.10.0...rp-supabase-client-v0.11.0) - 2026-10-08
 
 ### Fixed

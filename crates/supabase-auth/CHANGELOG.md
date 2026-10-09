@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-auth-v0.9.1...rp-supabase-auth-v0.10.0) - 2026-10-09
+
+### Added
+
+- *(auth)* [**breaking**] group PKCE challenge fields and hide grant tokens in Debug
+- *(auth)* [**breaking**] typed token grants with PKCE code exchange
+
 ## [0.9.1](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-auth-v0.9.0...rp-supabase-auth-v0.9.1) - 2026-10-09
 
 ### Fixed

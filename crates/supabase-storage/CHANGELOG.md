@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-storage-v0.1.1...rp-supabase-storage-v0.1.2) - 2026-10-09
+
+### Added
+
+- *(storage)* add streaming downloads, single-object delete, and StorageError::api_status
+
 ## [0.1.1](https://github.com/roberts-pumpurs/supabase-rs-rp/compare/rp-supabase-storage-v0.1.0...rp-supabase-storage-v0.1.1) - 2026-10-09
 
 ### Added
