@@ -73,10 +73,7 @@ impl StorageClient {
         api_key: &str,
         http: reqwest::Client,
     ) -> Result<Self, StorageError> {
-        let base = project_url.join("storage/v1")?;
-        if base.cannot_be_a_base() {
-            return Err(StorageError::InvalidBaseUrl);
-        }
+        let base = storage_base(project_url)?;
         let mut headers = HeaderMap::new();
         headers.insert("apikey", sensitive(api_key)?);
         if !(api_key.starts_with("sb_publishable_") || api_key.starts_with("sb_secret_")) {
@@ -100,6 +97,20 @@ impl StorageClient {
         next.headers
             .insert(AUTHORIZATION, sensitive(&format!("Bearer {token}"))?);
         Ok(next)
+    }
+
+    /// Returns a copy that sends requests to the project at `project_url` (joined with
+    /// `storage/v1`). All headers, including any access token, stay unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the URL cannot be a base.
+    pub fn with_project_url(&self, project_url: &Url) -> Result<Self, StorageError> {
+        Ok(Self {
+            http: self.http.clone(),
+            base: storage_base(project_url)?,
+            headers: self.headers.clone(),
+        })
     }
 
     /// Returns a handle for object operations in `bucket`. No request is sent.
@@ -223,6 +234,14 @@ impl StorageClient {
         let bytes = Self::send(request).await?.bytes().await?;
         Ok(serde_json::from_slice(&bytes)?)
     }
+}
+
+fn storage_base(project_url: &Url) -> Result<Url, StorageError> {
+    let base = project_url.join("storage/v1")?;
+    if base.cannot_be_a_base() {
+        return Err(StorageError::InvalidBaseUrl);
+    }
+    Ok(base)
 }
 
 fn sensitive(value: &str) -> Result<HeaderValue, StorageError> {
