@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "xtask", "examples"]
 
 [workspace.package]
-version = "0.9.0"
+version = "0.9.1"
 authors = [
   "Roberts Pumpurs <roberts@pumpurlabs.com>",
 ]
@@ -83,7 +83,7 @@ rp-supabase-auth = { path = "crates/supabase-auth", version = "0.9" }
 rp-supabase-client = { path = "crates/supabase-client", version = "0.11", default-features = false }
 rp-supabase-storage = { path = "crates/supabase-storage", version = "0.1" }
 rp-supabase-functions = { path = "crates/supabase-functions", version = "0.1" }
-supabase-rp = { path = "crates/supabase-rp", version = "0.1" }
+supabase-rp = { path = "crates/supabase-rp", version = "0.2" }
 rp-postgrest-error = { path = "crates/postgrest-error", version = "0.8" }
 rp-supabase-realtime = { path = "crates/supabase-realtime", version = "0.9" }
 rp-supabase-codegen = { path = "crates/supabase-codegen", version = "0.11" }
