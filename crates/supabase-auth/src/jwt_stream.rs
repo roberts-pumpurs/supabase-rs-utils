@@ -38,7 +38,7 @@ impl JwtStream {
     ///
     /// This function will return an error if the provided supabase url cannot be joined with the
     /// expected suffix or if the client cannot be created.
-    #[tracing::instrument(skip_all, err)]
+    #[tracing::instrument(skip_all)]
     pub fn sign_in(&self, params: LoginCredentials) -> Result<JwtRefreshStream, AuthError> {
         self.sign_in_with_client(params, crate::auth_client::default_client()?)
     }
@@ -98,12 +98,9 @@ impl JwtRefreshStream {
     }
 
     fn spawn_login_task(&mut self, delay: Option<core::time::Duration>) {
-        let request = match self.login_request() {
-            Ok(req) => req,
-            Err(err) => {
-                tracing::error!(?err, "Failed to build login request");
-                return;
-            }
+        let Ok(request) = self.login_request() else {
+            tracing::warn!("Failed to build login request");
+            return;
         };
         let task = async move {
             if let Some(duration) = delay {
@@ -163,46 +160,39 @@ impl Stream for JwtRefreshStream {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.background_tasks.poll_join_next(cx) {
             Poll::Ready(Some(Ok(item))) => {
-                match &item {
-                    Ok(access_token) => {
-                        // Reset reconnect attempts on success
-                        self.current_reconnect_attempts = 0;
-                        // Spawn a task to refresh the token before it expires
-                        self.spawn_refresh_task(access_token);
-                        cx.waker().wake_by_ref();
+                if let Ok(access_token) = &item {
+                    // Reset reconnect attempts on success
+                    self.current_reconnect_attempts = 0;
+                    // Spawn a task to refresh the token before it expires
+                    self.spawn_refresh_task(access_token);
+                } else {
+                    if self.current_reconnect_attempts >= self.max_reconnect_attempts {
+                        tracing::warn!("Max reconnect attempts exceeded; terminating stream");
+                        return Poll::Ready(None);
                     }
-                    Err(err) => {
-                        if self.current_reconnect_attempts >= self.max_reconnect_attempts {
-                            tracing::error!(
-                                ?err,
-                                "Max reconnect attempts exceeded; terminating stream"
-                            );
-                            return Poll::Ready(None);
-                        }
-                        tracing::warn!(
-                            attempts = self.current_reconnect_attempts,
-                            max_attempts = self.max_reconnect_attempts,
-                            "Login failed; retrying"
-                        );
-                        self.current_reconnect_attempts =
-                            self.current_reconnect_attempts.saturating_add(1);
-                        // Spawn a login task with a delay
-                        let duration = self.reconnect_interval;
-                        self.spawn_login_task(Some(duration));
-                        cx.waker().wake_by_ref();
-                    }
+                    tracing::warn!(
+                        attempts = self.current_reconnect_attempts,
+                        max_attempts = self.max_reconnect_attempts,
+                        "Login failed; retrying"
+                    );
+                    self.current_reconnect_attempts =
+                        self.current_reconnect_attempts.saturating_add(1);
+                    // Spawn a login task with a delay
+                    let duration = self.reconnect_interval;
+                    self.spawn_login_task(Some(duration));
                 }
+                cx.waker().wake_by_ref();
                 Poll::Ready(Some(item))
             }
-            Poll::Ready(Some(Err(join_err))) => {
-                tracing::error!(?join_err, "Task panicked; terminating stream");
+            Poll::Ready(Some(Err(_))) => {
+                tracing::warn!("Task panicked; terminating stream");
                 cx.waker().wake_by_ref();
                 Poll::Ready(None)
             }
             Poll::Ready(None) => {
                 // No tasks left; start the initial login attempt
                 if self.current_reconnect_attempts >= self.max_reconnect_attempts {
-                    tracing::error!("Max reconnect attempts exceeded; terminating stream");
+                    tracing::warn!("Max reconnect attempts exceeded; terminating stream");
                     return Poll::Ready(None);
                 }
                 tracing::debug!("No tasks running; attempting initial login");

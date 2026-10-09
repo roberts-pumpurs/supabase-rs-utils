@@ -283,15 +283,15 @@ impl<T> Request<T> {
     /// # Errors
     ///
     /// Returns an error if the request fails.
-    #[instrument(name = "execute_request", skip(self))]
+    #[instrument(name = "execute_request", skip(self), fields(method, path))]
     pub async fn execute(self) -> Result<Response<T>, AuthError> {
         let (client, request) = self.builder.build_split();
         let request = request?;
 
-        // Capture the current span
+        // Record the method and path only. The query can contain tokens.
         let span = tracing::Span::current();
         span.record("method", request.method().as_str());
-        span.record("url", request.url().as_str());
+        span.record("path", request.url().path());
 
         // execute the request
         let response = client.execute(request).await?;
@@ -319,7 +319,7 @@ impl<T> Response<T> {
     ///
     /// Returns [`AuthError::Api`] for a non-success status, or a transport error if the body
     /// cannot be read.
-    #[instrument(name = "response_ok", skip(self), err, parent = &self.span)]
+    #[instrument(name = "response_ok", skip(self), parent = &self.span)]
     pub async fn ok(self) -> Result<(), AuthError> {
         let status = self.raw.status();
         if status.is_success() {
@@ -335,7 +335,7 @@ impl<T> Response<T> {
     ///
     /// Returns [`AuthError::Api`] for a non-success status, or an error if reading or decoding
     /// the body fails.
-    #[instrument(name = "parse_response_json", skip(self), err, parent = &self.span)]
+    #[instrument(name = "parse_response_json", skip(self), parent = &self.span)]
     pub async fn json(self) -> Result<T, AuthError>
     where
         T: serde::de::DeserializeOwned,
@@ -345,15 +345,14 @@ impl<T> Response<T> {
         if !status.is_success() {
             return Err(api_error(bytes, status));
         }
-        let json = String::from_utf8_lossy(bytes.as_ref());
-        tracing::debug!(response_body = %json, "Response JSON");
+        tracing::debug!(status = %status, "Decoding response JSON");
         Ok(simd_json::from_slice::<T>(bytes.as_mut())?)
     }
 }
 
 fn api_error(mut bytes: Vec<u8>, status: reqwest::StatusCode) -> AuthError {
     let body = String::from_utf8_lossy(bytes.as_ref()).into_owned();
-    tracing::error!(status = %status, body = %body, "Failed to execute request");
+    tracing::debug!(status = %status, "Request returned an error status");
 
     let error = simd_json::from_slice::<ErrorSchema>(bytes.as_mut()).unwrap_or_else(|_| {
         let schema = ErrorSchema::builder().build();
