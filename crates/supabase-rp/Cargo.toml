@@ -24,7 +24,9 @@ realtime = ["dep:rp-supabase-realtime"]
 storage = ["dep:rp-supabase-storage"]
 functions = ["dep:rp-supabase-functions"]
 typed = ["rest", "dep:rp-supabase-client"]
-full = ["rest", "auth", "realtime", "storage", "functions", "typed"]
+typed-client = ["typed", "rp-supabase-client/client"]
+test-util = ["rest", "rp-postgrest/test-util"]
+full = ["rest", "auth", "realtime", "storage", "functions", "typed", "typed-client"]
 
 [dependencies]
 reqwest.workspace = true

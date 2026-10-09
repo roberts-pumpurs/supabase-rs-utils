@@ -16,7 +16,7 @@ tokio = { workspace = true, features = ["full"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 simd-json.workspace = true
-rp-supabase-client.workspace = true
+rp-supabase-client = { workspace = true, features = ["client"] }
 xshell.workspace = true
 eyre.workspace = true
 url.workspace = true

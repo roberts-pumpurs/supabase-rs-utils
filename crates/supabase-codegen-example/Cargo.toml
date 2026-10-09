@@ -11,7 +11,7 @@ publish = false
 ignored = ["chrono", "typed-builder"]
 
 [dependencies]
-rp-supabase-client.workspace = true
+rp-supabase-client = { workspace = true, features = ["client"] }
 serde.workspace = true
 serde_json = { workspace = true, features = ["arbitrary_precision"] }
 chrono.workspace = true

@@ -59,7 +59,7 @@ The typed path moves these checks to compile time.
 [rp-supabase-codegen](./crates/supabase-codegen/README.md) reads a schema snapshot in `build.rs` and generates Rust types for your tables, columns, and relations.
 [rp-supabase-client](./crates/supabase-client/README.md) runs queries on these types: `select!` builds a projection, and filters and ordering take typed columns.
 The [codegen example](./crates/supabase-codegen-example/README.md) builds from a committed snapshot without a database.
-Enable the `typed` feature of `supabase-rp` to get `rp-supabase-client` as `supabase_rp::typed`.
+Enable the `typed` feature of `supabase-rp` to get the `rp-supabase-client` schema runtime as `supabase_rp::typed`. Enable `typed-client` for its client API too.
 
 ## Crates
 

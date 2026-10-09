@@ -7,6 +7,11 @@ pub use rp_postgrest as postgrest;
 #[cfg(feature = "auth")]
 pub use rp_supabase_auth as auth;
 /// Typed runtime for generated schemas (`rp-supabase-client`).
+///
+/// The `typed` feature enables only the schema runtime (`typed::schema`). Generate code with
+/// the codegen `runtime_path` set to `::supabase_rp::typed::schema`. The `typed-client`
+/// feature also enables the client API of `rp-supabase-client` (authentication and response
+/// decoding), which turns on `serde_json/arbitrary_precision`.
 #[cfg(feature = "typed")]
 pub use rp_supabase_client as typed;
 /// Edge Functions client (`rp-supabase-functions`).
@@ -209,6 +214,24 @@ impl Client {
             #[cfg(feature = "functions")]
             functions: self.functions.with_access_token(token)?,
         })
+    }
+
+    /// Returns a client that sends storage requests to the project at `project_url`, for
+    /// example `https://abc.supabase.co/`. REST, auth, and functions keep the URL from
+    /// [`Client::new`].
+    ///
+    /// Use it when a custom domain proxies REST and auth but not storage.
+    /// The storage client keeps its headers, so an access token from
+    /// [`Client::with_access_token`] stays. Call order does not matter.
+    ///
+    /// # Errors
+    /// Returns [`Error::UrlParse`] or [`Error::InvalidProjectUrl`] for a bad URL.
+    #[cfg(feature = "storage")]
+    pub fn with_storage_url(&self, project_url: &str) -> Result<Self, Error> {
+        let storage_url = parse_project_url(project_url)?;
+        let mut next = self.clone();
+        next.storage = self.storage.with_project_url(&storage_url)?;
+        Ok(next)
     }
 
     /// Project base URL.

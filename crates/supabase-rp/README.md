@@ -22,8 +22,10 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 | `storage`   | no      | `Client::storage` (buckets, objects, signed URLs)       |
 | `functions` | no      | `Client::functions` (edge functions)                    |
 | `realtime`  | no      | `Client::realtime_config` (websocket channels)          |
-| `typed`     | no      | Re-exports `rp-supabase-client` as `supabase_rp::typed` |
-| `full`      | no      | All of the above                                        |
+| `typed`     | no      | Re-exports `rp-supabase-client` as `supabase_rp::typed` (schema runtime only) |
+| `typed-client` | no   | `typed` plus the client API of `rp-supabase-client` (enables `serde_json/arbitrary_precision`) |
+| `test-util` | no      | `rp-postgrest/test-util`, for example `postgrest::Error::from_response` in tests |
+| `full`      | no      | All of the above except `test-util`                     |
 
 Each enabled crate is re-exported as a module (see [Module map](#module-map)).
 You need only this one dependency.
@@ -100,6 +102,22 @@ println!("{url}");
 # }
 ```
 
+### Separate storage URL
+
+A custom domain can proxy REST and auth but not storage.
+Call `with_storage_url` with the storage project root URL. Storage still joins `storage/v1`.
+REST, auth, and functions keep the URL from `Client::new`.
+An access token from `with_access_token` stays, in either call order.
+
+```rust,no_run
+# #[cfg(feature = "storage")]
+# fn run() -> Result<(), supabase_rp::Error> {
+let client = supabase_rp::Client::new("https://api.example.com/", "your-anon-key")?
+    .with_storage_url("https://abc.supabase.co/")?;
+# Ok(())
+# }
+```
+
 ## Edge functions
 
 Requires the `functions` feature.
@@ -171,6 +189,10 @@ See [rp-supabase-realtime](https://docs.rs/rp-supabase-realtime) for broadcast a
 The `typed` feature re-exports [rp-supabase-client](https://docs.rs/rp-supabase-client).
 Generate Rust types for your tables with [rp-supabase-codegen](https://docs.rs/rp-supabase-codegen),
 then run typed queries against `client.rest()`. It is the same `Postgrest` the typed runtime takes.
+
+`typed` enables only the schema runtime. Set the codegen `runtime_path` to
+`::supabase_rp::typed::schema`, and you need no direct `rp-supabase-client` dependency.
+Enable `typed-client` for the client API (authentication helpers and response decoding).
 
 ## Module map
 
