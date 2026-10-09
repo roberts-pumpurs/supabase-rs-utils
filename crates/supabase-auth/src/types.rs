@@ -74,20 +74,46 @@ impl From<LoginCredentials> for PasswordGrant {
     }
 }
 
-/// Body of `POST /token?grant_type=refresh_token`.
-#[derive(Debug, Serialize, Clone)]
+/// Body of `POST /token?grant_type=refresh_token`. `Debug` hides the token.
+#[derive(Serialize, Clone)]
 pub struct RefreshTokenGrant {
     pub refresh_token: String,
 }
 
+impl core::fmt::Debug for RefreshTokenGrant {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RefreshTokenGrant")
+            .field("refresh_token", &"[redacted]")
+            .finish()
+    }
+}
+
 /// Body of `POST /token?grant_type=pkce`. Exchanges the `code` from the OAuth or magic link
-/// redirect for a session.
-#[derive(Debug, Serialize, Clone)]
+/// redirect for a session. `Debug` hides both values.
+#[derive(Serialize, Clone)]
 pub struct PkceGrant {
     /// The `code` query parameter of the redirect.
     pub auth_code: String,
     /// The verifier whose challenge started the flow.
     pub code_verifier: String,
+}
+
+impl core::fmt::Debug for PkceGrant {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PkceGrant")
+            .field("auth_code", &"[redacted]")
+            .field("code_verifier", &"[redacted]")
+            .finish()
+    }
+}
+
+/// PKCE challenge that starts a flow (sign-up, OTP, recovery, SSO, or OAuth). Keep the
+/// verifier, and pass it with the returned `code` to
+/// [`ApiClient::exchange_code_for_session`](crate::auth_client::ApiClient::exchange_code_for_session).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PkceChallenge {
+    pub code_challenge: String,
+    pub code_challenge_method: CodeChallengeMethod,
 }
 
 /// How the PKCE `code_challenge` is derived from the code verifier.
@@ -217,14 +243,15 @@ impl core::fmt::Display for OAuthProvider {
 }
 
 /// Body of `POST /token?grant_type=id_token`: sign in with an OIDC ID token from a provider.
-#[derive(Debug, Serialize, Clone, TypedBuilder)]
+/// `Debug` hides the tokens.
+#[derive(Serialize, Clone, TypedBuilder)]
 #[builder(field_defaults(default, setter(strip_option)))]
 pub struct IdTokenGrant {
     #[builder(!default, setter(!strip_option))]
     pub provider: IdTokenProvider,
     #[builder(!default, setter(!strip_option))]
     pub id_token: String,
-    /// Required when the ID token has an `at_hash` claim.
+    /// Supabase Auth checks it against the ID token's `at_hash` claim when both are present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
     /// Required when the ID token has a `nonce` claim.
@@ -235,6 +262,22 @@ pub struct IdTokenGrant {
     pub link_identity: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<GoTrueMetaSecurity>,
+}
+
+impl core::fmt::Debug for IdTokenGrant {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("IdTokenGrant")
+            .field("provider", &self.provider)
+            .field("id_token", &"[redacted]")
+            .field(
+                "access_token",
+                &self.access_token.as_ref().map(|_| "[redacted]"),
+            )
+            .field("nonce", &self.nonce)
+            .field("link_identity", &self.link_identity)
+            .field("gotrue_meta_security", &self.gotrue_meta_security)
+            .finish()
+    }
 }
 
 /// Payload for the `/signup` endpoint. Without `credentials`, Supabase creates an anonymous
@@ -248,10 +291,8 @@ pub struct SignupPayload {
     pub data: Option<UserMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<GoTrueMetaSecurity>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge_method: Option<CodeChallengeMethod>,
+    #[serde(flatten)]
+    pub pkce: Option<PkceChallenge>,
 }
 
 /// Response from the `/signup` endpoint.

@@ -194,8 +194,8 @@ pub struct AuthorizeRequest {
     pub scopes: Vec<String>,
     pub invite_token: Option<String>,
     pub redirect_to: Option<Url>,
-    pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<types::CodeChallengeMethod>,
+    /// Set it to get a `code` instead of tokens in the redirect.
+    pub pkce: Option<types::PkceChallenge>,
 }
 
 impl AuthModuleRequest for AuthorizeRequest {
@@ -218,11 +218,10 @@ impl AuthModuleRequest for AuthorizeRequest {
             if let Some(redirect_to) = &self.redirect_to {
                 query.append_pair("redirect_to", redirect_to.as_str());
             }
-            if let Some(code_challenge) = &self.code_challenge {
-                query.append_pair("code_challenge", code_challenge);
-            }
-            if let Some(method) = self.code_challenge_method {
-                query.append_pair("code_challenge_method", method.as_str());
+            if let Some(pkce) = &self.pkce {
+                query
+                    .append_pair("code_challenge", &pkce.code_challenge)
+                    .append_pair("code_challenge_method", pkce.code_challenge_method.as_str());
             }
         }
         Ok(url)
@@ -260,10 +259,8 @@ impl AuthModuleRequest for SignupRequest {
 pub struct RecoverRequest {
     #[builder(!default, setter(!strip_option))]
     pub email: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge_method: Option<types::CodeChallengeMethod>,
+    #[serde(flatten)]
+    pub pkce: Option<types::PkceChallenge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
@@ -345,10 +342,8 @@ pub struct OtpRequest {
     pub create_user: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<types::UserMetadata>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge_method: Option<types::CodeChallengeMethod>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_challenge: Option<String>,
+    #[serde(flatten)]
+    pub pkce: Option<types::PkceChallenge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
@@ -579,8 +574,8 @@ pub struct SsoRequest {
     pub provider_id: Option<String>,
     pub redirect_to: Option<String>,
     pub skip_http_redirect: Option<bool>,
-    pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<types::CodeChallengeMethod>,
+    #[serde(flatten)]
+    pub pkce: Option<types::PkceChallenge>,
     pub gotrue_meta_security: Option<types::GoTrueMetaSecurity>,
 }
 

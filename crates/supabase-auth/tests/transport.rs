@@ -18,7 +18,7 @@ use rp_supabase_auth::{
     jwt_stream::{JwtStream, SupabaseAuthConfig},
     types::{
         CodeChallengeMethod, IdTokenGrant, IdTokenProvider, LoginCredentials, OAuthProvider,
-        PasswordGrant, PkceGrant, RefreshTokenGrant, SignupPayload,
+        PasswordGrant, PkceChallenge, PkceGrant, RefreshTokenGrant, SignupPayload,
     },
 };
 
@@ -347,8 +347,10 @@ async fn signup_flattens_credentials_and_sends_challenge_method() {
     let url = url::Url::parse(&server.url()).unwrap();
     let payload = SignupPayload::builder()
         .credentials(LoginCredentials::email("a@b.c".into(), "p".into()))
-        .code_challenge("c".into())
-        .code_challenge_method(CodeChallengeMethod::S256)
+        .pkce(PkceChallenge {
+            code_challenge: "c".into(),
+            code_challenge_method: CodeChallengeMethod::S256,
+        })
         .build();
     drop(
         ApiClient::new_unauthenticated(&url, "key")
@@ -366,8 +368,10 @@ fn authorize_url_carries_provider_scopes_and_pkce_challenge() {
         .provider(OAuthProvider::GitHub)
         .scopes(vec!["repo".into(), "read:user".into()])
         .redirect_to(url::Url::parse("http://localhost:3000/callback").unwrap())
-        .code_challenge("c".into())
-        .code_challenge_method(CodeChallengeMethod::S256)
+        .pkce(PkceChallenge {
+            code_challenge: "c".into(),
+            code_challenge_method: CodeChallengeMethod::S256,
+        })
         .build();
     assert_eq!(
         request.path(&base).unwrap().as_str(),

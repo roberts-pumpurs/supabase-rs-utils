@@ -173,5 +173,6 @@ The other variants cover transport failures, invalid URLs, invalid header values
 - `LoginCredentials` has no builder. Use `LoginCredentials::email(email, password)` or `LoginCredentials::phone(phone, password)`. The password is required, and `Debug` hides it.
 - `TokenRequest` is an enum of grants: `Password(PasswordGrant)`, `RefreshToken(RefreshTokenGrant)`, `IdToken(IdTokenGrant)`, and `Pkce(PkceGrant)`. `TokenRequestBody` and `GrantType` are gone. `PkceGrant` sends `auth_code`, which Supabase Auth reads for the PKCE exchange.
 - `SignupPayload` takes `credentials: Option<LoginCredentials>`. Leave it unset to create an anonymous user.
-- `code_challenge_method` fields take `CodeChallengeMethod::S256` or `CodeChallengeMethod::Plain`.
-- `AuthorizeRequest` takes an `OAuthProvider`, `scopes: Vec<String>`, a `Url` for `redirect_to`, and now sends `code_challenge`.
+- `SignupPayload`, `OtpRequest`, `RecoverRequest`, and `SsoRequest` take `pkce: Option<PkceChallenge>` instead of separate `code_challenge` and `code_challenge_method` fields. `PkceChallenge::code_challenge_method` is `CodeChallengeMethod::S256` or `CodeChallengeMethod::Plain`.
+- `AuthorizeRequest` takes an `OAuthProvider`, `scopes: Vec<String>`, a `Url` for `redirect_to`, and `pkce: Option<PkceChallenge>`. It now sends `code_challenge`.
+- `RefreshTokenGrant`, `PkceGrant`, and `IdTokenGrant` hide their tokens in `Debug`.
