@@ -46,10 +46,7 @@ fn config(url: &str) -> SupabaseAuthConfig {
 }
 
 fn credentials() -> LoginCredentials {
-    LoginCredentials::builder()
-        .email("user@example.com".into())
-        .password("password".into())
-        .build()
+    LoginCredentials::email("user@example.com".into(), "password".into())
 }
 
 #[tokio::test]
